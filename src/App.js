@@ -66,6 +66,11 @@ const api = {
   getMessages:   ()     => api.get("/api/board/messages"),
   postMessage:   (body) => api.post("/api/board/messages", body),
   postReaction:  (body) => api.post("/api/board/reactions", body),
+
+  // Admin
+  getAdminUsers:  ()          => api.get("/api/admin/users"),
+  adminDeleteUser:(id)         => api.delete(`/api/admin/users/${id}`),
+  adminSetRole:   (id, role)   => api.post(`/api/admin/users/${id}/role`, { role }),
 };
 
 // ─── SEED DATA ────────────────────────────────────────────────────────────────
@@ -3172,6 +3177,7 @@ function UserProfileModal({ user, onClose, onDeleted }) {
           ["First Name", user.firstName],
           ["Last Name",  user.lastName],
           ["Email",      user.email],
+          ["Role",         user.role === "arch_admin" ? "Arch-Admin" : user.role === "admin" ? "Admin" : "Member"],
           ["Member Since", new Date().toLocaleDateString("en-US", { month:"long", year:"numeric" })],
         ].map(([label, val]) => (
           <div key={label} style={{display:"flex",justifyContent:"space-between",
@@ -3238,6 +3244,7 @@ function UserProfileModal({ user, onClose, onDeleted }) {
 export default function App() {
   const [user, setUser]                         = useState(null);   // { id, firstName, lastName, email, displayName }
   const [showProfile, setShowProfile]           = useState(false);
+  const [showAdmin, setShowAdmin]               = useState(false);
   const [page, setPage]                         = useState("workout");
   const [showBoards, setShowBoards]             = useState(false);
   const [boardsFading, setBoardsFading]         = useState(false);
@@ -3383,12 +3390,30 @@ export default function App() {
               <span className="nav-icon"><NavIcon id={n.id} active={page===n.id} /></span>{n.label}
             </div>
           ))}
+          {/* Admin panel button — only visible to arch_admin and admin */}
+          {(user.role === "arch_admin" || user.role === "admin") && (
+            <div onClick={() => setShowAdmin(true)} style={{
+              margin:"0 10px 6px", padding:"8px 12px", cursor:"pointer",
+              border:"1px solid rgba(255,204,0,0.25)", borderRadius:2,
+              background:"rgba(255,204,0,0.05)", transition:"all 0.15s",
+              display:"flex", alignItems:"center", gap:8,
+            }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ffcc00" strokeWidth="2" strokeLinecap="round">
+                <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+                <line x1="19" y1="8" x2="23" y2="8"/><line x1="21" y1="6" x2="21" y2="10"/>
+              </svg>
+              <span style={{fontSize:10,fontFamily:"'Orbitron',sans-serif",letterSpacing:1.5,
+                color:"#ffcc00",fontWeight:700,textTransform:"uppercase"}}>
+                {user.role === "arch_admin" ? "Arch-Admin" : "Admin"}
+              </span>
+            </div>
+          )}
           {/* User badge — click to open profile modal */}
           <div className="user-badge" style={{cursor:"pointer"}} onClick={() => setShowProfile(true)}>
             <div className="avatar">{username.slice(0,2).toUpperCase()}</div>
             <div>
               <div className="user-name">{username}</div>
-              <div className="user-sub">Member</div>
+              <div className="user-sub">{user.role === "arch_admin" ? "Arch-Admin" : user.role === "admin" ? "Admin" : "Member"}</div>
             </div>
           </div>
         </div>
@@ -3411,6 +3436,12 @@ export default function App() {
           user={user}
           onClose={() => setShowProfile(false)}
           onDeleted={handleDeleted}
+        />
+      )}
+      {showAdmin && (
+        <AdminPanel
+          currentUser={user}
+          onClose={() => setShowAdmin(false)}
         />
       )}
     </>
