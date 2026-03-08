@@ -49,6 +49,7 @@ async function initDb() {
       last_name   TEXT NOT NULL,
       email       TEXT NOT NULL UNIQUE,
       password    TEXT NOT NULL,
+      role        TEXT NOT NULL DEFAULT 'user',
       created_at  BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
     );
 
@@ -84,6 +85,17 @@ async function initDb() {
       PRIMARY KEY (message_id, emoji, username)
     );
   `);
+  // Add role column if it doesn't exist (safe to run on existing databases)
+  await db.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
+  `);
+
+  // Ensure the arch-admin account always has the correct role
+  await db.query(`
+    UPDATE users SET role = 'arch_admin'
+    WHERE LOWER(email) = LOWER('graftonlagarde@protonmail.com');
+  `);
+
   console.log("✅ Database tables ready.");
 }
 
@@ -96,7 +108,15 @@ const publicDir = path.join(__dirname, "public");
 if (fs.existsSync(publicDir)) {
   app.use(express.static(publicDir));
 } else {
-  console.warn("⚠  No /public folder found — static assets will not be served.");
+  console.warn("No /public folder found — static assets will not be served.");
+}
+
+// Serve React build folder
+const buildDir = path.join(__dirname, "build");
+if (fs.existsSync(buildDir)) {
+  app.use(express.static(buildDir));
+} else {
+  console.warn("No /build folder found — run npm run build to generate it.");
 }
 
 // ── Auth helpers ───────────────────────────────────────────────────────────────
@@ -117,6 +137,28 @@ const requireAuth = (req, res, next) => {
 };
 
 const displayName = (u) => `${u.first_name} ${u.last_name}`;
+const shapeUser = (u) => ({
+  id:          Number(u.id),
+  firstName:   u.first_name,
+  lastName:    u.last_name,
+  email:       u.email,
+  displayName: displayName(u),
+  role:        u.role,
+});
+
+// Middleware: require arch_admin or admin role
+const requireAdmin = async (req, res, next) => {
+  try {
+    const { rows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    const user = rows[0];
+    if (!user || (user.role !== 'arch_admin' && user.role !== 'admin'))
+      return res.status(403).json({ error: "Forbidden." });
+    req.userRole = user.role;
+    next();
+  } catch (err) {
+    return res.status(500).json({ error: "Server error." });
+  }
+};
 
 // ── Helper: load reactions for an array of message ids ────────────────────────
 async function loadReactions(messageIds) {
@@ -177,8 +219,7 @@ app.post("/api/auth/register", async (req, res) => {
     const token = signToken(user.id);
     return res.status(201).json({
       token,
-      user: { id: user.id, firstName: user.first_name, lastName: user.last_name,
-              email: user.email, displayName: displayName(user) },
+      user: shapeUser(user),
     });
   } catch (err) {
     console.error("register:", err);
@@ -204,8 +245,7 @@ app.post("/api/auth/login", async (req, res) => {
     const token = signToken(user.id);
     return res.json({
       token,
-      user: { id: user.id, firstName: user.first_name, lastName: user.last_name,
-              email: user.email, displayName: displayName(user) },
+      user: shapeUser(user),
     });
   } catch (err) {
     console.error("login:", err);
@@ -219,8 +259,7 @@ app.get("/api/auth/me", requireAuth, async (req, res) => {
     const user = rows[0];
     if (!user) return res.status(404).json({ error: "User not found." });
     return res.json({
-      user: { id: user.id, firstName: user.first_name, lastName: user.last_name,
-              email: user.email, displayName: displayName(user) },
+      user: shapeUser(user),
     });
   } catch (err) {
     console.error("me:", err);
@@ -395,6 +434,87 @@ app.post("/api/board/reactions", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("postReaction:", err);
     return res.status(500).json({ error: "Server error." });
+  }
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ADMIN ROUTES
+// ═════════════════════════════════════════════════════════════════════════════
+
+// GET /api/admin/users — list all users (arch_admin and admin only)
+app.get("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await db.query("SELECT * FROM users ORDER BY created_at ASC");
+    return res.json(rows.map(shapeUser));
+  } catch (err) {
+    console.error("adminGetUsers:", err);
+    return res.status(500).json({ error: "Server error." });
+  }
+});
+
+// DELETE /api/admin/users/:id — delete a user (arch_admin can delete anyone non-arch_admin; admin can delete non-admin/non-arch_admin)
+app.delete("/api/admin/users/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await db.query("SELECT * FROM users WHERE id = $1", [req.params.id]);
+    const target = rows[0];
+    if (!target) return res.status(404).json({ error: "User not found." });
+
+    // Cannot delete yourself
+    if (Number(req.params.id) === req.userId)
+      return res.status(400).json({ error: "You cannot delete your own account from the admin panel." });
+
+    // arch_admin can delete anyone except other arch_admins
+    if (target.role === 'arch_admin')
+      return res.status(403).json({ error: "Cannot delete an arch-admin." });
+
+    // admin can only delete regular users
+    if (req.userRole === 'admin' && target.role === 'admin')
+      return res.status(403).json({ error: "Admins cannot delete other admins." });
+
+    await db.query("DELETE FROM users WHERE id = $1", [req.params.id]);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("adminDeleteUser:", err);
+    return res.status(500).json({ error: "Server error." });
+  }
+});
+
+// POST /api/admin/users/:id/role — promote/demote a user (arch_admin only)
+app.post("/api/admin/users/:id/role", requireAuth, async (req, res) => {
+  try {
+    // Only arch_admin can change roles
+    const { rows: selfRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    if (!selfRows[0] || selfRows[0].role !== 'arch_admin')
+      return res.status(403).json({ error: "Only the arch-admin can change roles." });
+
+    const { role } = req.body;
+    if (!['user', 'admin'].includes(role))
+      return res.status(400).json({ error: "Role must be 'user' or 'admin'." });
+
+    const { rows } = await db.query("SELECT * FROM users WHERE id = $1", [req.params.id]);
+    const target = rows[0];
+    if (!target) return res.status(404).json({ error: "User not found." });
+    if (target.role === 'arch_admin')
+      return res.status(403).json({ error: "Cannot change the arch-admin's role." });
+
+    const { rows: updated } = await db.query(
+      "UPDATE users SET role = $1 WHERE id = $2 RETURNING *",
+      [role, req.params.id]
+    );
+    return res.json({ user: shapeUser(updated[0]) });
+  } catch (err) {
+    console.error("adminSetRole:", err);
+    return res.status(500).json({ error: "Server error." });
+  }
+});
+
+// Catch-all: serve React app for any non-API route
+app.get("*", (req, res) => {
+  const index = path.join(__dirname, "build", "index.html");
+  if (fs.existsSync(index)) {
+    res.sendFile(index);
+  } else {
+    res.status(404).send("App not built yet. Run npm run build.");
   }
 });
 
