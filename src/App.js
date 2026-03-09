@@ -2560,11 +2560,34 @@ function AudioPage({ currentTrack, setCurrentTrack, isPlaying, setIsPlaying }) {
         </div>
 
       </div>
+
+      {/* Attribution footnote */}
+      <div style={{
+        marginTop:32, paddingTop:16, borderTop:"1px solid rgba(0,255,180,0.07)",
+        color:"var(--muted)", fontSize:10, lineHeight:1.7, letterSpacing:0.3,
+      }}>
+        <div style={{marginBottom:6, fontFamily:"'Orbitron',sans-serif", fontSize:9, letterSpacing:2, textTransform:"uppercase"}}>
+          Attributions
+        </div>
+        <div><span style={{color:"var(--text)"}}>Audio recordings:</span>{" "}
+          <a href="https://www.youtube.com/@TraditionalCatholicAudiobooks" target="_blank" rel="noreferrer"
+            style={{color:"var(--muted)",textDecoration:"underline"}}>Traditional Catholic Audiobooks</a>
+          {" · "}
+          <a href="https://www.youtube.com/@MultiBurtons" target="_blank" rel="noreferrer"
+            style={{color:"var(--muted)",textDecoration:"underline"}}>MultiBurtons</a>
+          {" · "}
+          <a href="https://www.youtube.com/@alfredus_magnus" target="_blank" rel="noreferrer"
+            style={{color:"var(--muted)",textDecoration:"underline"}}>alfredus magnus</a>
+        </div>
+        <div><span style={{color:"var(--text)"}}>3D models:</span>{" "}
+          <a href="https://free3d.com/3d-model/male-base-mesh-arshlevon-sizes-22492.html" target="_blank" rel="noreferrer"
+            style={{color:"var(--muted)",textDecoration:"underline"}}>Male Base Mesh by arshlevon — free3d.com</a>
+        </div>
+      </div>
+
     </div>
   );
 }
-
-// ─── PLAYER BAR ───────────────────────────────────────────────────────────────
 function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack }) {
   const audioRef     = useRef(null);
   const scrubbing    = useRef(false);
@@ -3573,25 +3596,24 @@ export default function App() {
               <span className="nav-icon"><NavIcon id={n.id} active={page===n.id} /></span>{n.label}
             </div>
           ))}
-          {/* Admin panel button — only visible to arch_admin and admin */}
+          {/* User badge — click to open profile modal */}
           {(user.role === "arch_admin" || user.role === "admin") && (
             <div onClick={() => setShowAdmin(true)} style={{
-              margin:"0 10px 6px", padding:"8px 12px", cursor:"pointer",
-              border:"1px solid rgba(255,204,0,0.25)", borderRadius:2,
-              background:"rgba(255,204,0,0.05)", transition:"all 0.15s",
+              margin:"0 0 4px 0", padding:"7px 14px", cursor:"pointer",
+              borderTop:"1px solid rgba(0,255,180,0.08)",
+              background:"rgba(0,255,180,0.03)", transition:"all 0.15s",
               display:"flex", alignItems:"center", gap:8,
             }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ffcc00" strokeWidth="2" strokeLinecap="round">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round">
                 <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
                 <line x1="19" y1="8" x2="23" y2="8"/><line x1="21" y1="6" x2="21" y2="10"/>
               </svg>
               <span style={{fontSize:10,fontFamily:"'Orbitron',sans-serif",letterSpacing:1.5,
-                color:"#ffcc00",fontWeight:700,textTransform:"uppercase"}}>
+                color:"var(--accent)",fontWeight:700,textTransform:"uppercase"}}>
                 {user.role === "arch_admin" ? "Arch-Admin" : "Admin"}
               </span>
             </div>
           )}
-          {/* User badge — click to open profile modal */}
           <div className="user-badge" style={{cursor:"pointer"}} onClick={() => setShowProfile(true)}>
             <div className="avatar">{username.slice(0,2).toUpperCase()}</div>
             <div>
