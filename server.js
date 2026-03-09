@@ -14,6 +14,10 @@
 //   GET    /api/board/messages        — all board messages
 //   POST   /api/board/messages        — post a new message
 //   POST   /api/board/reactions       — toggle a reaction on a message
+//
+// BACKGROUND JOBS:
+//   On boot + every 6h: purge orphan Cloudinary assets, then delete oldest
+//   messages if Postgres >90% or Cloudinary >90% full (target: 80%)
 // ─────────────────────────────────────────────────────────────────────────────
 
 require("dotenv").config();
@@ -24,10 +28,24 @@ const fs       = require("fs");
 const bcrypt   = require("bcryptjs");
 const jwt      = require("jsonwebtoken");
 const { Pool } = require("pg");
+const cloudinary = require("cloudinary").v2;
 
 const app        = express();
 const PORT       = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || "CHANGE_THIS_IN_ENV";
+
+// ── Cloudinary ────────────────────────────────────────────────────────────────
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// Storage limits
+const POSTGRES_LIMIT_BYTES    = 1 * 1024 * 1024 * 1024; // 1 GB (Railway free tier)
+const CLOUDINARY_LIMIT_BYTES  = 25 * 1024 * 1024 * 1024; // 25 GB (Cloudinary free tier)
+const CLEANUP_THRESHOLD       = 0.90; // trigger at 90%
+const CLEANUP_TARGET          = 0.80; // clean down to 80%
 
 // ── Database ──────────────────────────────────────────────────────────────────
 // Railway injects DATABASE_URL automatically when you add a Postgres addon.
@@ -524,6 +542,11 @@ initDb()
     app.listen(PORT, () => {
       console.log(`✅ Server running on port ${PORT}`);
     });
+    // Run cleanup on boot, then every 6 hours
+    purgeOrphanCloudinaryAssets().then(() => runStorageCleanup());
+    setInterval(() => {
+      purgeOrphanCloudinaryAssets().then(() => runStorageCleanup());
+    }, 6 * 60 * 60 * 1000);
   })
   .catch(err => {
     console.error("❌ Failed to initialise database:", err);
