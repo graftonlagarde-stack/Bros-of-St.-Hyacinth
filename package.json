@@ -22,7 +22,8 @@
     "react-scripts": "5.0.1",
     "recharts": "^2.12.7",
     "three": "^0.167.0",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
     "nodemon": "^3.1.4"

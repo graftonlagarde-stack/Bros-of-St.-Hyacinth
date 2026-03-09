@@ -2958,6 +2958,189 @@ const AuthField = ({ label, type, value, onChange, onEnter }) => (
   </div>
 );
 
+// ─── ADMIN PANEL ─────────────────────────────────────────────────────────────
+function AdminPanel({ currentUser, onClose }) {
+  const [users, setUsers]     = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState("");
+  const [confirm, setConfirm] = useState(null);
+
+  const isArchAdmin = currentUser.role === "arch_admin";
+
+  const load = () => {
+    setLoading(true);
+    api.getAdminUsers()
+      .then(data => setUsers(data))
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleDelete = async (userId) => {
+    try {
+      await api.adminDeleteUser(userId);
+      setUsers(prev => prev.filter(u => u.id !== userId));
+      setConfirm(null);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleSetRole = async (userId, role) => {
+    try {
+      const { user: updated } = await api.adminSetRole(userId, role);
+      setUsers(prev => prev.map(u => u.id === updated.id ? updated : u));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const roleBadge = (role) => {
+    if (role === "arch_admin") return { label: "ARCH-ADMIN", color: "#ffcc00" };
+    if (role === "admin")      return { label: "ADMIN",      color: "#00ffcc" };
+    return                            { label: "MEMBER",     color: "#556655" };
+  };
+
+  const canDelete = (u) => {
+    if (u.id === currentUser.id) return false;
+    if (u.role === "arch_admin") return false;
+    if (currentUser.role === "admin" && u.role === "admin") return false;
+    return true;
+  };
+
+  return (
+    <div style={{
+      position:"fixed", inset:0, zIndex:1001,
+      background:"rgba(0,0,0,0.8)", backdropFilter:"blur(4px)",
+      display:"flex", alignItems:"center", justifyContent:"center",
+    }} onClick={onClose}>
+      <div style={{
+        width:520, maxHeight:"80vh", display:"flex", flexDirection:"column",
+        background:"linear-gradient(155deg,rgba(0,14,8,0.99),rgba(0,5,3,1))",
+        border:"1px solid rgba(255,204,0,0.25)", borderRadius:4,
+        position:"relative", overflow:"hidden",
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{position:"absolute",top:0,left:0,right:0,height:1,
+          background:"linear-gradient(90deg,#ffcc00,#00ffcc,#ffcc00)",
+          backgroundSize:"300% 100%", opacity:0.8, animation:"sheen 2.5s ease-in-out infinite"}} />
+
+        {/* Header */}
+        <div style={{padding:"24px 28px 16px", borderBottom:"1px solid rgba(0,255,180,0.08)", flexShrink:0}}>
+          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+            <div>
+              <div style={{
+                fontFamily:"'Orbitron',sans-serif", fontSize:13, fontWeight:900, letterSpacing:4,
+                background:"linear-gradient(155deg,#ffcc00,#ffe066,#ffcc00)",
+                WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
+              }}>
+                {isArchAdmin ? "ARCH-ADMIN PANEL" : "ADMIN PANEL"}
+              </div>
+              <div style={{color:"var(--muted)",fontSize:11,marginTop:3,fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>
+                {users.length} {users.length === 1 ? "MEMBER" : "MEMBERS"}
+              </div>
+            </div>
+            <button onClick={onClose} style={{background:"none",border:"none",color:"var(--muted)",
+              fontSize:18,cursor:"pointer",lineHeight:1,padding:0}}>✕</button>
+          </div>
+          {error && <div style={{color:"#ff4455",fontSize:12,marginTop:10,fontWeight:600}}>{error}</div>}
+        </div>
+
+        {/* User list */}
+        <div style={{overflowY:"auto", flex:1, padding:"8px 0"}}>
+          {loading ? (
+            <div style={{color:"var(--muted)",fontSize:12,padding:28,textAlign:"center",
+              fontFamily:"'Orbitron',sans-serif",letterSpacing:2}}>LOADING…</div>
+          ) : users.map(u => {
+            const badge = roleBadge(u.role);
+            const isMe = u.id === currentUser.id;
+            return (
+              <div key={u.id} style={{
+                display:"flex", alignItems:"center", gap:12, padding:"12px 28px",
+                borderBottom:"1px solid rgba(0,255,180,0.05)",
+                background: isMe ? "rgba(0,255,180,0.03)" : "transparent",
+              }}>
+                <div className="avatar sm" style={{
+                  flexShrink:0,
+                  background: u.role === "arch_admin" ? "linear-gradient(135deg,#332200,#664400)"
+                            : u.role === "admin"      ? "linear-gradient(135deg,#003322,#006644)"
+                            : "linear-gradient(135deg,#001a10,#002e1a)",
+                  color: badge.color,
+                }}>
+                  {u.displayName.slice(0,2).toUpperCase()}
+                </div>
+                <div style={{flex:1, minWidth:0}}>
+                  <div style={{display:"flex", alignItems:"center", gap:8}}>
+                    <span style={{fontWeight:700, fontSize:13, color:"var(--text)"}}>{u.displayName}</span>
+                    {isMe && <span style={{fontSize:9,color:"var(--muted)",fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>YOU</span>}
+                  </div>
+                  <div style={{color:"var(--muted)",fontSize:11,marginTop:1}}>{u.email}</div>
+                </div>
+                <div style={{display:"flex", alignItems:"center", gap:8, flexShrink:0}}>
+                  <div style={{
+                    fontSize:9, fontWeight:700, letterSpacing:1.5, padding:"3px 8px",
+                    border:`1px solid ${badge.color}44`, borderRadius:2,
+                    color:badge.color, fontFamily:"'Orbitron',sans-serif",
+                  }}>{badge.label}</div>
+                  {isArchAdmin && u.role !== "arch_admin" && !isMe && (
+                    <button onClick={() => handleSetRole(u.id, u.role === "admin" ? "user" : "admin")}
+                      style={{
+                        fontSize:9, padding:"3px 8px", cursor:"pointer", borderRadius:2,
+                        background:"rgba(0,255,180,0.06)", border:"1px solid rgba(0,255,180,0.2)",
+                        color:"var(--accent)", fontFamily:"'Orbitron',sans-serif", letterSpacing:1,
+                      }}>
+                      {u.role === "admin" ? "DEMOTE" : "MAKE ADMIN"}
+                    </button>
+                  )}
+                  {canDelete(u) && (
+                    <button onClick={() => setConfirm({ userId: u.id, name: u.displayName })}
+                      style={{
+                        fontSize:9, padding:"3px 8px", cursor:"pointer", borderRadius:2,
+                        background:"rgba(255,68,85,0.06)", border:"1px solid rgba(255,68,85,0.25)",
+                        color:"#ff4455", fontFamily:"'Orbitron',sans-serif", letterSpacing:1,
+                      }}>
+                      DELETE
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Delete confirmation */}
+      {confirm && (
+        <div style={{
+          position:"fixed", inset:0, zIndex:1002,
+          background:"rgba(0,0,0,0.6)", backdropFilter:"blur(2px)",
+          display:"flex", alignItems:"center", justifyContent:"center",
+        }} onClick={() => setConfirm(null)}>
+          <div style={{
+            width:340, background:"linear-gradient(155deg,rgba(0,14,8,0.99),rgba(0,5,3,1))",
+            border:"1px solid rgba(255,68,85,0.3)", borderRadius:4, padding:28,
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{color:"#ff4455",fontSize:12,fontWeight:700,marginBottom:10,
+              fontFamily:"'Orbitron',sans-serif",letterSpacing:1,textTransform:"uppercase"}}>
+              ⚠ Confirm Deletion
+            </div>
+            <div style={{color:"var(--text)",fontSize:13,marginBottom:20}}>
+              Delete <strong>{confirm.name}</strong>? This will permanently remove their account, all lift logs, and all chat messages.
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button className="btn btn-ghost" style={{flex:1,justifyContent:"center",fontSize:10}}
+                onClick={() => setConfirm(null)}>CANCEL</button>
+              <button className="btn" style={{flex:1,justifyContent:"center",fontSize:10,
+                color:"#ff4455",borderColor:"rgba(255,68,85,0.4)"}}
+                onClick={() => handleDelete(confirm.userId)}>CONFIRM DELETE</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AuthScreen({ onAuth }) {
   const [mode, setMode]           = useState("welcome"); // welcome | login | register
   const [firstName, setFirstName] = useState("");
