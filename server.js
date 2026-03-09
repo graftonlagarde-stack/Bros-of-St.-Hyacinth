@@ -58,6 +58,104 @@ const db = {
   query: (sql, params) => pool.query(sql, params),
 };
 
+// ── Storage cleanup ───────────────────────────────────────────────────────────
+
+async function deleteCloudinaryAsset(publicId) {
+  if (!publicId) return;
+  try {
+    await cloudinary.uploader.destroy(publicId, { resource_type: "auto" });
+  } catch (err) {
+    console.warn(`⚠ Cloudinary delete failed for ${publicId}:`, err.message);
+  }
+}
+
+async function purgeOrphanCloudinaryAssets() {
+  try {
+    const { rows } = await db.query(
+      "SELECT media_public_id FROM messages WHERE media_public_id IS NOT NULL"
+    );
+    const knownIds = new Set(rows.map(r => r.media_public_id));
+    let nextCursor = null;
+    let orphanCount = 0;
+    do {
+      const params = { max_results: 500, resource_type: "auto" };
+      if (nextCursor) params.next_cursor = nextCursor;
+      const result = await cloudinary.api.resources(params);
+      for (const asset of result.resources) {
+        if (!knownIds.has(asset.public_id)) {
+          await cloudinary.uploader.destroy(asset.public_id, { resource_type: "auto" });
+          orphanCount++;
+        }
+      }
+      nextCursor = result.next_cursor;
+    } while (nextCursor);
+    if (orphanCount > 0) console.log(`🧹 Purged ${orphanCount} orphan Cloudinary assets.`);
+  } catch (err) {
+    console.error("purgeOrphanCloudinaryAssets error:", err.message);
+  }
+}
+
+async function getStorageUsage() {
+  let pgBytes = 0;
+  try {
+    const { rows } = await db.query("SELECT pg_database_size(current_database()) AS size");
+    pgBytes = Number(rows[0].size);
+  } catch (err) {
+    console.error("Could not read Postgres size:", err.message);
+  }
+  let cloudinaryBytes = 0;
+  try {
+    const usage = await cloudinary.api.usage();
+    cloudinaryBytes = usage.storage.usage;
+  } catch (err) {
+    console.error("Could not read Cloudinary usage:", err.message);
+  }
+  return {
+    pg:         { bytes: pgBytes,         limit: POSTGRES_LIMIT_BYTES,  pct: pgBytes / POSTGRES_LIMIT_BYTES },
+    cloudinary: { bytes: cloudinaryBytes, limit: CLOUDINARY_LIMIT_BYTES, pct: cloudinaryBytes / CLOUDINARY_LIMIT_BYTES },
+  };
+}
+
+async function runStorageCleanup() {
+  try {
+    const usage = await getStorageUsage();
+    console.log(`📊 Storage — Postgres: ${(usage.pg.pct*100).toFixed(1)}% | Cloudinary: ${(usage.cloudinary.pct*100).toFixed(1)}%`);
+    if (usage.pg.pct < CLEANUP_THRESHOLD && usage.cloudinary.pct < CLEANUP_THRESHOLD) return;
+    console.log("⚠ Storage threshold exceeded — beginning cleanup…");
+    let freed = 0;
+    // First: delete oldest media messages (frees both Cloudinary and Postgres)
+    while (true) {
+      const u = await getStorageUsage();
+      if (u.pg.pct < CLEANUP_TARGET && u.cloudinary.pct < CLEANUP_TARGET) break;
+      const { rows } = await db.query(
+        "SELECT id, media_public_id FROM messages WHERE media_public_id IS NOT NULL ORDER BY ts ASC LIMIT 10"
+      );
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        await deleteCloudinaryAsset(row.media_public_id);
+        await db.query("DELETE FROM messages WHERE id = $1", [row.id]);
+        freed++;
+      }
+    }
+    // Second: delete oldest text-only messages if Postgres still too full
+    while (true) {
+      const u = await getStorageUsage();
+      if (u.pg.pct < CLEANUP_TARGET) break;
+      const { rows } = await db.query(
+        "SELECT id FROM messages WHERE media_public_id IS NULL ORDER BY ts ASC LIMIT 20"
+      );
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        await db.query("DELETE FROM messages WHERE id = $1", [row.id]);
+        freed++;
+      }
+    }
+    if (freed > 0) console.log(`✅ Cleanup complete — deleted ${freed} messages.`);
+  } catch (err) {
+    console.error("runStorageCleanup error:", err.message);
+  }
+}
+
 // ── Create tables on first boot ───────────────────────────────────────────────
 async function initDb() {
   await db.query(`
