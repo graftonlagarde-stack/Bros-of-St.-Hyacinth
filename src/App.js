@@ -3674,22 +3674,22 @@ export default function App() {
       const cam = new THREE.PerspectiveCamera(42, W / H, 0.1, 1000);
       cam.position.set(0, 0, 3.2);
 
-      // Ambient — dark pure green, lifts shadows to deep green not black
-      const ambLight = new THREE.AmbientLight(0x004400, 0.8);
+      // Very low ambient — shadows fall to deep green, not filled in
+      const ambLight = new THREE.AmbientLight(0x003300, 0.5);
       scene.add(ambLight);
-      // Key — bright yellow-lime, drives highlights toward bright yellow-lime
-      const keyLight = new THREE.PointLight(0xeeff44, 10.0, 20);
+      // Key — strong yellow-lime, drives lit areas to bright lime-yellow
+      const keyLight = new THREE.PointLight(0xeeff44, 14.0, 20);
       keyLight.position.set(2, 3, 4);
       scene.add(keyLight);
-      // Fill — mid green opposite side
-      const fillLight = new THREE.PointLight(0x00aa00, 1.5, 20);
+      // Fill — weak green opposite side, keeps shadow side green not black
+      const fillLight = new THREE.PointLight(0x005500, 1.2, 20);
       fillLight.position.set(-3, -1, 2);
       scene.add(fillLight);
-      // Rim — yellow-green from behind, lights outer shell edge
+      // Rim — yellow-green from behind for outer shell edge glow
       const rimLight = new THREE.PointLight(0xaaff00, 2.5, 15);
       rimLight.position.set(0, 0, -4);
       scene.add(rimLight);
-      // Top — sharp white for cross rim specular highlights
+      // Top — sharp white for cross rim specular
       const topLight = new THREE.PointLight(0xffffff, 4.0, 8);
       topLight.position.set(-0.5, 3, 2);
       scene.add(topLight);
@@ -3706,7 +3706,6 @@ export default function App() {
         model.scale.setScalar(2.0 / maxDim);
         model.rotation.set(0, -Math.PI / 2, 0);
 
-        // Collect inner orb meshes for clearcoat clone
         const innerMeshes = [];
 
         model.traverse(child => {
@@ -3715,42 +3714,42 @@ export default function App() {
           const isTrans = orig && orig.name === 'Material.002';
 
           if (isTrans) {
-            // Outer shell — glassy, low opacity, yellow-green tint
-            // High emissive with AdditiveBlending on a bloom clone gives soft electric outline
-            child.material = new THREE.MeshStandardMaterial({
-              color:             new THREE.Color(0.45, 0.90, 0.02),
-              emissive:          new THREE.Color(0.20, 0.60, 0.02),
-              emissiveIntensity: 1.4,
-              metalness:         0.0,
+            // Outer shell — physically transmissive glass, very low opacity
+            child.material = new THREE.MeshPhysicalMaterial({
+              color:             new THREE.Color(0.35, 0.85, 0.02),
+              emissive:          new THREE.Color(0.15, 0.55, 0.02),
+              emissiveIntensity: 1.2,
+              transmission:      1.0,
+              opacity:           0.06,
               roughness:         0.08,
+              metalness:         0.0,
               transparent:       true,
-              opacity:           0.18,
               side:              THREE.DoubleSide,
               depthWrite:        false,
             });
 
-            // Additive bloom clone — slightly larger, pure emissive, soft blurry electric outline
+            // Bloom clone — DoubleSide so wireframe edges show,
+            // AdditiveBlending for soft neon glow with no hard edge
             const bloomGeo = child.geometry.clone();
             const bloomMat = new THREE.MeshBasicMaterial({
-              color:       new THREE.Color(0.15, 0.80, 0.0),
+              color:       new THREE.Color(0.20, 0.90, 0.02),
               transparent: true,
-              opacity:     0.10,
-              side:        THREE.BackSide, // renders only outer edge, naturally soft
+              opacity:     0.12,
+              side:        THREE.DoubleSide,
               blending:    THREE.AdditiveBlending,
               depthWrite:  false,
+              wireframe:   false,
             });
             const bloomMesh = new THREE.Mesh(bloomGeo, bloomMat);
-            bloomMesh.scale.setScalar(1.08);
-            bloomMesh.rotation.copy(child.rotation);
-            bloomMesh.position.copy(child.position);
+            bloomMesh.scale.setScalar(1.06);
             model.add(bloomMesh);
 
           } else {
-            // Inner orb — darker base color so key light creates wide bright-to-deep range
+            // Inner orb — dark base, roughness 0.05 for broad specular
             child.material = new THREE.MeshStandardMaterial({
-              color:             new THREE.Color(0.12, 0.55, 0.0),
-              emissive:          new THREE.Color(0.03, 0.14, 0.0),
-              emissiveIntensity: 0.4,
+              color:             new THREE.Color(0.10, 0.50, 0.0),
+              emissive:          new THREE.Color(0.02, 0.10, 0.0),
+              emissiveIntensity: 0.3,
               metalness:         0.0,
               roughness:         0.05,
               transparent:       false,
@@ -3760,22 +3759,23 @@ export default function App() {
           }
         });
 
-        // Clearcoat clone for cross rim speculars — same geometry, invisible base,
-        // clearcoat layer catches sharp specular on cross edges without affecting sphere surface
+        // Clearcoat clone for cross rim speculars
+        // Base is opaque black with depthWrite false so it doesn't occlude —
+        // only the clearcoat specular layer is visible on top of the inner orb
         innerMeshes.forEach(mesh => {
-          const ccGeo = mesh.geometry.clone();
           const ccMat = new THREE.MeshPhysicalMaterial({
             color:              new THREE.Color(0, 0, 0),
-            transparent:        true,
-            opacity:            0.0,
+            transparent:        false,
+            opacity:            1.0,
             roughness:          0.05,
             metalness:          0.0,
             clearcoat:          1.0,
             clearcoatRoughness: 0.0,
             side:               THREE.FrontSide,
             depthWrite:         false,
+            depthTest:          true,
           });
-          const ccMesh = new THREE.Mesh(ccGeo, ccMat);
+          const ccMesh = new THREE.Mesh(mesh.geometry, ccMat);
           ccMesh.position.copy(mesh.position);
           ccMesh.rotation.copy(mesh.rotation);
           ccMesh.scale.copy(mesh.scale);
