@@ -593,8 +593,8 @@ const css = `
     50%     { opacity: 1; }
   }
   @keyframes energyBeat {
-    0%,100% { box-shadow: var(--glow-sm); }
-    50%     { box-shadow: var(--glow); }
+    0%,100% { box-shadow: 0 0 20px rgba(136,255,0,0.2), inset 0 0 40px rgba(0,255,180,0.03); }
+    50%     { box-shadow: 0 0 40px rgba(0,255,180,0.45), inset 0 0 60px rgba(0,255,180,0.07); }
   }
   @keyframes float {
     0%,100% { transform: translateY(0px); }
@@ -1138,7 +1138,7 @@ const css = `
   }
   .player-bar::after {
     content: ''; position: absolute; inset: 0; pointer-events: none;
-    background: radial-gradient(ellipse 70% 120% at 50% 100%, rgba(136,255,0,0.025), transparent);
+    background: radial-gradient(ellipse 70% 120% at 50% 100%, rgba(0,255,180,0.025), transparent);
   }
 
   .track-info { min-width: 150px; max-width: 200px; position: relative; z-index: 1; overflow: hidden; }
@@ -1156,8 +1156,8 @@ const css = `
   }
   .ctrl-btn:hover { color: var(--accent); text-shadow: var(--glow-sm); transform: scale(1.2); }
   .play-btn {
-    background: linear-gradient(145deg, #447700 0%, #223300 55%, #001a15 100%);
-    color: #fff; border: 1px solid rgba(136,255,0,0.3);
+    background: linear-gradient(145deg, #008866 0%, #004433 55%, #001a15 100%);
+    color: #fff; border: 1px solid rgba(0,255,180,0.3);
     border-radius: 50%; width: 44px; height: 44px; font-size: 14px; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     box-shadow: var(--glow),
@@ -3668,8 +3668,8 @@ export default function App() {
       renderer.setSize(W, H);
       renderer.setClearColor(0x000000, 0);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 0.85;
+      renderer.toneMapping = THREE.LinearToneMapping;
+      renderer.toneMappingExposure = 2.2;
 
       const scene = new THREE.Scene();
       const cam = new THREE.PerspectiveCamera(42, W / H, 0.1, 1000);
