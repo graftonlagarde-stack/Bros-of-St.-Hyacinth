@@ -25,11 +25,16 @@
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
     <title>React App</title>
-    <!-- Three.js r128 loaded exclusively for the GLB orb renderer -->
+    <!-- Three.js r128 + GLTFLoader loaded exclusively for the GLB orb renderer -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script>window.THREE_r128 = window.THREE; window.THREE = undefined;</script>
+    <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
     <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <script>window.THREE_r128.GLTFLoader = window.THREE_r128.GLTFLoader; window.THREE = undefined;</script>
+    <script>
+      // Stash r128 (with GLTFLoader attached) then clear window.THREE
+      // so the React app's npm import of 0.167 is unaffected
+      window.THREE_r128 = window.THREE;
+      window.THREE = undefined;
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
