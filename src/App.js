@@ -3646,7 +3646,7 @@ export default function App() {
     if (mainRef.current) mainRef.current.scrollTop = 0;
   }, [page]);
 
-  // ── GLB orb renderer ──────────────────────────────────────────────
+  // ── GLB orb renderer (uses Three.js r128 via CDN for pixel-exact match with HTML preview) ──
   useEffect(() => {
     const RAILWAY_URL = "https://bros-of-st-hyacinth-production.up.railway.app";
     const GLB_URL = `${RAILWAY_URL}/Hyacinth_Sphere.glb`;
@@ -3658,42 +3658,44 @@ export default function App() {
       const canvas = glbCanvasRef.current;
       if (!canvas) { setTimeout(init, 150); return; }
 
+      const T = window.THREE_r128;
+      if (!T || !T.GLTFLoader) { setTimeout(init, 150); return; }
+
       const W = canvas.offsetWidth  || 220;
       const H = canvas.offsetHeight || 220;
-      // If canvas isn't laid out yet, retry
       if (W < 10) { setTimeout(init, 150); return; }
 
-      renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+      renderer = new T.WebGLRenderer({ canvas, alpha: true, antialias: true });
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(W, H);
       renderer.setClearColor(0x000000, 0);
-      renderer.outputColorSpace = THREE.SRGBColorSpace;
-      renderer.toneMapping = THREE.LinearToneMapping;
-      renderer.toneMappingExposure = 2.2;
+      renderer.outputEncoding = T.sRGBEncoding;
+      renderer.toneMapping = T.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 0.85;
 
-      const scene = new THREE.Scene();
-      const cam = new THREE.PerspectiveCamera(42, W / H, 0.1, 1000);
+      const scene = new T.Scene();
+      const cam = new T.PerspectiveCamera(42, W / H, 0.1, 1000);
       cam.position.set(0, 0, 3.2);
 
-      const ambLight = new THREE.AmbientLight(0x88ff44, 0.06);
+      const ambLight = new T.AmbientLight(0x88ff44, 0.06);
       scene.add(ambLight);
-      const keyLight = new THREE.PointLight(0xaaff44, 2.2, 20);
+      const keyLight = new T.PointLight(0xaaff44, 2.2, 20);
       keyLight.position.set(2, 2, 4);
       scene.add(keyLight);
-      const fillLight = new THREE.PointLight(0x44cc00, 0.7, 20);
+      const fillLight = new T.PointLight(0x44cc00, 0.7, 20);
       fillLight.position.set(-2, -1, 2);
       scene.add(fillLight);
-      const rimLight = new THREE.PointLight(0x226600, 0.5, 20);
+      const rimLight = new T.PointLight(0x226600, 0.5, 20);
       rimLight.position.set(0, -3, -3);
       scene.add(rimLight);
 
-      const clock = new THREE.Clock();
-      const loader = new GLTFLoader();
+      const clock = new T.Clock();
+      const loader = new T.GLTFLoader();
       loader.load(GLB_URL, (gltf) => {
         const model = gltf.scene;
-        const box = new THREE.Box3().setFromObject(model);
-        const centre = box.getCenter(new THREE.Vector3());
-        const size = box.getSize(new THREE.Vector3());
+        const box = new T.Box3().setFromObject(model);
+        const centre = box.getCenter(new T.Vector3());
+        const size = box.getSize(new T.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
         model.position.sub(centre);
         model.scale.setScalar(2.0 / maxDim);
@@ -3701,16 +3703,17 @@ export default function App() {
 
         model.traverse(child => {
           if (!child.isMesh) return;
-          const isTrans = child.material && child.material.name === "Material.002";
-          child.material = new THREE.MeshStandardMaterial({
-            color:             isTrans ? new THREE.Color(0.22, 0.65, 0.0) : new THREE.Color(0.30, 0.80, 0.0),
-            emissive:          new THREE.Color(0.08, 0.28, 0.0),
+          const orig = child.material;
+          const isTrans = orig && orig.name === 'Material.002';
+          child.material = new T.MeshStandardMaterial({
+            color:             isTrans ? new T.Color(0.22, 0.65, 0.0) : new T.Color(0.30, 0.80, 0.0),
+            emissive:          new T.Color(0.08, 0.28, 0.0),
             emissiveIntensity: isTrans ? 0.25 : 0.45,
             metalness:         0.25,
             roughness:         0.05,
             transparent:       isTrans,
             opacity:           isTrans ? 0.72 : 1.0,
-            side:              THREE.DoubleSide,
+            side:              T.DoubleSide,
           });
         });
 
@@ -3718,7 +3721,7 @@ export default function App() {
 
         let mixer = null;
         if (gltf.animations && gltf.animations.length) {
-          mixer = new THREE.AnimationMixer(model);
+          mixer = new T.AnimationMixer(model);
           gltf.animations.forEach(clip => mixer.clipAction(clip).play());
         }
 
