@@ -3668,24 +3668,24 @@ export default function App() {
       renderer.setClearColor(0x000000, 0);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 3.5;
+      renderer.toneMappingExposure = 1.2;
 
       const scene = new THREE.Scene();
       const cam = new THREE.PerspectiveCamera(42, W / H, 0.1, 1000);
       cam.position.set(0, 0, 3.2);
 
-      const ambLight = new THREE.AmbientLight(0x003300, 0.5);
+      const ambLight = new THREE.AmbientLight(0x115511, 1.0);
       scene.add(ambLight);
-      const keyLight = new THREE.PointLight(0xeeff44, 14.0, 20);
+      const keyLight = new THREE.PointLight(0xeeff44, 6.0, 20);
       keyLight.position.set(2, 3, 4);
       scene.add(keyLight);
-      const fillLight = new THREE.PointLight(0x005500, 1.2, 20);
+      const fillLight = new THREE.PointLight(0x33aa33, 1.0, 20);
       fillLight.position.set(-3, -1, 2);
       scene.add(fillLight);
       const rimLight = new THREE.PointLight(0xaaff00, 2.5, 15);
       rimLight.position.set(0, 0, -4);
       scene.add(rimLight);
-      const topLight = new THREE.PointLight(0xffffff, 4.0, 8);
+      const topLight = new THREE.PointLight(0xffffff, 3.0, 8);
       topLight.position.set(-0.5, 3, 2);
       scene.add(topLight);
 
@@ -3709,6 +3709,7 @@ export default function App() {
           const isTrans = orig && orig.name === 'Material.002';
 
           if (isTrans) {
+            // Outer shell — very low opacity surface
             child.material = new THREE.MeshStandardMaterial({
               color:             new THREE.Color(0.35, 0.85, 0.02),
               emissive:          new THREE.Color(0.15, 0.55, 0.02),
@@ -3720,6 +3721,20 @@ export default function App() {
               side:              THREE.DoubleSide,
               depthWrite:        false,
             });
+            // Explicit wireframe mesh — always visible neon green electric outline
+            const wfGeo = new THREE.WireframeGeometry(child.geometry);
+            const wfMat = new THREE.LineBasicMaterial({
+              color:       0xaaff00,
+              transparent: true,
+              opacity:     0.55,
+              blending:    THREE.AdditiveBlending,
+              depthWrite:  false,
+            });
+            const wfMesh = new THREE.LineSegments(wfGeo, wfMat);
+            wfMesh.rotation.copy(child.rotation);
+            wfMesh.position.copy(child.position);
+            wfMesh.scale.copy(child.scale);
+            model.add(wfMesh);
           } else {
             child.material = new THREE.MeshStandardMaterial({
               color:             new THREE.Color(0.10, 0.50, 0.0),
