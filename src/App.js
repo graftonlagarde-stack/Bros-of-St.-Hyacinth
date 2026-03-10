@@ -2302,7 +2302,7 @@ function WorkoutPage({ username }) {
     const ts = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0).getTime();
     const entry = {
       exercise: form.exercise,
-      ...(isPullup ? {} : { repCat: Number(form.repCat) }),
+      repCat: isPullup ? 0 : Number(form.repCat),
       weight:   Number(form.weight),
       date:     todayStr,
       ts,
