@@ -2271,7 +2271,7 @@ function WorkoutPage({ username }) {
   const [form, setForm] = useState({ exercise: "Bench Press", repCat: 1, weight: "" });
 
   // When switching to/from Pull-up, reset the weight field
-  const setExercise = (ex) => setForm(f => ({ ...f, exercise: ex, repCat: ex === "Pull-up" ? 0 : (f.repCat === 0 ? 1 : f.repCat), weight: "" }));
+  const setExercise = (ex) => setForm(f => ({ ...f, exercise: ex, repCat: ex === "Pull-up" ? null : (f.repCat === null ? 1 : f.repCat), weight: "" }));
 
   const isPullup = form.exercise === "Pull-up";
   const [chartEx, setChartEx] = useState("Bench Press");
@@ -2291,7 +2291,7 @@ function WorkoutPage({ username }) {
     if (!form.weight) return;
     const today = new Date();
     const todayStr = today.toLocaleDateString("en-US", { month:"short", day:"numeric" });
-    const duplicate = logs.find(l => l.exercise === form.exercise && l.repCat === Number(form.repCat) && l.date === todayStr);
+    const duplicate = logs.find(l => l.exercise === form.exercise && (isPullup ? l.exercise === "Pull-up" : l.repCat === Number(form.repCat)) && l.date === todayStr);
     if (duplicate) {
       setDupError(isPullup
         ? `You already logged Pull-ups today — come back tomorrow!`
@@ -2302,7 +2302,7 @@ function WorkoutPage({ username }) {
     const ts = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0).getTime();
     const entry = {
       exercise: form.exercise,
-      repCat:   Number(form.repCat),
+      ...(isPullup ? {} : { repCat: Number(form.repCat) }),
       weight:   Number(form.weight),
       date:     todayStr,
       ts,
@@ -3667,9 +3667,9 @@ export default function App() {
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(W, H);
       renderer.setClearColor(0x000000, 0);
-      renderer.outputColorSpace = THREE.SRGBColorSpace;
-      renderer.toneMapping = THREE.LinearToneMapping;
-      renderer.toneMappingExposure = 2.2;
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 0.85;
 
       const scene = new THREE.Scene();
       const cam = new THREE.PerspectiveCamera(42, W / H, 0.1, 1000);
