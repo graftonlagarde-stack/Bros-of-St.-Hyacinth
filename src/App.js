@@ -735,15 +735,14 @@ const css = `
   .xbox-orb {
     position: absolute; inset: 0; border-radius: 50%;
     background: radial-gradient(circle at 38% 35%,
-      #eeff88 0%, #aaff00 15%, #66dd00 35%, #009900 60%, #001a00 100%
+      #ccff88 0%, #88ff00 18%, #44cc00 40%, #007700 65%, #001a00 100%
     );
     box-shadow:
-      0 0 30px #aaff00cc,
-      0 0 60px #88ff0099,
-      0 0 100px #44cc0066,
-      0 0 160px #22880033,
-      inset 0 0 40px rgba(255,255,255,0.25),
-      inset -15px -15px 50px rgba(0,0,0,0.4);
+      0 0 40px #88ff0099,
+      0 0 80px #44cc0066,
+      0 0 140px #22880033,
+      inset 0 0 30px rgba(255,255,255,0.15),
+      inset -20px -20px 60px rgba(0,0,0,0.5);
     animation: orbPulse 3s ease-in-out infinite;
   }
   .xbox-orb::after {
@@ -768,8 +767,8 @@ const css = `
   .xbox-bubble:nth-child(5) { width:30px; height:30px; top:72%; left:68%; animation-delay:0.3s;  animation-duration:5s;   }
   .xbox-bubble:nth-child(6) { width:14px; height:14px; top:80%; left:82%; animation-delay:1.9s;  animation-duration:4.1s; }
   @keyframes orbPulse {
-    0%,100% { box-shadow: 0 0 30px #aaff00cc, 0 0 60px #88ff0099, 0 0 100px #44cc0066, 0 0 160px #22880033, inset 0 0 40px rgba(255,255,255,0.25), inset -15px -15px 50px rgba(0,0,0,0.4); }
-    50%      { box-shadow: 0 0 50px #ccff00ee, 0 0 90px #aaff00bb, 0 0 140px #66ee0088, 0 0 200px #33990044, inset 0 0 55px rgba(255,255,255,0.35), inset -15px -15px 50px rgba(0,0,0,0.4); }
+    0%,100% { box-shadow: 0 0 40px #88ff0099, 0 0 80px #44cc0066, 0 0 140px #22880033, inset 0 0 30px rgba(255,255,255,0.15), inset -20px -20px 60px rgba(0,0,0,0.5); }
+    50%      { box-shadow: 0 0 60px #aaff00bb, 0 0 110px #66ee0088, 0 0 180px #33990044, inset 0 0 40px rgba(255,255,255,0.2),  inset -20px -20px 60px rgba(0,0,0,0.5); }
   }
   @keyframes bubbleFloat {
     0%,100% { transform: translateY(0) scale(1); opacity: 0.8; }
@@ -3675,24 +3674,24 @@ export default function App() {
       const cam = new THREE.PerspectiveCamera(42, W / H, 0.1, 1000);
       cam.position.set(0, 0, 3.2);
 
-      // Ambient — warm yellow-green tint
-      const ambLight = new THREE.AmbientLight(0xccff44, 0.3);
+      // Ambient — dark pure green, lifts shadows to deep green not black
+      const ambLight = new THREE.AmbientLight(0x004400, 0.8);
       scene.add(ambLight);
-      // Key — bright yellow-lime from top-front-right
-      const keyLight = new THREE.PointLight(0xeeff44, 6.0, 20);
+      // Key — bright yellow-lime, drives highlights toward bright yellow-lime
+      const keyLight = new THREE.PointLight(0xeeff44, 10.0, 20);
       keyLight.position.set(2, 3, 4);
       scene.add(keyLight);
-      // Fill — deep green
-      const fillLight = new THREE.PointLight(0x44cc00, 1.2, 20);
-      fillLight.position.set(-2, -1, 2);
+      // Fill — mid green opposite side
+      const fillLight = new THREE.PointLight(0x00aa00, 1.5, 20);
+      fillLight.position.set(-3, -1, 2);
       scene.add(fillLight);
-      // Rim — yellow-green from behind for edge shine
-      const rimLight = new THREE.PointLight(0x88cc00, 1.5, 20);
-      rimLight.position.set(0, -3, -3);
+      // Rim — yellow-green from behind, lights outer shell edge
+      const rimLight = new THREE.PointLight(0xaaff00, 2.5, 15);
+      rimLight.position.set(0, 0, -4);
       scene.add(rimLight);
-      // Top highlight — bright specular for Xbox orb top-left shine
-      const topLight = new THREE.PointLight(0xffffff, 2.0, 10);
-      topLight.position.set(-1, 4, 3);
+      // Top — sharp white for cross rim specular highlights
+      const topLight = new THREE.PointLight(0xffffff, 4.0, 8);
+      topLight.position.set(-0.5, 3, 2);
       scene.add(topLight);
 
       const clock = new THREE.Clock();
@@ -3707,20 +3706,80 @@ export default function App() {
         model.scale.setScalar(2.0 / maxDim);
         model.rotation.set(0, -Math.PI / 2, 0);
 
+        // Collect inner orb meshes for clearcoat clone
+        const innerMeshes = [];
+
         model.traverse(child => {
           if (!child.isMesh) return;
           const orig = child.material;
           const isTrans = orig && orig.name === 'Material.002';
-          child.material = new THREE.MeshStandardMaterial({
-            color:             isTrans ? new THREE.Color(0.55, 0.95, 0.05) : new THREE.Color(0.30, 0.80, 0.0),
-            emissive:          isTrans ? new THREE.Color(0.18, 0.45, 0.0) : new THREE.Color(0.05, 0.20, 0.0),
-            emissiveIntensity: isTrans ? 0.6 : 0.3,
-            metalness:         0.1,
-            roughness:         0.02,
-            transparent:       isTrans,
-            opacity:           isTrans ? 0.82 : 1.0,
-            side:              THREE.DoubleSide,
+
+          if (isTrans) {
+            // Outer shell — glassy, low opacity, yellow-green tint
+            // High emissive with AdditiveBlending on a bloom clone gives soft electric outline
+            child.material = new THREE.MeshStandardMaterial({
+              color:             new THREE.Color(0.45, 0.90, 0.02),
+              emissive:          new THREE.Color(0.20, 0.60, 0.02),
+              emissiveIntensity: 1.4,
+              metalness:         0.0,
+              roughness:         0.08,
+              transparent:       true,
+              opacity:           0.18,
+              side:              THREE.DoubleSide,
+              depthWrite:        false,
+            });
+
+            // Additive bloom clone — slightly larger, pure emissive, soft blurry electric outline
+            const bloomGeo = child.geometry.clone();
+            const bloomMat = new THREE.MeshBasicMaterial({
+              color:       new THREE.Color(0.15, 0.80, 0.0),
+              transparent: true,
+              opacity:     0.10,
+              side:        THREE.BackSide, // renders only outer edge, naturally soft
+              blending:    THREE.AdditiveBlending,
+              depthWrite:  false,
+            });
+            const bloomMesh = new THREE.Mesh(bloomGeo, bloomMat);
+            bloomMesh.scale.setScalar(1.08);
+            bloomMesh.rotation.copy(child.rotation);
+            bloomMesh.position.copy(child.position);
+            model.add(bloomMesh);
+
+          } else {
+            // Inner orb — darker base color so key light creates wide bright-to-deep range
+            child.material = new THREE.MeshStandardMaterial({
+              color:             new THREE.Color(0.12, 0.55, 0.0),
+              emissive:          new THREE.Color(0.03, 0.14, 0.0),
+              emissiveIntensity: 0.4,
+              metalness:         0.0,
+              roughness:         0.05,
+              transparent:       false,
+              side:              THREE.FrontSide,
+            });
+            innerMeshes.push(child);
+          }
+        });
+
+        // Clearcoat clone for cross rim speculars — same geometry, invisible base,
+        // clearcoat layer catches sharp specular on cross edges without affecting sphere surface
+        innerMeshes.forEach(mesh => {
+          const ccGeo = mesh.geometry.clone();
+          const ccMat = new THREE.MeshPhysicalMaterial({
+            color:              new THREE.Color(0, 0, 0),
+            transparent:        true,
+            opacity:            0.0,
+            roughness:          0.05,
+            metalness:          0.0,
+            clearcoat:          1.0,
+            clearcoatRoughness: 0.0,
+            side:               THREE.FrontSide,
+            depthWrite:         false,
           });
+          const ccMesh = new THREE.Mesh(ccGeo, ccMat);
+          ccMesh.position.copy(mesh.position);
+          ccMesh.rotation.copy(mesh.rotation);
+          ccMesh.scale.copy(mesh.scale);
+          mesh.parent.add(ccMesh);
         });
 
         scene.add(model);
