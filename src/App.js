@@ -2269,6 +2269,11 @@ function WorkoutPage({ username }) {
   const [logs, setLogs] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ exercise: "Bench Press", repCat: 1, weight: "" });
+
+  // When switching to/from Pull-up, reset the weight field
+  const setExercise = (ex) => setForm(f => ({ ...f, exercise: ex, repCat: ex === "Pull-up" ? 0 : (f.repCat === 0 ? 1 : f.repCat), weight: "" }));
+
+  const isPullup = form.exercise === "Pull-up";
   const [chartEx, setChartEx] = useState("Bench Press");
   const [compareUser, setCompareUser] = useState(null);
   const [dupError, setDupError] = useState(null);
@@ -2280,7 +2285,7 @@ function WorkoutPage({ username }) {
       .catch(err => console.warn("getLogs:", err));
   }, [username]);
 
-  useEffect(() => { setDupError(null); }, [form.exercise, form.repCat]);
+  useEffect(() => { setDupError(null); }, [form.exercise, form.repCat, isPullup]);
 
   const addLog = async () => {
     if (!form.weight) return;
@@ -2288,7 +2293,9 @@ function WorkoutPage({ username }) {
     const todayStr = today.toLocaleDateString("en-US", { month:"short", day:"numeric" });
     const duplicate = logs.find(l => l.exercise === form.exercise && l.repCat === Number(form.repCat) && l.date === todayStr);
     if (duplicate) {
-      setDupError(`You already logged ${form.exercise} at ${Number(form.repCat)} rep${Number(form.repCat)>1?"s":""} today — come back tomorrow!`);
+      setDupError(isPullup
+        ? `You already logged Pull-ups today — come back tomorrow!`
+        : `You already logged ${form.exercise} at ${Number(form.repCat)} rep${Number(form.repCat)>1?"s":""} today — come back tomorrow!`);
       return;
     }
     setDupError(null);
@@ -2383,9 +2390,10 @@ function WorkoutPage({ username }) {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-title">LOG A <span className="accentText">LIFT</span></div>
             <div className="form-label" style={{marginBottom:6}}>Exercise</div>
-            <select value={form.exercise} onChange={e => setForm({...form, exercise: e.target.value})} style={{marginBottom:14}}>
+            <select value={form.exercise} onChange={e => setExercise(e.target.value)} style={{marginBottom:14}}>
               {EXERCISE_LIST.map(ex => <option key={ex}>{ex}</option>)}
             </select>
+            {!isPullup && (<>
             <div className="form-label" style={{marginBottom:8}}>Rep Category</div>
             <div style={{display:"flex",gap:8,marginBottom:14}}>
               {REP_CATS.map(r => (
@@ -2406,6 +2414,13 @@ function WorkoutPage({ username }) {
             <input type="number" placeholder="e.g. 225" value={form.weight} onChange={e=>setForm({...form,weight:e.target.value})}
               onKeyDown={e => e.key==="Enter" && addLog()} style={{marginBottom:4}} />
             <div style={{fontSize:11,color:"var(--muted)",marginBottom:16}}>Enter the max weight you lifted for {form.repCat} rep{form.repCat>1?"s":""}.</div>
+            </>)}
+            {isPullup && (<>
+            <div className="form-label" style={{marginBottom:6}}>Number of Pull-ups</div>
+            <input type="number" placeholder="e.g. 12" min="1" value={form.weight} onChange={e=>setForm({...form,weight:e.target.value})}
+              onKeyDown={e => e.key==="Enter" && addLog()} style={{marginBottom:4}} />
+            <div style={{fontSize:11,color:"var(--muted)",marginBottom:16}}>Enter the total number of pull-ups you did.</div>
+            </>)}
             {dupError && (
               <div style={{background:"rgba(255,60,60,0.12)",border:"1px solid rgba(255,60,60,0.4)",borderRadius:4,padding:"9px 12px",marginBottom:12,fontSize:12,color:"#ff6666",fontFamily:"'Rajdhani',sans-serif",letterSpacing:0.5}}>
                 ⚠ {dupError}
@@ -2433,8 +2448,12 @@ function WorkoutPage({ username }) {
               {[...logs].reverse().slice(0,4).map(l => (
                 <tr key={l.id}>
                   <td><span className="badge">{l.exercise}</span></td>
-                  <td style={{color: REP_COLORS[l.repCat], fontWeight:700}}>{l.repCat} Rep{l.repCat>1?"s":""}</td>
-                  <td style={{fontWeight:600}}>{l.weight} lbs</td>
+                  <td style={{color: l.exercise === "Pull-up" ? "var(--accent)" : REP_COLORS[l.repCat], fontWeight:700}}>
+                    {l.exercise === "Pull-up" ? "Pull-ups" : `${l.repCat} Rep${l.repCat>1?"s":""}`}
+                  </td>
+                  <td style={{fontWeight:600}}>
+                    {l.exercise === "Pull-up" ? <>{l.weight} <span style={{fontSize:11,color:"var(--muted)",fontWeight:400}}>reps</span></> : <>{l.weight} <span style={{fontSize:11,color:"var(--muted)",fontWeight:400}}>lbs</span></>}
+                  </td>
                   <td style={{color:"var(--muted)"}}>{l.date}</td>
                   <td><button className="action-btn" onClick={() => delLog(l.id)} title="Delete" style={{fontSize:16, lineHeight:1, padding:"2px 6px", background:"none", border:"none", color:"var(--muted)", cursor:"pointer"}}>×</button></td>
                 </tr>
@@ -2446,12 +2465,32 @@ function WorkoutPage({ username }) {
 
       <div className="card">
         <div className="card-title">Progress by Exercise</div>
-        <div style={{fontSize:13,color:"var(--muted)",marginBottom:12}}>Select an exercise to see all 4 rep-range charts.</div>
+        <div style={{fontSize:13,color:"var(--muted)",marginBottom:12}}>{chartEx === "Pull-up" ? "Your pull-up count over time." : "Select an exercise to see all 4 rep-range charts."}</div>
         <div className="tab-row">
           {EXERCISE_LIST.map(ex => <div key={ex} className={`tab ${chartEx===ex?"active":""}`} onClick={()=>setChartEx(ex)}>{ex}</div>)}
         </div>
 
-        {hasAnyData ? (
+        {chartEx === "Pull-up" ? (() => {
+          const pullData = logs.filter(l => l.exercise === "Pull-up").map(l => ({ label: l.date, [username]: l.weight }));
+          return pullData.length > 0 ? (
+            <div style={{background:"linear-gradient(160deg,rgba(0,22,13,0.52),rgba(0,8,4,0.38))",boxShadow:"0 4px 16px rgba(0,0,0,0.5),0 12px 32px rgba(0,0,0,0.4),inset 0 1px 0 rgba(136,255,0,0.10)",borderTop:"1px solid rgba(136,255,0,0.14)",borderLeft:"1px solid rgba(136,255,0,0.08)",borderRadius:10,padding:"16px 12px",marginTop:16}}>
+              <div style={{fontWeight:700,fontSize:13,marginBottom:12,color:"var(--accent)"}}>Pull-up Count</div>
+              <div style={{height:220}}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={pullData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2a32" />
+                    <XAxis dataKey="label" stroke="#7a7a8a" tick={{fontSize:9}} angle={-30} textAnchor="end" height={36} />
+                    <YAxis stroke="#7a7a8a" tick={{fontSize:10}} width={38} />
+                    <Tooltip contentStyle={{background:"#141417",border:"1px solid #2a2a32",borderRadius:8,fontSize:11}} formatter={(v) => [`${v} reps`]} />
+                    <Line type="monotone" dataKey={username} stroke="var(--accent)" strokeWidth={2.5} dot={{fill:"var(--accent)",r:3}} name={username} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          ) : (
+            <div style={{textAlign:"center",padding:"32px 0",color:"var(--muted)",fontSize:13}}>Log some Pull-up entries to see your progress!</div>
+          );
+        })() : hasAnyData ? (
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
             {REP_CATS.map(repCat => {
               const data = compareUser ? buildCompareData(repCat) : (() => {
@@ -2890,6 +2929,7 @@ function TopChartsPage({ username }) {
   const [chartEx, setChartEx] = useState("Bench Press");
   const [chartRep, setChartRep] = useState(1);
   const { communityUsers } = useCommunityUsers(username);
+  const isPullup = chartEx === "Pull-up";
 
   useEffect(() => {
     api.getLogs()
@@ -2900,12 +2940,8 @@ function TopChartsPage({ username }) {
   // Build leaderboard for selected exercise + rep category
   const buildLeaderboard = (exercise, repCat) => {
     const entries = [];
-
-    // Current user's best
     const myBest = Math.max(0, ...userLogs.filter(l => l.exercise === exercise && l.repCat === repCat).map(l => l.weight));
     if (myBest > 0) entries.push({ name: username, weight: myBest, isMe: true });
-
-    // Community users' best
     communityUsers.forEach(u => {
       const series = u.logs[exercise]?.[repCat];
       if (series && series.length) {
@@ -2913,11 +2949,25 @@ function TopChartsPage({ username }) {
         entries.push({ name: u.name, weight: best, isMe: false });
       }
     });
-
     return entries.sort((a, b) => b.weight - a.weight);
   };
 
-  const leaders = buildLeaderboard(chartEx, chartRep);
+  // Pull-up leaderboard: best count (repCat=0)
+  const buildPullupLeaderboard = () => {
+    const entries = [];
+    const myBest = Math.max(0, ...userLogs.filter(l => l.exercise === "Pull-up").map(l => l.weight));
+    if (myBest > 0) entries.push({ name: username, weight: myBest, isMe: true });
+    communityUsers.forEach(u => {
+      const series = u.logs["Pull-up"]?.[0];
+      if (series && series.length) {
+        const best = Math.max(...series.map(e => e.weight));
+        entries.push({ name: u.name, weight: best, isMe: false });
+      }
+    });
+    return entries.sort((a, b) => b.weight - a.weight);
+  };
+
+  const leaders = isPullup ? buildPullupLeaderboard() : buildLeaderboard(chartEx, chartRep);
   const topWeight = leaders[0]?.weight || 0;
 
   const medalColors = ["#ffdd00", "#c0c8d4", "#ff9944"];
@@ -2937,6 +2987,7 @@ function TopChartsPage({ username }) {
             ))}
           </div>
         </div>
+        {!isPullup && (
         <div>
           <div className="form-label" style={{marginBottom:8}}>Rep Category</div>
           <div style={{display:"flex",gap:8}}>
@@ -2955,14 +3006,16 @@ function TopChartsPage({ username }) {
             ))}
           </div>
         </div>
+        )}
       </div>
 
       {/* ── YOUR RANK CARD ── */}
-      <MyRankCard username={username} exercise={chartEx} repCat={chartRep} userLogs={userLogs} communityUsers={communityUsers} />
+      {!isPullup && <MyRankCard username={username} exercise={chartEx} repCat={chartRep} userLogs={userLogs} communityUsers={communityUsers} />}
 
       <div className="card">
         <div className="card-title">
-          <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:11,color:"var(--accent)",letterSpacing:2,marginRight:8}}>▲▲▲</span>{chartEx} — {chartRep} Rep{chartRep>1?"s":""} Leaderboard
+          <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:11,color:"var(--accent)",letterSpacing:2,marginRight:8}}>▲▲▲</span>
+          {isPullup ? "Pull-up Count Leaderboard" : `${chartEx} — ${chartRep} Rep${chartRep>1?"s":""} Leaderboard`}
         </div>
         {leaders.length === 0 ? (
           <div style={{textAlign:"center",padding:"32px 0",color:"var(--muted)"}}>No data yet for this exercise.</div>
@@ -2997,11 +3050,11 @@ function TopChartsPage({ username }) {
                         {entry.name}{entry.isMe ? " (You)" : ""}
                       </div>
                       <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>
-                        {barPct < 100 ? `${Math.round(barPct)}% of top lift` : "◈ CURRENT LEADER"}
+                        {barPct < 100 ? `${Math.round(barPct)}% of top ${isPullup ? "count" : "lift"}` : "◈ CURRENT LEADER"}
                       </div>
                     </div>
                     <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:22,fontWeight:900,color: isTop ? "var(--accent)" : "var(--chrome)",letterSpacing:2,textShadow: isTop ? "var(--glow-sm)" : "none"}}>
-                      {entry.weight} <span style={{fontSize:11,color:"var(--muted)",fontFamily:"'Rajdhani',sans-serif",fontWeight:400}}>lbs</span>
+                      {entry.weight} <span style={{fontSize:11,color:"var(--muted)",fontFamily:"'Rajdhani',sans-serif",fontWeight:400}}>{isPullup ? "reps" : "lbs"}</span>
                     </div>
                   </div>
                 </div>
@@ -3015,10 +3068,10 @@ function TopChartsPage({ username }) {
         <div className="card-title"><span style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,color:"var(--accent)",letterSpacing:2,marginRight:8}}>▐▌</span>All Exercises Snapshot — {chartRep} Rep{chartRep>1?"s":""}</div>
         <div style={{fontSize:12,color:"var(--muted)",marginBottom:16}}>Top lift across the community for each exercise.</div>
         <table className="log-table">
-          <thead><tr><th>Exercise</th><th>Leader</th><th>Top Weight</th></tr></thead>
+          <thead><tr><th>Exercise</th><th>Leader</th><th>Top</th></tr></thead>
           <tbody>
             {EXERCISE_LIST.map(ex => {
-              const board = buildLeaderboard(ex, chartRep);
+              const board = ex === "Pull-up" ? buildPullupLeaderboard() : buildLeaderboard(ex, chartRep);
               const top = board[0];
               return (
                 <tr key={ex}>
@@ -3033,7 +3086,7 @@ function TopChartsPage({ username }) {
                       </div>
                     ) : <span style={{color:"var(--muted)"}}>—</span>}
                   </td>
-                  <td style={{fontWeight:700,color:"var(--accent)"}}>{top ? `${top.weight} lbs` : "—"}</td>
+                  <td style={{fontWeight:700,color:"var(--accent)"}}>{top ? `${top.weight} ${ex === "Pull-up" ? "reps" : "lbs"}` : "—"}</td>
                 </tr>
               );
             })}
@@ -3615,26 +3668,22 @@ export default function App() {
       renderer.setSize(W, H);
       renderer.setClearColor(0x000000, 0);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
-      renderer.toneMapping = THREE.NoToneMapping;
-      renderer.toneMappingExposure = 1.0;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 0.85;
 
       const scene = new THREE.Scene();
       const cam = new THREE.PerspectiveCamera(42, W / H, 0.1, 1000);
       cam.position.set(0, 0, 3.2);
 
-      // Bright ambient so the whole model stays vivid
-      const ambLight = new THREE.AmbientLight(0x88ff44, 1.2);
+      const ambLight = new THREE.AmbientLight(0x88ff44, 0.06);
       scene.add(ambLight);
-      // Strong key for highlights
-      const keyLight = new THREE.PointLight(0xaaff44, 4.0, 20);
+      const keyLight = new THREE.PointLight(0xaaff44, 2.2, 20);
       keyLight.position.set(2, 2, 4);
       scene.add(keyLight);
-      // Fill from the opposite side
-      const fillLight = new THREE.PointLight(0x44cc00, 1.4, 20);
+      const fillLight = new THREE.PointLight(0x44cc00, 0.7, 20);
       fillLight.position.set(-2, -1, 2);
       scene.add(fillLight);
-      // Rim from behind
-      const rimLight = new THREE.PointLight(0x226600, 0.8, 20);
+      const rimLight = new THREE.PointLight(0x226600, 0.5, 20);
       rimLight.position.set(0, -3, -3);
       scene.add(rimLight);
 
@@ -3656,7 +3705,7 @@ export default function App() {
           child.material = new THREE.MeshStandardMaterial({
             color:             isTrans ? new THREE.Color(0.22, 0.65, 0.0) : new THREE.Color(0.30, 0.80, 0.0),
             emissive:          new THREE.Color(0.08, 0.28, 0.0),
-            emissiveIntensity: isTrans ? 0.6 : 1.0,
+            emissiveIntensity: isTrans ? 0.25 : 0.45,
             metalness:         0.25,
             roughness:         0.05,
             transparent:       isTrans,
