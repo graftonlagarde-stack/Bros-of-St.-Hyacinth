@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 
 
 // ─── STORAGE HELPERS ──────────────────────────────────────────────────────────
@@ -1001,18 +1002,18 @@ const css = `
   .btn:hover::after { left: 140%; }
   .btn-primary {
     background: linear-gradient(180deg,
-      rgba(80,140,0,0.95) 0%,
-      rgba(50,90,0,0.98)  45%,
-      rgba(20,40,0,1)     100%
+      rgba(0,160,110,0.95) 0%,
+      rgba(0,90,65,0.98)  45%,
+      rgba(0,40,30,1)     100%
     );
-    color: #d8f5c0;
-    border: 1px solid rgba(136,255,0,0.35);
+    color: #fff;
+    border: 1px solid rgba(0,255,180,0.35);
     box-shadow: var(--glow-sm),
                 inset 0 1px 0 rgba(255,255,255,0.18),
-                inset 0 0 30px rgba(136,255,0,0.08);
+                inset 0 0 30px rgba(136,255,0,0.06);
   }
   .btn-primary:hover {
-    background: linear-gradient(180deg, #66dd00 0%, #448800 45%, #224400 100%);
+    background: linear-gradient(180deg, #00ddaa 0%, #008866 45%, #004433 100%);
     box-shadow: var(--glow), inset 0 1px 0 rgba(255,255,255,0.25);
     transform: translateY(-1px);
   }
@@ -1402,7 +1403,7 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
       rendererInst = renderer;
 
       const wireMat = new THREE.MeshBasicMaterial({
-        color: 0x88ff00, wireframe: true,
+        color: 0x00ffcc, wireframe: true,
         transparent: true, opacity: 0.22,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
@@ -1564,7 +1565,7 @@ function AudioFigureBackdrop({ fading = false }) {
       scene.add(crossGroup);
 
       const wireMat = new THREE.MeshBasicMaterial({
-        color: 0x88ff00, wireframe: true,
+        color: 0x00ffcc, wireframe: true,
         transparent: true, opacity: 0.22,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
@@ -2007,7 +2008,7 @@ function WorkoutFigureBackdrop({ fading = false }) {
       rendererInst = renderer;
 
       const wireMat = new THREE.MeshBasicMaterial({
-        color: 0x88ff00, wireframe: true,
+        color: 0x00ffcc, wireframe: true,
         transparent: true, opacity: 0.22,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
@@ -3566,6 +3567,7 @@ export default function App() {
   const [navExpanded, setNavExpanded]           = useState(true);
   const [loaded, setLoaded]                     = useState(false);
   const mainRef = useRef(null);
+  const glbCanvasRef = useRef(null);
 
   const [currentTrack, setCurrentTrack] = useState(PERMANENT_TRACKS[0] ?? null);
   const [isPlaying, setIsPlaying]       = useState(false);
@@ -3590,6 +3592,110 @@ export default function App() {
   useEffect(() => {
     if (mainRef.current) mainRef.current.scrollTop = 0;
   }, [page]);
+
+  // ── GLB orb renderer ──────────────────────────────────────────────
+  useEffect(() => {
+    const RAILWAY_URL = "https://bros-of-st-hyacinth-production.up.railway.app";
+    const GLB_URL = `${RAILWAY_URL}/Hyacinth_Sphere.glb`;
+
+    let animId;
+    let renderer;
+
+    function init() {
+      const canvas = glbCanvasRef.current;
+      if (!canvas) return;
+
+      const W = canvas.offsetWidth  || 220;
+      const H = canvas.offsetHeight || 220;
+
+      renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(W, H);
+      renderer.setClearColor(0x000000, 0);
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 0.85;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+      const scene = new THREE.Scene();
+      const cam = new THREE.PerspectiveCamera(42, W / H, 0.1, 1000);
+      cam.position.set(0, 0, 3.2);
+
+      // Lighting — darker shadows = stronger key, dimmer fill
+      const ambLight = new THREE.AmbientLight(0x88ff44, 0.06);
+      scene.add(ambLight);
+      const keyLight = new THREE.PointLight(0xaaff44, 3.0, 20);
+      keyLight.position.set(2, 2, 4);
+      keyLight.castShadow = true;
+      keyLight.shadow.mapSize.set(512, 512);
+      keyLight.shadow.camera.near = 0.5;
+      keyLight.shadow.camera.far = 20;
+      keyLight.shadow.bias = -0.002;
+      scene.add(keyLight);
+      const fillLight = new THREE.PointLight(0x44cc00, 0.35, 20);
+      fillLight.position.set(-2, -1, 2);
+      scene.add(fillLight);
+      const rimLight = new THREE.PointLight(0x226600, 0.4, 20);
+      rimLight.position.set(0, -3, -3);
+      scene.add(rimLight);
+
+      const clock = new THREE.Clock();
+      const loader = new GLTFLoader();
+      loader.load(GLB_URL, (gltf) => {
+        const model = gltf.scene;
+        const box = new THREE.Box3().setFromObject(model);
+        const centre = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        model.position.sub(centre);
+        model.scale.setScalar(2.0 / maxDim);
+        model.rotation.set(0, -Math.PI / 2, 0);
+
+        model.traverse(child => {
+          if (!child.isMesh) return;
+          const isTrans = child.material && child.material.name === "Material.002";
+          child.material = new THREE.MeshStandardMaterial({
+            color:             isTrans ? new THREE.Color(0.22, 0.65, 0.0) : new THREE.Color(0.30, 0.80, 0.0),
+            emissive:          new THREE.Color(0.08, 0.28, 0.0),
+            emissiveIntensity: isTrans ? 0.25 : 0.45,
+            metalness:         0.25,
+            roughness:         0.05,
+            transparent:       isTrans,
+            opacity:           isTrans ? 0.72 : 1.0,
+            side:              THREE.DoubleSide,
+          });
+          child.castShadow    = true;
+          child.receiveShadow = true;
+        });
+
+        scene.add(model);
+
+        let mixer = null;
+        if (gltf.animations && gltf.animations.length) {
+          mixer = new THREE.AnimationMixer(model);
+          gltf.animations.forEach(clip => mixer.clipAction(clip).play());
+        }
+
+        function animate() {
+          animId = requestAnimationFrame(animate);
+          const dt = clock.getDelta();
+          if (mixer) mixer.update(dt);
+          model.position.y = Math.sin(clock.elapsedTime * 0.9) * 0.06;
+          renderer.render(scene, cam);
+        }
+        animate();
+      }, undefined, err => console.warn("GLB load error:", err));
+    }
+
+    // Wait a tick for the canvas to be mounted and sized
+    const t = setTimeout(init, 300);
+    return () => {
+      clearTimeout(t);
+      if (animId) cancelAnimationFrame(animId);
+      if (renderer) renderer.dispose();
+    };
+  }, []);
 
   useEffect(() => {
     if (currentTrack?.id) store.set("player:lastTrackId", String(currentTrack.id));
@@ -3702,6 +3808,7 @@ export default function App() {
           {/* Orb — click to toggle nav */}
           <div className="xbox-orb-wrap" onClick={() => setNavExpanded(v => !v)}>
             <div className="xbox-orb" />
+            <canvas ref={glbCanvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",borderRadius:"50%",pointerEvents:"none",zIndex:2}} />
             <div className="xbox-bubble" />
             <div className="xbox-bubble" />
             <div className="xbox-bubble" />
