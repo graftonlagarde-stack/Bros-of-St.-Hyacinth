@@ -430,7 +430,7 @@ app.get("/api/logs", requireAuth, async (req, res) => {
 app.post("/api/logs", requireAuth, async (req, res) => {
   try {
     const { exercise, repCat, weight, date, ts } = req.body;
-    if (!exercise || !repCat || weight == null || !date || !ts)
+    if (!exercise || repCat == null || weight == null || !date || !ts)
       return res.status(400).json({ error: "Missing required fields." });
 
     const { rows } = await db.query(
