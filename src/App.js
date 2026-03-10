@@ -3612,8 +3612,8 @@ export default function App() {
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(W, H);
       renderer.setClearColor(0x000000, 0);
-      renderer.outputEncoding = THREE.sRGBEncoding;
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.AgXToneMapping;
       renderer.toneMappingExposure = 0.85;
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
