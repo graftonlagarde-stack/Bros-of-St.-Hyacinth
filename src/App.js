@@ -354,7 +354,7 @@ function BoardPage({ username }) {
 
               <div style={{ width:32, flexShrink:0 }}>
                 {!grouped && (
-                  <div className="avatar sm" style={{ background: isMe ? "linear-gradient(135deg,#003322,#006644)" : "linear-gradient(135deg,#001a10,#002e1a)", color: isMe ? "#00ffcc" : "#88ff00" }}>
+                  <div className="avatar sm" style={{ background: isMe ? "linear-gradient(135deg,#003322,#006644)" : "linear-gradient(135deg,#001a10,#002e1a)", color: isMe ? "#88ff00" : "#88ff00" }}>
                     {msg.author.slice(0,2).toUpperCase()}
                   </div>
                 )}
@@ -372,7 +372,7 @@ function BoardPage({ username }) {
                   background: isMe
                     ? "linear-gradient(135deg,rgba(0,102,170,0.65),rgba(0,51,102,0.65))"
                     : "linear-gradient(135deg,rgba(0,14,6,0.65),rgba(0,8,3,0.65))",
-                  border: `1px solid ${isMe ? "rgba(0,207,255,0.3)" : "var(--border)"}`,
+                  border: `1px solid ${isMe ? "rgba(140,255,0,0.3)" : "var(--border)"}`,
                   borderRadius: isMe ? "8px 2px 8px 8px" : "2px 8px 8px 8px",
                   padding: msg.text ? "10px 14px" : "4px",
                   fontSize:14, lineHeight:1.5, wordBreak:"break-word",
@@ -403,7 +403,7 @@ function BoardPage({ username }) {
                     {reactionEntries.map(([emoji, users]) => (
                       <div key={emoji} onClick={() => toggleReaction(msg.id, emoji)}
                         style={{ display:"flex", alignItems:"center", gap:3,
-                          background: users.includes(username) ? "rgba(0,207,255,0.12)" : "rgba(0,20,50,0.8)",
+                          background: users.includes(username) ? "rgba(140,255,0,0.12)" : "rgba(0,20,50,0.8)",
                           border:`1px solid ${users.includes(username) ? "var(--accent)" : "var(--border)"}`,
                           borderRadius:2, padding:"2px 8px", cursor:"pointer", fontSize:12, fontWeight:700,
                           color: users.includes(username) ? "var(--accent)" : "var(--muted)",
@@ -424,12 +424,12 @@ function BoardPage({ username }) {
                   {emojiPickerFor === msg.id && (
                     <div style={{ position:"absolute", bottom:"100%", [isMe?"right":"left"]:0,
                       background:"var(--surface)", border:"1px solid var(--border)",
-                      borderTop:"1px solid rgba(0,207,255,0.3)",
+                      borderTop:"1px solid rgba(140,255,0,0.3)",
                       borderRadius:4, padding:8, display:"flex", gap:4, flexWrap:"wrap",
-                      width:196, zIndex:10, boxShadow:"0 4px 20px rgba(0,0,0,0.6), 0 0 20px rgba(0,207,255,0.1)" }}>
+                      width:196, zIndex:10, boxShadow:"0 4px 20px rgba(0,0,0,0.6), 0 0 20px rgba(140,255,0,0.1)" }}>
                       {EMOJI_REACTIONS.map(e => (
                         <button key={e} onClick={() => toggleReaction(msg.id, e)}
-                          style={{ background: (msg.reactions[e]||[]).includes(username) ? "rgba(0,207,255,0.15)" : "none",
+                          style={{ background: (msg.reactions[e]||[]).includes(username) ? "rgba(140,255,0,0.15)" : "none",
                             border:"none", cursor:"pointer", fontSize:20, borderRadius:2, padding:4, transition:"background 0.1s" }}>
                           {e}
                         </button>
@@ -546,27 +546,27 @@ const css = `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg:        #000a04;
-    --surface:   #000d06;
-    --surface2:  #001409;
-    --border:    #063322;
-    --accent:    #00ffcc;
-    --accent2:   #00cc99;
+    --bg:        #020800;
+    --surface:   #030a00;
+    --surface2:  #061200;
+    --border:    #0d2200;
+    --accent:    #88ff00;
+    --accent2:   #66cc00;
     --lime:      #88ff00;
-    --teal:      #00ccaa;
-    --cyan:      #00eeff;
-    --chrome:    #edfff8;
-    --text:      #c8f5e4;
-    --muted:     #4a9a78;
+    --teal:      #44cc00;
+    --cyan:      #aaff44;
+    --chrome:    #f4ffe8;
+    --text:      #d8f5c0;
+    --muted:     #5a8a30;
     --danger:    #ff3344;
     --radius:    2px;
-    --glow:      0 0 20px #00ffccbb, 0 0 60px #00ffcc44, 0 0 100px #00ffcc11;
-    --glow-sm:   0 0 8px #00ffcc99, 0 0 24px #00ffcc33;
+    --glow:      0 0 20px #88ff00bb, 0 0 60px #88ff0044, 0 0 100px #88ff0011;
+    --glow-sm:   0 0 8px #88ff0099, 0 0 24px #88ff0033;
     --glow-lime: 0 0 10px #88ff0099, 0 0 28px #88ff0033;
-    --glow-cyan: 0 0 10px #00eeff99, 0 0 28px #00eeff33;
-    --chrome-grad: linear-gradient(155deg, #ffffff 0%, #ccfff0 30%, #66ffdd 60%, #00ddbb 85%, #009977 100%);
-    --energy-grad: linear-gradient(135deg, #00ffcc 0%, #00eeff 40%, #88ff00 80%, #00ffcc 100%);
-    --depth-grad:  linear-gradient(135deg, #00ffcc 0%, #00ccaa 50%, #00eeff 100%);
+    --glow-cyan: 0 0 10px #aaff4499, 0 0 28px #aaff4433;
+    --chrome-grad: linear-gradient(155deg, #ffffff 0%, #eeffcc 30%, #aaff44 60%, #66dd00 85%, #338800 100%);
+    --energy-grad: linear-gradient(135deg, #88ff00 0%, #aaff44 40%, #ccff88 80%, #88ff00 100%);
+    --depth-grad:  linear-gradient(135deg, #88ff00 0%, #66cc00 50%, #aaff44 100%);
   }
 
   /* ── KEYFRAMES ── */
@@ -613,12 +613,12 @@ const css = `
     100% { background-position: 50% 100%; }
   }
   @keyframes rankGlow {
-    0%,100% { box-shadow: 0 0 20px rgba(0,255,180,0.2), inset 0 0 40px rgba(0,255,180,0.03); }
-    50%     { box-shadow: 0 0 40px rgba(0,255,180,0.45), inset 0 0 60px rgba(0,255,180,0.07); }
+    0%,100% { box-shadow: 0 0 20px rgba(136,255,0,0.2), inset 0 0 40px rgba(136,255,0,0.03); }
+    50%     { box-shadow: 0 0 40px rgba(136,255,0,0.45), inset 0 0 60px rgba(136,255,0,0.07); }
   }
   @keyframes rankGlow {
-    0%,100% { box-shadow: 0 0 20px rgba(0,255,180,0.2), inset 0 0 40px rgba(0,255,180,0.03); }
-    50%     { box-shadow: 0 0 40px rgba(0,255,180,0.45), inset 0 0 60px rgba(0,255,180,0.07); }
+    0%,100% { box-shadow: 0 0 20px rgba(136,255,0,0.2), inset 0 0 40px rgba(136,255,0,0.03); }
+    50%     { box-shadow: 0 0 40px rgba(136,255,0,0.45), inset 0 0 60px rgba(136,255,0,0.07); }
   }
 
   /* ── BASE ── */
@@ -647,25 +647,24 @@ const css = `
 
   .app-bg {
     position: fixed; inset: 0; pointer-events: none; z-index: 0;
-    /* Deep space atmosphere: teal nebula centre, darker edges */
     background:
-      radial-gradient(ellipse 60% 55% at 50% 100%, rgba(0,80,50,0.55)  0%, transparent 65%),
-      radial-gradient(ellipse 40% 35% at 50%  60%, rgba(0,40,30,0.4)   0%, transparent 60%),
-      radial-gradient(ellipse 80% 30% at 50%   0%, rgba(0,30,20,0.5)   0%, transparent 80%),
+      radial-gradient(ellipse 60% 55% at 50% 100%, rgba(20,60,0,0.55)  0%, transparent 65%),
+      radial-gradient(ellipse 40% 35% at 50%  60%, rgba(10,40,0,0.4)   0%, transparent 60%),
+      radial-gradient(ellipse 80% 30% at 50%   0%, rgba(8,30,0,0.5)    0%, transparent 80%),
       radial-gradient(ellipse 30% 60% at  0%  50%, rgba(0,10,20,0.15)  0%, transparent 55%),
       radial-gradient(ellipse 30% 60% at 100% 50%, rgba(0,5,15,0.15)   0%, transparent 55%),
-      #000a04;
+      #020800;
     overflow: hidden;
   }
 
-  /* Perspective grid floor — the GameCube tunnel rendered flat */
+  /* Perspective grid floor */
   .app-bg::before {
     content: ''; position: absolute;
     left: -50%; right: -50%;
     top: 0%; bottom: -5%;
     background-image:
-      linear-gradient(rgba(0,255,180,0.22) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0,255,180,0.22) 1px, transparent 1px);
+      linear-gradient(rgba(136,255,0,0.22) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(136,255,0,0.22) 1px, transparent 1px);
     background-size: 80px 80px;
     background-position: 50% 0%;
     transform: perspective(600px) rotateX(82deg) translateY(35%);
@@ -674,107 +673,210 @@ const css = `
     mask-image: linear-gradient(180deg, transparent 0%, black 15%, black 100%);
   }
 
-  /* Depth fog that kills the horizon */
+  /* Depth fog */
   .app-bg::after {
     content: ''; position: absolute; inset: 0;
     background: linear-gradient(180deg,
-      #000a04 0%,
-      rgba(0,10,4,0.0) 28%,
-      rgba(0,10,4,0.0) 100%
+      #020800 0%,
+      rgba(2,8,0,0.0) 28%,
+      rgba(2,8,0,0.0) 100%
     );
   }
 
-  /* Subtle star-field: tiny white noise dots */
+  /* Star-field */
   .grid-stars {
     position: fixed; inset: 0; pointer-events: none; z-index: 0;
     background-image:
-      radial-gradient(1px 1px at  8%  12%, rgba(0,255,200,0.5) 0%, transparent 100%),
-      radial-gradient(1px 1px at 22%  78%, rgba(0,240,255,0.4) 0%, transparent 100%),
-      radial-gradient(1px 1px at 37%  31%, rgba(140,255,100,0.4) 0%, transparent 100%),
-      radial-gradient(1px 1px at 55%  88%, rgba(0,255,180,0.5) 0%, transparent 100%),
-      radial-gradient(1px 1px at 67%  19%, rgba(0,220,255,0.4) 0%, transparent 100%),
-      radial-gradient(1px 1px at 80%  54%, rgba(100,255,150,0.4) 0%, transparent 100%),
-      radial-gradient(1px 1px at 91%  7%,  rgba(0,255,200,0.5) 0%, transparent 100%),
-      radial-gradient(1px 1px at 14%  44%, rgba(0,200,255,0.3) 0%, transparent 100%),
-      radial-gradient(1px 1px at 46%  66%, rgba(120,255,80,0.3) 0%, transparent 100%),
-      radial-gradient(1px 1px at 73%  92%, rgba(0,255,220,0.4) 0%, transparent 100%),
-      radial-gradient(1.5px 1.5px at 30% 5%,  rgba(0,255,180,0.6) 0%, transparent 100%),
-      radial-gradient(1.5px 1.5px at 85% 38%, rgba(0,240,200,0.6) 0%, transparent 100%),
-      radial-gradient(1.5px 1.5px at 60% 55%, rgba(180,255,50,0.5) 0%, transparent 100%);
+      radial-gradient(1px 1px at  8%  12%, rgba(136,255,0,0.5) 0%, transparent 100%),
+      radial-gradient(1px 1px at 22%  78%, rgba(170,255,50,0.4) 0%, transparent 100%),
+      radial-gradient(1px 1px at 37%  31%, rgba(180,255,50,0.4) 0%, transparent 100%),
+      radial-gradient(1px 1px at 55%  88%, rgba(136,255,0,0.5) 0%, transparent 100%),
+      radial-gradient(1px 1px at 67%  19%, rgba(160,255,30,0.4) 0%, transparent 100%),
+      radial-gradient(1px 1px at 80%  54%, rgba(150,255,30,0.4) 0%, transparent 100%),
+      radial-gradient(1px 1px at 91%  7%,  rgba(136,255,0,0.5) 0%, transparent 100%),
+      radial-gradient(1px 1px at 14%  44%, rgba(120,230,0,0.3) 0%, transparent 100%),
+      radial-gradient(1px 1px at 46%  66%, rgba(140,255,20,0.3) 0%, transparent 100%),
+      radial-gradient(1px 1px at 73%  92%, rgba(136,255,0,0.4) 0%, transparent 100%),
+      radial-gradient(1.5px 1.5px at 30% 5%,  rgba(136,255,0,0.6) 0%, transparent 100%),
+      radial-gradient(1.5px 1.5px at 85% 38%, rgba(160,255,20,0.6) 0%, transparent 100%),
+      radial-gradient(1.5px 1.5px at 60% 55%, rgba(180,255,30,0.5) 0%, transparent 100%);
     animation: gridBreath 6s ease-in-out infinite;
   }
 
-  .app { display: flex; min-height: 100vh; position: relative; z-index: 1; }
+  .app { display: flex; min-height: 100vh; position: relative; z-index: 1; overflow: visible; }
 
-  /* ── SIDEBAR ── */
+  /* ── SIDEBAR — orb + blade nav ── */
   .sidebar {
-    width: 224px; min-width: 224px;
-    background: linear-gradient(180deg, rgba(0,12,7,0.97) 0%, rgba(0,6,3,1) 100%);
-    border-right: 1px solid rgba(6,51,34,0.8);
-    display: flex; flex-direction: column; padding: 28px 0;
-    position: sticky; top: 0; height: 100vh;
-    overflow-y: auto; padding-bottom: 80px;
+    width: 280px; min-width: 280px;
+    background: transparent;
+    display: flex; flex-direction: column;
+    padding: 0; position: sticky; top: 0; height: 100vh;
+    overflow: visible; justify-content: center;
+    align-items: flex-start;
+    transition: width 0.4s cubic-bezier(0.4,0,0.2,1), min-width 0.4s cubic-bezier(0.4,0,0.2,1);
   }
+  .sidebar.nav-collapsed {
+    width: 90px; min-width: 90px;
+  }
+  .sidebar::after { display: none; }
 
-  /* Cyan→lime edge beam */
-  .sidebar::after {
-    content: ''; position: absolute; top: 0; right: -1px; width: 2px; height: 100%;
-    background: linear-gradient(180deg,
-      transparent  0%,
-      #00eeff     18%,
-      #00ffcc     42%,
-      #88ff00     68%,
-      #00ccaa     88%,
-      transparent 100%
+  /* Orb container */
+  .xbox-orb-wrap {
+    position: absolute;
+    left: -60px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 220px; height: 220px;
+    pointer-events: all;
+    cursor: pointer;
+    z-index: 4;
+  }
+  .xbox-orb {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: radial-gradient(circle at 38% 35%,
+      #ccff88 0%, #88ff00 18%, #44cc00 40%, #007700 65%, #001a00 100%
     );
-    animation: edgePulse 4s ease-in-out infinite;
+    box-shadow:
+      0 0 40px #88ff0099,
+      0 0 80px #44cc0066,
+      0 0 140px #22880033,
+      inset 0 0 30px rgba(255,255,255,0.15),
+      inset -20px -20px 60px rgba(0,0,0,0.5);
+    animation: orbPulse 3s ease-in-out infinite;
+  }
+  .xbox-orb::after {
+    content: '✕';
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 72px; font-weight: 900;
+    color: rgba(0,0,0,0.35);
+    text-shadow: 0 0 20px rgba(0,255,0,0.3);
+    font-family: 'Orbitron', sans-serif;
+  }
+  .xbox-bubble {
+    position: absolute; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, rgba(180,255,80,0.7), rgba(0,180,0,0.3) 60%, transparent);
+    border: 1px solid rgba(136,255,0,0.4);
+    box-shadow: 0 0 12px rgba(136,255,0,0.3);
+    animation: bubbleFloat 4s ease-in-out infinite;
+  }
+  .xbox-bubble:nth-child(2) { width:38px; height:38px; top:8%;  left:62%; animation-delay:0s;    animation-duration:3.8s; }
+  .xbox-bubble:nth-child(3) { width:24px; height:24px; top:22%; left:80%; animation-delay:0.7s;  animation-duration:4.5s; }
+  .xbox-bubble:nth-child(4) { width:18px; height:18px; top:55%; left:84%; animation-delay:1.4s;  animation-duration:3.2s; }
+  .xbox-bubble:nth-child(5) { width:30px; height:30px; top:72%; left:68%; animation-delay:0.3s;  animation-duration:5s;   }
+  .xbox-bubble:nth-child(6) { width:14px; height:14px; top:80%; left:82%; animation-delay:1.9s;  animation-duration:4.1s; }
+  @keyframes orbPulse {
+    0%,100% { box-shadow: 0 0 40px #88ff0099, 0 0 80px #44cc0066, 0 0 140px #22880033, inset 0 0 30px rgba(255,255,255,0.15), inset -20px -20px 60px rgba(0,0,0,0.5); }
+    50%      { box-shadow: 0 0 60px #aaff00bb, 0 0 110px #66ee0088, 0 0 180px #33990044, inset 0 0 40px rgba(255,255,255,0.2),  inset -20px -20px 60px rgba(0,0,0,0.5); }
+  }
+  @keyframes bubbleFloat {
+    0%,100% { transform: translateY(0) scale(1); opacity: 0.8; }
+    50%      { transform: translateY(-6px) scale(1.06); opacity: 1; }
   }
 
-  .logo {
+  /* Nav wrap — retractable blade container */
+  .nav-wrap {
+    position: absolute;
+    left: 150px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    z-index: 3;
+    transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.4,0,0.2,1);
+  }
+  .nav-wrap.retracted {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-50%) translateX(-55px);
+  }
+
+  /* Xbox blade nav items */
+  .nav-item {
+    position: relative;
+    width: 220px;
+    height: 46px;
+    padding: 0 20px;
+    cursor: pointer;
     font-family: 'Orbitron', sans-serif;
-    font-size: 21px; font-weight: 900; letter-spacing: 6px;
-    padding: 0 22px 34px;
+    font-size: 11px; font-weight: 900;
+    letter-spacing: 3px; text-transform: uppercase;
+    transition: all 0.15s ease;
+    border: 1px solid rgba(136,255,0,0.15);
+    background: rgba(0,20,0,0.55);
+    color: rgba(136,255,120,0.55);
+    backdrop-filter: blur(4px);
+    display: flex; align-items: center;
+    clip-path: polygon(
+      0.00% 84.00%,
+      1.58% 100.00%,
+      9.47% 100.00%,
+      10.69% 84.00%,
+      100.00% 84.00%,
+      100.00% 20.00%,
+      97.37%  0.00%,
+      1.58%   0.00%,
+      0.00%  12.29%
+    );
+    animation: navIdle 8s ease-in-out infinite;
+  }
+  .nav-item:nth-child(1) { animation-delay:  0.0s; }
+  .nav-item:nth-child(2) { animation-delay: -1.6s; }
+  .nav-item:nth-child(3) { animation-delay: -3.2s; }
+  .nav-item:nth-child(4) { animation-delay: -4.8s; }
+  .nav-item:nth-child(5) { animation-delay: -5.6s; }
+  .nav-item:nth-child(6) { animation-delay: -2.4s; }
+  @keyframes navIdle {
+    0%,100% { transform: translate( 0.0px,  0.0px); }
+    33%      { transform: translate( 1.2px, -1.8px); }
+    66%      { transform: translate(-0.8px,  1.2px); }
+  }
+  .nav-item::before { display: none; }
+  .nav-item:hover {
+    background: rgba(0,60,0,0.7);
+    color: rgba(200,255,150,0.85);
+    border-color: rgba(136,255,0,0.4);
+  }
+  .nav-item.active {
+    background: linear-gradient(90deg, #aaee00 0%, #88cc00 60%, #669900 100%);
+    color: #001a00;
+    border-color: #ccff00;
+    box-shadow: 0 0 18px #88ff0088, 0 0 40px #44cc0044, inset 0 1px 0 rgba(255,255,255,0.3);
+    text-shadow: none;
+    transform: translateX(6px) scaleY(1.06);
+    font-size: 12px;
+    width: 240px;
+  }
+  .nav-item.active::before { display: none; }
+  .nav-icon { display: none; }
+  .xbox-orb-wrap { z-index: 4 !important; }
+
+  /* Logo */
+  .logo {
+    position: absolute;
+    top: 22px; left: 22px;
+    font-family: 'Orbitron', sans-serif; font-weight: 900;
+    text-transform: uppercase;
     background: var(--chrome-grad);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     background-clip: text;
+    filter: drop-shadow(0 0 14px rgba(136,255,0,0.5));
     animation: logoBeam 1.4s cubic-bezier(0.16,1,0.3,1) both;
-    text-transform: uppercase;
-    position: relative;
+    line-height: 1.15;
+    pointer-events: none;
+    transition: font-size 0.4s cubic-bezier(0.4,0,0.2,1);
+    white-space: nowrap;
   }
-  .logo span {
-    background: var(--energy-grad);
-    background-size: 300% 300%;
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    background-clip: text;
-    animation: sheen 4s ease-in-out infinite;
+  .logo-l1 {
+    display: block; font-size: inherit; letter-spacing: 5px;
+    transition: letter-spacing 0.4s cubic-bezier(0.4,0,0.2,1);
   }
-
-  .nav-item {
-    display: flex; align-items: center; gap: 12px; padding: 12px 22px;
-    cursor: pointer; color: var(--muted); font-weight: 600; font-size: 12px;
-    letter-spacing: 1.5px; text-transform: uppercase;
-    border-left: 2px solid transparent;
-    transition: color 0.2s, border-color 0.2s;
-    position: relative; overflow: hidden;
+  .logo-l2 {
+    display: block; font-size: inherit; letter-spacing: 10.5px;
+    transition: letter-spacing 0.4s cubic-bezier(0.4,0,0.2,1);
   }
-  .nav-item::before {
-    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 0;
-    background: linear-gradient(90deg,
-      rgba(0,255,180,0.07) 0%,
-      rgba(0,238,255,0.04) 60%,
-      transparent 100%
-    );
-    transition: width 0.3s cubic-bezier(0.4,0,0.2,1);
-  }
-  .nav-item:hover { color: var(--chrome); }
-  .nav-item:hover::before { width: 100%; }
-  .nav-item.active {
-    color: var(--accent);
-    border-left-color: var(--accent);
-    text-shadow: 0 0 14px #00ffcccc, 0 0 28px #00ffcc55;
-  }
-  .nav-item.active::before { width: 100%; }
-  .nav-icon { display: flex; align-items: center; flex-shrink: 0; }
+  .logo span { -webkit-text-fill-color: transparent; }
 
   .user-badge {
     margin-top: auto; padding: 16px 22px;
@@ -794,8 +896,8 @@ const css = `
     color: var(--accent); display: flex; align-items: center; justify-content: center;
     font-weight: 900; font-size: 11px; font-family: 'Orbitron', sans-serif;
     flex-shrink: 0;
-    border: 1px solid rgba(0,255,180,0.2);
-    box-shadow: inset 0 0 16px rgba(0,255,180,0.06), 0 0 10px rgba(0,255,180,0.12);
+    border: 1px solid rgba(136,255,0,0.2);
+    box-shadow: inset 0 0 16px rgba(136,255,0,0.06), 0 0 10px rgba(136,255,0,0.12);
     animation: energyBeat 5s ease-in-out infinite;
   }
   .avatar.sm { width: 30px; height: 30px; font-size: 9px; }
@@ -810,6 +912,7 @@ const css = `
   /* ── MAIN ── */
   .main { flex: 1; overflow-y: auto; position: relative; padding-bottom: 80px; }
   .page { padding: 40px 48px; max-width: 1000px; margin: 0 auto; }
+  .app { display: flex; min-height: 100vh; position: relative; z-index: 1; overflow: visible; }
   .page > *:not(:first-child) { position: relative; z-index: 1; }
   .page-title { position: relative; z-index: 1; }
 
@@ -818,7 +921,7 @@ const css = `
     letter-spacing: 6px; margin-bottom: 6px; text-transform: uppercase;
     background: var(--chrome-grad);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
-    filter: drop-shadow(0 0 20px rgba(0,255,180,0.7)) drop-shadow(0 0 60px rgba(0,255,180,0.2));
+    filter: drop-shadow(0 0 20px rgba(136,255,0,0.7)) drop-shadow(0 0 60px rgba(136,255,0,0.2));
     animation: float 7s ease-in-out infinite;
   }
   .page-sub {
@@ -835,27 +938,27 @@ const css = `
   .card {
     background: linear-gradient(160deg, rgba(0,22,13,0.55) 0%, rgba(0,7,4,0.38) 50%, rgba(0,3,2,0.45) 100%);
     border: 1px solid rgba(6,51,34,0.9);
-    border-top: 1px solid rgba(0,255,180,0.18);
-    border-left: 1px solid rgba(0,255,180,0.10);
+    border-top: 1px solid rgba(136,255,0,0.18);
+    border-left: 1px solid rgba(136,255,0,0.10);
     border-radius: var(--radius); padding: 24px; margin-bottom: 16px;
     position: relative; overflow: hidden; z-index: 1;
     box-shadow:
-      0 2px 0 rgba(0,255,180,0.08),
+      0 2px 0 rgba(136,255,0,0.08),
       0 8px 24px rgba(0,0,0,0.55),
       0 24px 64px rgba(0,0,0,0.5),
       0 48px 80px rgba(0,0,0,0.3),
-      inset 0 1px 0 rgba(0,255,180,0.12),
-      inset 0 0 60px rgba(0,255,180,0.02);
+      inset 0 1px 0 rgba(136,255,0,0.12),
+      inset 0 0 60px rgba(136,255,0,0.02);
   }
   /* Animated cyan trace across top */
   .card::before {
     content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
     background: linear-gradient(90deg,
       transparent 0%, transparent 30%,
-      rgba(0,255,180,0.0) 38%,
-      rgba(0,255,180,0.95) 47%,
-      rgba(0,238,255,0.95) 53%,
-      rgba(0,255,180,0.0) 62%,
+      rgba(136,255,0,0.0) 38%,
+      rgba(136,255,0,0.95) 47%,
+      rgba(170,255,30,0.95) 53%,
+      rgba(136,255,0,0.0) 62%,
       transparent 70%, transparent 100%
     );
     background-size: 300% 100%;
@@ -872,7 +975,7 @@ const css = `
     font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 11px;
     margin-bottom: 20px; display: flex; align-items: center; gap: 10px;
     letter-spacing: 2px; text-transform: uppercase; color: var(--accent);
-    text-shadow: 0 0 12px #00ffccaa, 0 0 30px #00ffcc33;
+    text-shadow: 0 0 12px #88ff00aa, 0 0 30px #88ff0033;
   }
   .card-title::before {
     content: '◆'; font-size: 8px; color: var(--lime);
@@ -898,27 +1001,27 @@ const css = `
   .btn:hover::after { left: 140%; }
   .btn-primary {
     background: linear-gradient(180deg,
-      rgba(0,160,110,0.95) 0%,
-      rgba(0,90,65,0.98)  45%,
-      rgba(0,40,30,1)     100%
+      rgba(80,140,0,0.95) 0%,
+      rgba(50,90,0,0.98)  45%,
+      rgba(20,40,0,1)     100%
     );
-    color: #fff;
-    border: 1px solid rgba(0,255,180,0.35);
+    color: #d8f5c0;
+    border: 1px solid rgba(136,255,0,0.35);
     box-shadow: var(--glow-sm),
                 inset 0 1px 0 rgba(255,255,255,0.18),
-                inset 0 0 30px rgba(0,255,180,0.06);
+                inset 0 0 30px rgba(136,255,0,0.08);
   }
   .btn-primary:hover {
-    background: linear-gradient(180deg, #00ddaa 0%, #008866 45%, #004433 100%);
+    background: linear-gradient(180deg, #66dd00 0%, #448800 45%, #224400 100%);
     box-shadow: var(--glow), inset 0 1px 0 rgba(255,255,255,0.25);
     transform: translateY(-1px);
   }
   .btn-ghost {
     background: transparent; color: var(--muted);
-    border: 1px solid rgba(6,51,34,0.9);
+    border: 1px solid rgba(13,34,0,0.9);
   }
   .btn-ghost:hover {
-    color: var(--accent); border-color: rgba(0,255,180,0.4);
+    color: var(--accent); border-color: rgba(136,255,0,0.4);
     box-shadow: var(--glow-sm); transform: translateY(-1px);
   }
   .btn-sm { padding: 5px 14px; font-size: 10px; letter-spacing: 1.5px; }
@@ -933,8 +1036,8 @@ const css = `
     box-shadow: inset 0 0 30px rgba(0,0,0,0.6);
   }
   input:focus, textarea:focus, select:focus {
-    border-color: rgba(0,255,180,0.5);
-    box-shadow: var(--glow-sm), inset 0 0 30px rgba(0,255,180,0.03);
+    border-color: rgba(136,255,0,0.5);
+    box-shadow: var(--glow-sm), inset 0 0 30px rgba(136,255,0,0.03);
     background: rgba(0,16,9,0.96);
   }
   textarea { resize: vertical; min-height: 80px; }
@@ -955,13 +1058,13 @@ const css = `
   }
   .log-table td { padding: 10px 12px; border-bottom: 1px solid rgba(6,51,34,0.4); line-height: 1.4; }
   .log-table tr:last-child td { border-bottom: none; }
-  .log-table tr:hover td { background: rgba(0,255,180,0.02); }
+  .log-table tr:hover td { background: rgba(136,255,0,0.02); }
 
   .badge {
     display: inline-block; padding: 2px 10px; border-radius: 1px; font-size: 11px;
     font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
-    background: rgba(0,255,180,0.06); color: var(--accent);
-    border: 1px solid rgba(0,255,180,0.2); font-family: 'Orbitron', sans-serif;
+    background: rgba(136,255,0,0.06); color: var(--accent);
+    border: 1px solid rgba(136,255,0,0.2); font-family: 'Orbitron', sans-serif;
   }
 
   /* ── TABS ── */
@@ -973,12 +1076,12 @@ const css = `
     transition: all 0.2s; letter-spacing: 1px; text-transform: uppercase;
     font-family: 'Orbitron', sans-serif;
   }
-  .tab:hover { border-color: rgba(0,255,180,0.35); color: var(--chrome); }
+  .tab:hover { border-color: rgba(136,255,0,0.35); color: var(--chrome); }
   .tab.active {
     background: linear-gradient(180deg, rgba(0,100,70,0.85), rgba(0,50,35,0.95));
-    color: #fff; border-color: rgba(0,255,180,0.45);
+    color: #fff; border-color: rgba(136,255,0,0.45);
     box-shadow: var(--glow-sm);
-    text-shadow: 0 0 10px rgba(0,255,180,0.7);
+    text-shadow: 0 0 10px rgba(136,255,0,0.7);
   }
 
   /* ── COMPARE ── */
@@ -986,29 +1089,29 @@ const css = `
   .compare-card {
     background: linear-gradient(160deg, rgba(0,22,13,0.52) 0%, rgba(0,10,5,0.32) 50%, rgba(0,3,2,0.40) 100%);
     border: 1px solid rgba(6,51,34,0.9);
-    border-top: 1px solid rgba(0,255,180,0.15);
-    border-left: 1px solid rgba(0,255,180,0.08);
+    border-top: 1px solid rgba(136,255,0,0.15);
+    border-left: 1px solid rgba(136,255,0,0.08);
     border-radius: var(--radius); padding: 14px; cursor: pointer; transition: all 0.25s;
     position: relative; overflow: hidden;
     box-shadow:
-      0 2px 0 rgba(0,255,180,0.06),
+      0 2px 0 rgba(136,255,0,0.06),
       0 6px 18px rgba(0,0,0,0.5),
       0 16px 40px rgba(0,0,0,0.4),
-      inset 0 1px 0 rgba(0,255,180,0.10);
+      inset 0 1px 0 rgba(136,255,0,0.10);
   }
   .compare-card::before {
     content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
     background: linear-gradient(90deg,
       transparent 0%, transparent 35%,
       rgba(136,255,0,0.7) 47%,
-      rgba(0,255,180,0.7) 53%,
+      rgba(136,255,0,0.7) 53%,
       transparent 65%, transparent 100%
     );
     background-size: 300% 100%;
     animation: trace 5s linear infinite;
   }
-  .compare-card:hover { border-color: rgba(0,255,180,0.25); box-shadow: var(--glow-sm); transform: translateY(-2px); }
-  .compare-card.sel { border-color: rgba(0,255,180,0.5); box-shadow: var(--glow), inset 0 0 30px rgba(0,255,180,0.025); }
+  .compare-card:hover { border-color: rgba(136,255,0,0.25); box-shadow: var(--glow-sm); transform: translateY(-2px); }
+  .compare-card.sel { border-color: rgba(136,255,0,0.5); box-shadow: var(--glow), inset 0 0 30px rgba(136,255,0,0.025); }
   .compare-card .cname {
     font-weight: 700; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase;
     background: var(--chrome-grad);
@@ -1034,7 +1137,7 @@ const css = `
   }
   .player-bar::after {
     content: ''; position: absolute; inset: 0; pointer-events: none;
-    background: radial-gradient(ellipse 70% 120% at 50% 100%, rgba(0,255,180,0.025), transparent);
+    background: radial-gradient(ellipse 70% 120% at 50% 100%, rgba(136,255,0,0.025), transparent);
   }
 
   .track-info { min-width: 150px; max-width: 200px; position: relative; z-index: 1; overflow: hidden; }
@@ -1052,19 +1155,19 @@ const css = `
   }
   .ctrl-btn:hover { color: var(--accent); text-shadow: var(--glow-sm); transform: scale(1.2); }
   .play-btn {
-    background: linear-gradient(145deg, #008866 0%, #004433 55%, #001a15 100%);
-    color: #fff; border: 1px solid rgba(0,255,180,0.3);
+    background: linear-gradient(145deg, #447700 0%, #223300 55%, #001a15 100%);
+    color: #fff; border: 1px solid rgba(136,255,0,0.3);
     border-radius: 50%; width: 44px; height: 44px; font-size: 14px; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     box-shadow: var(--glow),
                 inset 0 1px 0 rgba(255,255,255,0.2),
-                inset 0 0 24px rgba(0,255,180,0.12);
+                inset 0 0 24px rgba(136,255,0,0.12);
     transition: all 0.2s;
     animation: energyBeat 3.5s ease-in-out infinite;
     position: relative; z-index: 1;
   }
   .play-btn:hover {
-    box-shadow: 0 0 40px #00ffcc, 0 0 80px #00ffcc55, inset 0 0 30px rgba(0,255,180,0.2);
+    box-shadow: 0 0 40px #88ff00, 0 0 80px #88ff0055, inset 0 0 30px rgba(136,255,0,0.2);
     transform: scale(1.1);
   }
 
@@ -1081,7 +1184,7 @@ const css = `
     height: 100%;
     background: var(--energy-grad); background-size: 300% 300%;
     animation: sheen 2s ease-in-out infinite;
-    box-shadow: 0 0 12px #00ffcc, 0 0 4px #88ff00;
+    box-shadow: 0 0 12px #88ff00, 0 0 4px #88ff00;
     transition: width 0.25s linear;
   }
   .volume-wrap {
@@ -1098,16 +1201,16 @@ const css = `
   }
   .track-row::before {
     content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 0;
-    background: linear-gradient(90deg, rgba(0,255,180,0.07), rgba(0,238,255,0.04), transparent);
+    background: linear-gradient(90deg, rgba(136,255,0,0.07), rgba(170,255,30,0.04), transparent);
     transition: width 0.25s;
   }
   .track-row:hover::before { width: 100%; }
-  .track-row:hover { border-color: rgba(0,255,180,0.08); }
-  .track-row.playing { border-color: rgba(0,255,180,0.18); background: rgba(0,255,180,0.025); }
+  .track-row:hover { border-color: rgba(136,255,0,0.08); }
+  .track-row.playing { border-color: rgba(136,255,0,0.18); background: rgba(136,255,0,0.025); }
   .track-row.playing .track-title {
     color: var(--accent) !important;
     -webkit-text-fill-color: var(--accent) !important;
-    text-shadow: 0 0 12px #00ffccaa !important;
+    text-shadow: 0 0 12px #88ff00aa !important;
   }
   .track-num { width: 22px; text-align: center; font-size: 12px; color: var(--muted); font-family: 'Orbitron', sans-serif; }
   .track-dur { font-size: 12px; color: var(--muted); margin-left: auto; font-family: 'Orbitron', sans-serif; letter-spacing: 0.5px; }
@@ -1117,16 +1220,16 @@ const css = `
   .stat-tile {
     background: linear-gradient(160deg, rgba(0,22,13,0.55) 0%, rgba(0,10,5,0.35) 50%, rgba(0,3,2,0.42) 100%);
     border: 1px solid rgba(6,51,34,0.9);
-    border-top: 1px solid rgba(0,255,180,0.18);
-    border-left: 1px solid rgba(0,255,180,0.10);
+    border-top: 1px solid rgba(136,255,0,0.18);
+    border-left: 1px solid rgba(136,255,0,0.10);
     border-radius: var(--radius); padding: 22px; position: relative; overflow: hidden;
     animation: float 7s ease-in-out infinite;
     box-shadow:
-      0 2px 0 rgba(0,255,180,0.08),
+      0 2px 0 rgba(136,255,0,0.08),
       0 8px 20px rgba(0,0,0,0.55),
       0 20px 48px rgba(0,0,0,0.45),
-      inset 0 1px 0 rgba(0,255,180,0.12),
-      inset 0 0 40px rgba(0,255,180,0.02);
+      inset 0 1px 0 rgba(136,255,0,0.12),
+      inset 0 0 40px rgba(136,255,0,0.02);
   }
   .stat-tile:nth-child(2) { animation-delay: -2.3s; }
   .stat-tile:nth-child(3) { animation-delay: -4.6s; }
@@ -1134,7 +1237,7 @@ const css = `
     content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
     background: linear-gradient(90deg,
       transparent 0%, transparent 35%,
-      rgba(0,255,180,0.85) 47%,
+      rgba(136,255,0,0.85) 47%,
       rgba(136,255,0,0.85)  53%,
       transparent 65%, transparent 100%
     );
@@ -1145,15 +1248,15 @@ const css = `
   .stat-tile::after {
     content: ''; position: absolute; bottom: 0; right: 0;
     width: 10px; height: 10px;
-    border-bottom: 1px solid rgba(0,238,255,0.5);
-    border-right: 1px solid rgba(0,238,255,0.5);
+    border-bottom: 1px solid rgba(170,255,30,0.5);
+    border-right: 1px solid rgba(170,255,30,0.5);
   }
   .stat-num {
     font-family: 'Orbitron', sans-serif; font-size: 28px; font-weight: 900;
     line-height: 1; letter-spacing: 2px;
-    background: linear-gradient(135deg, #ffffff 0%, #aaffee 30%, #00ffcc 60%, #88ff00 100%);
+    background: linear-gradient(135deg, #ffffff 0%, #aaffee 30%, #88ff00 60%, #88ff00 100%);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
-    filter: drop-shadow(0 0 16px rgba(0,255,180,0.8));
+    filter: drop-shadow(0 0 16px rgba(136,255,0,0.8));
   }
   .stat-label {
     font-size: 11px; color: var(--muted); margin-top: 10px;
@@ -1182,8 +1285,8 @@ const css = `
   .modal::after {
     content: ''; position: absolute; inset: 0; pointer-events: none;
     background:
-      radial-gradient(ellipse 50% 40% at 0%   0%,   rgba(0,238,255,0.06),  transparent),
-      radial-gradient(ellipse 50% 40% at 100% 100%, rgba(0,255,180,0.05),  transparent),
+      radial-gradient(ellipse 50% 40% at 0%   0%,   rgba(170,255,30,0.06),  transparent),
+      radial-gradient(ellipse 50% 40% at 100% 100%, rgba(136,255,0,0.05),  transparent),
       radial-gradient(ellipse 40% 30% at 100%  0%,   rgba(136,255,0,0.04),  transparent);
   }
   .modal-title {
@@ -1191,7 +1294,7 @@ const css = `
     letter-spacing: 5px; margin-bottom: 24px; text-transform: uppercase;
     background: var(--chrome-grad);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
-    filter: drop-shadow(0 0 12px rgba(0,255,180,0.6));
+    filter: drop-shadow(0 0 12px rgba(136,255,0,0.6));
     position: relative; z-index: 1;
   }
   .divider {
@@ -1215,13 +1318,13 @@ const css = `
   .onboard-wrap::before {
     content: ''; position: absolute; inset: 0; pointer-events: none;
     background-image:
-      repeating-linear-gradient( 45deg, transparent, transparent 55px, rgba(0,255,180,0.018) 55px, rgba(0,255,180,0.018) 56px),
-      repeating-linear-gradient(-45deg, transparent, transparent 55px, rgba(0,238,255,0.018) 55px, rgba(0,238,255,0.018) 56px);
+      repeating-linear-gradient( 45deg, transparent, transparent 55px, rgba(136,255,0,0.018) 55px, rgba(136,255,0,0.018) 56px),
+      repeating-linear-gradient(-45deg, transparent, transparent 55px, rgba(170,255,30,0.018) 55px, rgba(170,255,30,0.018) 56px);
     animation: gridBreath 10s ease-in-out infinite;
   }
   .onboard-wrap::after {
     content: ''; position: absolute; inset: 0; pointer-events: none;
-    background: radial-gradient(ellipse 60% 40% at 50% 50%, rgba(0,255,180,0.04), transparent);
+    background: radial-gradient(ellipse 60% 40% at 50% 50%, rgba(136,255,0,0.04), transparent);
     animation: voidPulse 5s ease-in-out infinite;
   }
 
@@ -1236,11 +1339,11 @@ const css = `
   ::-webkit-scrollbar { width: 3px; height: 3px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
   ::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #00eeff, #00ffcc, #88ff00);
+    background: linear-gradient(180deg, #aaff44, #88ff00, #88ff00);
     border-radius: 0;
   }
 
-  ::selection { background: rgba(0,255,180,0.3); color: #fff; }
+  ::selection { background: rgba(136,255,0,0.3); color: #fff; }
 
   * { cursor: crosshair; }
   button, a, [role="button"], .nav-item, .tab, .track-row, .compare-card, select { cursor: pointer; }
@@ -1299,7 +1402,7 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
       rendererInst = renderer;
 
       const wireMat = new THREE.MeshBasicMaterial({
-        color: 0x00ffcc, wireframe: true,
+        color: 0x88ff00, wireframe: true,
         transparent: true, opacity: 0.22,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
@@ -1461,7 +1564,7 @@ function AudioFigureBackdrop({ fading = false }) {
       scene.add(crossGroup);
 
       const wireMat = new THREE.MeshBasicMaterial({
-        color: 0x00ffcc, wireframe: true,
+        color: 0x88ff00, wireframe: true,
         transparent: true, opacity: 0.22,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
@@ -1904,7 +2007,7 @@ function WorkoutFigureBackdrop({ fading = false }) {
       rendererInst = renderer;
 
       const wireMat = new THREE.MeshBasicMaterial({
-        color: 0x00ffcc, wireframe: true,
+        color: 0x88ff00, wireframe: true,
         transparent: true, opacity: 0.22,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
@@ -2093,10 +2196,10 @@ function MyRankCard({ username, exercise, repCat, userLogs, communityUsers = [] 
   return (
     <div style={{
       background: "linear-gradient(160deg,rgba(0,22,13,.55),rgba(0,12,7,.38) 50%,rgba(0,4,2,.45))",
-      border: "1px solid rgba(0,255,180,.28)",
-      borderTop: "1px solid rgba(0,255,180,.30)",
-      borderLeft: "1px solid rgba(0,255,180,.18)",
-      boxShadow: "0 2px 0 rgba(0,255,180,0.10), 0 8px 24px rgba(0,0,0,0.6), 0 28px 64px rgba(0,0,0,0.5), inset 0 1px 0 rgba(0,255,180,0.15), inset 0 0 60px rgba(0,255,180,0.025)", borderRadius: "var(--radius)",
+      border: "1px solid rgba(136,255,0,.28)",
+      borderTop: "1px solid rgba(136,255,0,.30)",
+      borderLeft: "1px solid rgba(136,255,0,.18)",
+      boxShadow: "0 2px 0 rgba(136,255,0,0.10), 0 8px 24px rgba(0,0,0,0.6), 0 28px 64px rgba(0,0,0,0.5), inset 0 1px 0 rgba(136,255,0,0.15), inset 0 0 60px rgba(136,255,0,0.025)", borderRadius: "var(--radius)",
       padding: "26px 30px 24px", marginBottom: 24, position: "relative",
       overflow: "hidden", animation: "rankGlow 4s ease-in-out infinite",
     }}>
@@ -2107,7 +2210,7 @@ function MyRankCard({ username, exercise, repCat, userLogs, communityUsers = [] 
         <div style={{ fontFamily:"'Orbitron',sans-serif", fontWeight:700, fontSize:11, letterSpacing:2, textTransform:"uppercase", color:"var(--accent)", display:"flex", alignItems:"center", gap:8 }}>
           <span style={{ color:"var(--lime)" }}>◆</span> Your Rank
         </div>
-        <div style={{ fontFamily:"'Orbitron',sans-serif", fontSize:10, color:"var(--muted)", letterSpacing:1.5, textTransform:"uppercase", background:"rgba(0,255,180,.05)", border:"1px solid var(--border)", padding:"3px 10px", borderRadius:2 }}>
+        <div style={{ fontFamily:"'Orbitron',sans-serif", fontSize:10, color:"var(--muted)", letterSpacing:1.5, textTransform:"uppercase", background:"rgba(136,255,0,.05)", border:"1px solid var(--border)", padding:"3px 10px", borderRadius:2 }}>
           {exercise} · {repCat} Rep{repCat > 1 ? "s" : ""}
         </div>
       </div>
@@ -2118,7 +2221,7 @@ function MyRankCard({ username, exercise, repCat, userLogs, communityUsers = [] 
       ) : (
         <div style={{ display:"flex", alignItems:"center", gap:28, flexWrap:"wrap" }}>
           <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, flexShrink:0 }}>
-            <div style={{ fontFamily:"'Orbitron',sans-serif", fontWeight:900, fontSize:numSize, lineHeight:1, letterSpacing:-2, background:"var(--chrome-grad)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", backgroundClip:"text", filter: medal ? "drop-shadow(0 0 28px "+medal.color+"cc)" : "drop-shadow(0 0 22px rgba(0,255,180,.9))" }}>
+            <div style={{ fontFamily:"'Orbitron',sans-serif", fontWeight:900, fontSize:numSize, lineHeight:1, letterSpacing:-2, background:"var(--chrome-grad)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", backgroundClip:"text", filter: medal ? "drop-shadow(0 0 28px "+medal.color+"cc)" : "drop-shadow(0 0 22px rgba(136,255,0,.9))" }}>
               {ordinal(rank)}
             </div>
             <div style={{ fontSize:11, color:"var(--muted)", fontFamily:"'Orbitron',sans-serif", letterSpacing:1.5, textTransform:"uppercase" }}>
@@ -2130,7 +2233,7 @@ function MyRankCard({ username, exercise, repCat, userLogs, communityUsers = [] 
               </div>
             )}
           </div>
-          <div style={{ width:1, height:64, flexShrink:0, background:"linear-gradient(180deg,transparent,rgba(0,255,180,.25),transparent)" }} />
+          <div style={{ width:1, height:64, flexShrink:0, background:"linear-gradient(180deg,transparent,rgba(136,255,0,.25),transparent)" }} />
           <div style={{ display:"flex", flexDirection:"column", gap:16, flex:1, minWidth:190 }}>
             <div>
               <div style={{ fontSize:10, color:"var(--muted)", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, textTransform:"uppercase", marginBottom:4 }}>Your best lift</div>
@@ -2146,8 +2249,8 @@ function MyRankCard({ username, exercise, repCat, userLogs, communityUsers = [] 
                 </span>
                 <span style={{ fontSize:11, color:"var(--muted)", fontFamily:"'Orbitron',sans-serif", letterSpacing:1 }}>percentile</span>
               </div>
-              <div style={{ height:5, background:"rgba(0,255,180,.06)", border:"1px solid rgba(0,255,180,.1)", overflow:"hidden", marginBottom:4 }}>
-                <div style={{ height:"100%", width:barPct+"%", background:"var(--energy-grad)", backgroundSize:"300% 300%", animation:"sheen 2s ease-in-out infinite", boxShadow:"0 0 10px #00ffcc77", transition:"width 1s cubic-bezier(.16,1,.3,1)" }} />
+              <div style={{ height:5, background:"rgba(136,255,0,.06)", border:"1px solid rgba(136,255,0,.1)", overflow:"hidden", marginBottom:4 }}>
+                <div style={{ height:"100%", width:barPct+"%", background:"var(--energy-grad)", backgroundSize:"300% 300%", animation:"sheen 2s ease-in-out infinite", boxShadow:"0 0 10px #88ff0077", transition:"width 1s cubic-bezier(.16,1,.3,1)" }} />
               </div>
               <div style={{ fontSize:11, color:"var(--muted)" }}>
                 {percentile !== null ? "Lifts more than "+percentile+"% of logged athletes" : ""}
@@ -2356,7 +2459,7 @@ function WorkoutPage({ username }) {
               })();
               const color = REP_COLORS[repCat];
               return (
-                <div key={repCat} style={{background:"linear-gradient(160deg,rgba(0,22,13,0.52),rgba(0,8,4,0.38))",boxShadow:"0 4px 16px rgba(0,0,0,0.5),0 12px 32px rgba(0,0,0,0.4),inset 0 1px 0 rgba(0,255,180,0.10)",borderTop:"1px solid rgba(0,255,180,0.14)",borderLeft:"1px solid rgba(0,255,180,0.08)",borderRadius:10,padding:"16px 12px"}}>
+                <div key={repCat} style={{background:"linear-gradient(160deg,rgba(0,22,13,0.52),rgba(0,8,4,0.38))",boxShadow:"0 4px 16px rgba(0,0,0,0.5),0 12px 32px rgba(0,0,0,0.4),inset 0 1px 0 rgba(136,255,0,0.10)",borderTop:"1px solid rgba(136,255,0,0.14)",borderLeft:"1px solid rgba(136,255,0,0.08)",borderRadius:10,padding:"16px 12px"}}>
                   <div style={{fontWeight:700,fontSize:13,marginBottom:12,color}}>
                     {repCat} Rep{repCat>1?"s":""}
                   </div>
@@ -2563,7 +2666,7 @@ function AudioPage({ currentTrack, setCurrentTrack, isPlaying, setIsPlaying }) {
 
       {/* Attribution footnote */}
       <div style={{
-        marginTop:32, paddingTop:16, borderTop:"1px solid rgba(0,255,180,0.07)",
+        marginTop:32, paddingTop:16, borderTop:"1px solid rgba(136,255,0,0.07)",
         color:"var(--muted)", fontSize:10, lineHeight:1.7, letterSpacing:0.3,
       }}>
         <div style={{marginBottom:6, fontFamily:"'Orbitron',sans-serif", fontSize:9, letterSpacing:2, textTransform:"uppercase"}}>
@@ -2951,10 +3054,10 @@ const AuthCard = ({ children }) => (
     border:"1px solid rgba(6,51,34,0.9)", borderRadius:2, padding:34, overflow:"hidden",
   }}>
     <div style={{position:"absolute",top:0,left:0,right:0,height:1,
-      background:"linear-gradient(90deg,#00ffcc,#00eeff,#88ff00,#00ffcc)",
+      background:"linear-gradient(90deg,#88ff00,#aaff44,#88ff00,#88ff00)",
       backgroundSize:"300% 100%",opacity:0.8,animation:"sheen 2.5s ease-in-out infinite"}} />
     <div style={{position:"absolute",top:0,left:0,width:16,height:16,borderTop:"1px solid rgba(136,255,0,0.6)",borderLeft:"1px solid rgba(136,255,0,0.6)"}} />
-    <div style={{position:"absolute",bottom:0,right:0,width:16,height:16,borderBottom:"1px solid rgba(0,238,255,0.5)",borderRight:"1px solid rgba(0,238,255,0.5)"}} />
+    <div style={{position:"absolute",bottom:0,right:0,width:16,height:16,borderBottom:"1px solid rgba(170,255,30,0.5)",borderRight:"1px solid rgba(170,255,30,0.5)"}} />
     {children}
   </div>
 );
@@ -2963,9 +3066,9 @@ const AuthTitle = ({ text }) => (
   <div style={{
     fontFamily:"'Orbitron',sans-serif", fontSize:15, fontWeight:900,
     letterSpacing:5, marginBottom:6, textTransform:"uppercase",
-    background:"linear-gradient(155deg,#ffffff,#aaffee,#00ffcc)",
+    background:"linear-gradient(155deg,#ffffff,#aaffee,#88ff00)",
     WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
-    filter:"drop-shadow(0 0 10px rgba(0,255,180,0.6))"
+    filter:"drop-shadow(0 0 10px rgba(136,255,0,0.6))"
   }}>{text}</div>
 );
 
@@ -3021,7 +3124,7 @@ function AdminPanel({ currentUser, onClose }) {
 
   const roleBadge = (role) => {
     if (role === "arch_admin") return { label: "ARCH-ADMIN", color: "#ffcc00" };
-    if (role === "admin")      return { label: "ADMIN",      color: "#00ffcc" };
+    if (role === "admin")      return { label: "ADMIN",      color: "#88ff00" };
     return                            { label: "MEMBER",     color: "#556655" };
   };
 
@@ -3045,11 +3148,11 @@ function AdminPanel({ currentUser, onClose }) {
         position:"relative", overflow:"hidden",
       }} onClick={e => e.stopPropagation()}>
         <div style={{position:"absolute",top:0,left:0,right:0,height:1,
-          background:"linear-gradient(90deg,#ffcc00,#00ffcc,#ffcc00)",
+          background:"linear-gradient(90deg,#ffcc00,#88ff00,#ffcc00)",
           backgroundSize:"300% 100%", opacity:0.8, animation:"sheen 2.5s ease-in-out infinite"}} />
 
         {/* Header */}
-        <div style={{padding:"24px 28px 16px", borderBottom:"1px solid rgba(0,255,180,0.08)", flexShrink:0}}>
+        <div style={{padding:"24px 28px 16px", borderBottom:"1px solid rgba(136,255,0,0.08)", flexShrink:0}}>
           <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
             <div>
               <div style={{
@@ -3080,8 +3183,8 @@ function AdminPanel({ currentUser, onClose }) {
             return (
               <div key={u.id} style={{
                 display:"flex", alignItems:"center", gap:12, padding:"12px 28px",
-                borderBottom:"1px solid rgba(0,255,180,0.05)",
-                background: isMe ? "rgba(0,255,180,0.03)" : "transparent",
+                borderBottom:"1px solid rgba(136,255,0,0.05)",
+                background: isMe ? "rgba(136,255,0,0.03)" : "transparent",
               }}>
                 <div className="avatar sm" style={{
                   flexShrink:0,
@@ -3109,7 +3212,7 @@ function AdminPanel({ currentUser, onClose }) {
                     <button onClick={() => handleSetRole(u.id, u.role === "admin" ? "user" : "admin")}
                       style={{
                         fontSize:9, padding:"3px 8px", cursor:"pointer", borderRadius:2,
-                        background:"rgba(0,255,180,0.06)", border:"1px solid rgba(0,255,180,0.2)",
+                        background:"rgba(136,255,0,0.06)", border:"1px solid rgba(136,255,0,0.2)",
                         color:"var(--accent)", fontFamily:"'Orbitron',sans-serif", letterSpacing:1,
                       }}>
                       {u.role === "admin" ? "DEMOTE" : "MAKE ADMIN"}
@@ -3225,7 +3328,7 @@ function AuthScreen({ onAuth }) {
             fontFamily:"'Orbitron',sans-serif", fontSize:26, fontWeight:900, letterSpacing:4,
             background:"linear-gradient(155deg,#ffffff 0%,#ccfff0 20%,#55ffcc 50%,#00bb99 75%,#005544 100%)",
             WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
-            filter:"drop-shadow(0 0 24px rgba(0,255,180,0.9)) drop-shadow(0 0 60px rgba(0,255,180,0.3))",
+            filter:"drop-shadow(0 0 24px rgba(136,255,0,0.9)) drop-shadow(0 0 60px rgba(136,255,0,0.3))",
             marginBottom:4, animation:"chromaShift 5s ease-in-out infinite"
           }}>Brothers of Saint Hyacinth</div>
           <div style={{color:"var(--muted)",fontSize:11,letterSpacing:3,textTransform:"uppercase",fontFamily:"'Orbitron',sans-serif"}}>
@@ -3288,13 +3391,13 @@ function AuthScreen({ onAuth }) {
             {/* I am not a robot */}
             <div style={{
               display:"flex", alignItems:"center", gap:12, marginBottom:18,
-              background:"rgba(0,255,180,0.04)", border:"1px solid rgba(0,255,180,0.15)",
+              background:"rgba(136,255,0,0.04)", border:"1px solid rgba(136,255,0,0.15)",
               borderRadius:4, padding:"12px 16px", cursor:"pointer",
             }} onClick={() => setRobotCheck(v => !v)}>
               <div style={{
                 width:22, height:22, borderRadius:4, flexShrink:0,
                 border:`2px solid ${robotCheck ? "var(--accent)" : "var(--border)"}`,
-                background: robotCheck ? "rgba(0,255,180,0.15)" : "transparent",
+                background: robotCheck ? "rgba(136,255,0,0.15)" : "transparent",
                 display:"flex", alignItems:"center", justifyContent:"center",
                 transition:"all 0.15s",
               }}>
@@ -3349,18 +3452,18 @@ function UserProfileModal({ user, onClose, onDeleted }) {
     }} onClick={onClose}>
       <div style={{
         width:380, background:"linear-gradient(155deg,rgba(0,14,8,0.99),rgba(0,5,3,1))",
-        border:"1px solid rgba(0,255,180,0.2)", borderRadius:4, padding:32,
+        border:"1px solid rgba(136,255,0,0.2)", borderRadius:4, padding:32,
         position:"relative", overflow:"hidden",
       }} onClick={e => e.stopPropagation()}>
         {/* Top accent line */}
         <div style={{position:"absolute",top:0,left:0,right:0,height:1,
-          background:"linear-gradient(90deg,#00ffcc,#00eeff,#88ff00,#00ffcc)",
+          background:"linear-gradient(90deg,#88ff00,#aaff44,#88ff00,#88ff00)",
           backgroundSize:"300% 100%", opacity:0.6, animation:"sheen 2.5s ease-in-out infinite"}} />
 
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24}}>
           <div style={{
             fontFamily:"'Orbitron',sans-serif", fontSize:13, fontWeight:900, letterSpacing:4,
-            background:"linear-gradient(155deg,#ffffff,#aaffee,#00ffcc)",
+            background:"linear-gradient(155deg,#ffffff,#aaffee,#88ff00)",
             WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
           }}>MY PROFILE</div>
           <button onClick={onClose} style={{background:"none",border:"none",color:"var(--muted)",
@@ -3387,7 +3490,7 @@ function UserProfileModal({ user, onClose, onDeleted }) {
           ["Member Since", new Date().toLocaleDateString("en-US", { month:"long", year:"numeric" })],
         ].map(([label, val]) => (
           <div key={label} style={{display:"flex",justifyContent:"space-between",
-            padding:"10px 0",borderBottom:"1px solid rgba(0,255,180,0.06)",fontSize:13}}>
+            padding:"10px 0",borderBottom:"1px solid rgba(136,255,0,0.06)",fontSize:13}}>
             <span style={{color:"var(--muted)",fontFamily:"'Orbitron',sans-serif",fontSize:10,letterSpacing:1,textTransform:"uppercase"}}>{label}</span>
             <span style={{color:"var(--text)",fontWeight:600}}>{val}</span>
           </div>
@@ -3460,6 +3563,7 @@ export default function App() {
   const [topChartsFading, setTopChartsFading]   = useState(false);
   const [showWorkout, setShowWorkout]           = useState(true);
   const [workoutFading, setWorkoutFading]       = useState(false);
+  const [navExpanded, setNavExpanded]           = useState(true);
   const [loaded, setLoaded]                     = useState(false);
   const mainRef = useRef(null);
 
@@ -3540,8 +3644,8 @@ export default function App() {
 
   // Y2K chrome SVG nav icons
   const NavIcon = ({ id, active }) => {
-    const c = active ? "#00ffcc" : "#1a5540";
-    const glow = active ? `drop-shadow(0 0 5px #00ffcccc) drop-shadow(0 0 12px #00ffcc55)` : "none";
+    const c = active ? "#88ff00" : "#1a5540";
+    const glow = active ? `drop-shadow(0 0 5px #88ff00cc) drop-shadow(0 0 12px #88ff0055)` : "none";
     const s = { filter: glow, transition: "filter 0.15s" };
     if (id === "workout") return (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" style={s}>
@@ -3589,43 +3693,42 @@ export default function App() {
       <div className="app-bg" />
       <div className="grid-stars" />
       <div className="app">
-        <div className="sidebar">
-          <div className="logo" style={{fontSize:13,letterSpacing:3}}>BROS OF ST. HYACINTH<span>.</span></div>
-          {navItems.map(n => (
-            <div key={n.id} className={`nav-item ${page===n.id?"active":""}`} onClick={() => handleSetPage(n.id)}>
-              <span className="nav-icon"><NavIcon id={n.id} active={page===n.id} /></span>{n.label}
-            </div>
-          ))}
-          {/* User badge — click to open profile modal */}
-          {(user.role === "arch_admin" || user.role === "admin") && (
-            <div onClick={() => setShowAdmin(true)} style={{
-              margin:"0 0 4px 0", padding:"7px 14px", cursor:"pointer",
-              borderTop:"1px solid rgba(0,255,180,0.08)",
-              background:"rgba(0,255,180,0.03)", transition:"all 0.15s",
-              display:"flex", alignItems:"center", gap:8,
-            }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round">
-                <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-                <line x1="19" y1="8" x2="23" y2="8"/><line x1="21" y1="6" x2="21" y2="10"/>
-              </svg>
-              <span style={{fontSize:10,fontFamily:"'Orbitron',sans-serif",letterSpacing:1.5,
-                color:"var(--accent)",fontWeight:700,textTransform:"uppercase"}}>
+        <div className={`sidebar${navExpanded ? "" : " nav-collapsed"}`}>
+          {/* Logo — two lines, shrinks when nav retracts */}
+          <div className="logo" style={{fontSize: navExpanded ? "22px" : "15px", whiteSpace:"nowrap"}}>
+            <span className="logo-l1" style={{display:"block", letterSpacing: navExpanded ? "5px" : "2.5px"}}>BROS OF ST.</span>
+            <span className="logo-l2" style={{display:"block", letterSpacing: navExpanded ? "10.5px" : "5px"}}>HYACINTH</span>
+          </div>
+          {/* Orb — click to toggle nav */}
+          <div className="xbox-orb-wrap" onClick={() => setNavExpanded(v => !v)}>
+            <div className="xbox-orb" />
+            <div className="xbox-bubble" />
+            <div className="xbox-bubble" />
+            <div className="xbox-bubble" />
+            <div className="xbox-bubble" />
+            <div className="xbox-bubble" />
+          </div>
+          {/* Blade nav */}
+          <div className={`nav-wrap${navExpanded ? "" : " retracted"}`}>
+            {navItems.map(n => (
+              <div key={n.id} className={`nav-item ${page===n.id?"active":""}`} onClick={() => handleSetPage(n.id)}>
+                {n.label}
+              </div>
+            ))}
+            {(user.role === "arch_admin" || user.role === "admin") && (
+              <div className="nav-item" onClick={() => setShowAdmin(true)}>
                 {user.role === "arch_admin" ? "Arch-Admin" : "Admin"}
-              </span>
-            </div>
-          )}
-          <div className="user-badge" style={{cursor:"pointer"}} onClick={() => setShowProfile(true)}>
-            <div className="avatar">{username.slice(0,2).toUpperCase()}</div>
-            <div>
-              <div className="user-name">{username}</div>
-              <div className="user-sub">{user.role === "arch_admin" ? "Arch-Admin" : user.role === "admin" ? "Admin" : "Member"}</div>
+              </div>
+            )}
+            <div className="nav-item" onClick={() => setShowProfile(true)}>
+              {username}
             </div>
           </div>
         </div>
         <div ref={mainRef} className="main" style={{display:"flex", flexDirection:"column"}}>
-          {page === "workout" && <WorkoutPage username={username} />}
-          {page === "topcharts" && <TopChartsPage username={username} />}
-          {page === "boards" && <BoardPage username={username} />}
+          {page === "workout" && <div style={{paddingLeft: navExpanded ? 80 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><WorkoutPage username={username} /></div>}
+          {page === "topcharts" && <div style={{paddingLeft: navExpanded ? 80 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><TopChartsPage username={username} /></div>}
+          {page === "boards" && <div style={{paddingLeft: navExpanded ? 80 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><BoardPage username={username} /></div>}
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
         </div>
         {showBoards && <FigureBackdrop variant="boards" fading={boardsFading} />}
