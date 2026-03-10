@@ -3603,40 +3603,38 @@ export default function App() {
 
     function init() {
       const canvas = glbCanvasRef.current;
-      if (!canvas) return;
+      if (!canvas) { setTimeout(init, 150); return; }
 
       const W = canvas.offsetWidth  || 220;
       const H = canvas.offsetHeight || 220;
+      // If canvas isn't laid out yet, retry
+      if (W < 10) { setTimeout(init, 150); return; }
 
       renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(W, H);
       renderer.setClearColor(0x000000, 0);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
-      renderer.toneMapping = THREE.AgXToneMapping;
-      renderer.toneMappingExposure = 0.85;
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.NoToneMapping;
+      renderer.toneMappingExposure = 1.0;
 
       const scene = new THREE.Scene();
       const cam = new THREE.PerspectiveCamera(42, W / H, 0.1, 1000);
       cam.position.set(0, 0, 3.2);
 
-      // Lighting — darker shadows = stronger key, dimmer fill
-      const ambLight = new THREE.AmbientLight(0x88ff44, 0.06);
+      // Bright ambient so the whole model stays vivid
+      const ambLight = new THREE.AmbientLight(0x88ff44, 1.2);
       scene.add(ambLight);
-      const keyLight = new THREE.PointLight(0xaaff44, 3.0, 20);
+      // Strong key for highlights
+      const keyLight = new THREE.PointLight(0xaaff44, 4.0, 20);
       keyLight.position.set(2, 2, 4);
-      keyLight.castShadow = true;
-      keyLight.shadow.mapSize.set(512, 512);
-      keyLight.shadow.camera.near = 0.5;
-      keyLight.shadow.camera.far = 20;
-      keyLight.shadow.bias = -0.002;
       scene.add(keyLight);
-      const fillLight = new THREE.PointLight(0x44cc00, 0.7, 20);
+      // Fill from the opposite side
+      const fillLight = new THREE.PointLight(0x44cc00, 1.4, 20);
       fillLight.position.set(-2, -1, 2);
       scene.add(fillLight);
-      const rimLight = new THREE.PointLight(0x226600, 0.5, 20);
+      // Rim from behind
+      const rimLight = new THREE.PointLight(0x226600, 0.8, 20);
       rimLight.position.set(0, -3, -3);
       scene.add(rimLight);
 
@@ -3658,15 +3656,13 @@ export default function App() {
           child.material = new THREE.MeshStandardMaterial({
             color:             isTrans ? new THREE.Color(0.22, 0.65, 0.0) : new THREE.Color(0.30, 0.80, 0.0),
             emissive:          new THREE.Color(0.08, 0.28, 0.0),
-            emissiveIntensity: isTrans ? 0.25 : 0.45,
+            emissiveIntensity: isTrans ? 0.6 : 1.0,
             metalness:         0.25,
             roughness:         0.05,
             transparent:       isTrans,
             opacity:           isTrans ? 0.72 : 1.0,
             side:              THREE.DoubleSide,
           });
-          child.castShadow    = true;
-          child.receiveShadow = true;
         });
 
         scene.add(model);
@@ -3688,8 +3684,7 @@ export default function App() {
       }, undefined, err => console.warn("GLB load error:", err));
     }
 
-    // Wait a tick for the canvas to be mounted and sized
-    const t = setTimeout(init, 300);
+    const t = setTimeout(init, 100);
     return () => {
       clearTimeout(t);
       if (animId) cancelAnimationFrame(animId);
