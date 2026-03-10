@@ -735,14 +735,15 @@ const css = `
   .xbox-orb {
     position: absolute; inset: 0; border-radius: 50%;
     background: radial-gradient(circle at 38% 35%,
-      #ccff88 0%, #88ff00 18%, #44cc00 40%, #007700 65%, #001a00 100%
+      #eeff88 0%, #aaff00 15%, #66dd00 35%, #009900 60%, #001a00 100%
     );
     box-shadow:
-      0 0 40px #88ff0099,
-      0 0 80px #44cc0066,
-      0 0 140px #22880033,
-      inset 0 0 30px rgba(255,255,255,0.15),
-      inset -20px -20px 60px rgba(0,0,0,0.5);
+      0 0 30px #aaff00cc,
+      0 0 60px #88ff0099,
+      0 0 100px #44cc0066,
+      0 0 160px #22880033,
+      inset 0 0 40px rgba(255,255,255,0.25),
+      inset -15px -15px 50px rgba(0,0,0,0.4);
     animation: orbPulse 3s ease-in-out infinite;
   }
   .xbox-orb::after {
@@ -767,8 +768,8 @@ const css = `
   .xbox-bubble:nth-child(5) { width:30px; height:30px; top:72%; left:68%; animation-delay:0.3s;  animation-duration:5s;   }
   .xbox-bubble:nth-child(6) { width:14px; height:14px; top:80%; left:82%; animation-delay:1.9s;  animation-duration:4.1s; }
   @keyframes orbPulse {
-    0%,100% { box-shadow: 0 0 40px #88ff0099, 0 0 80px #44cc0066, 0 0 140px #22880033, inset 0 0 30px rgba(255,255,255,0.15), inset -20px -20px 60px rgba(0,0,0,0.5); }
-    50%      { box-shadow: 0 0 60px #aaff00bb, 0 0 110px #66ee0088, 0 0 180px #33990044, inset 0 0 40px rgba(255,255,255,0.2),  inset -20px -20px 60px rgba(0,0,0,0.5); }
+    0%,100% { box-shadow: 0 0 30px #aaff00cc, 0 0 60px #88ff0099, 0 0 100px #44cc0066, 0 0 160px #22880033, inset 0 0 40px rgba(255,255,255,0.25), inset -15px -15px 50px rgba(0,0,0,0.4); }
+    50%      { box-shadow: 0 0 50px #ccff00ee, 0 0 90px #aaff00bb, 0 0 140px #66ee0088, 0 0 200px #33990044, inset 0 0 55px rgba(255,255,255,0.35), inset -15px -15px 50px rgba(0,0,0,0.4); }
   }
   @keyframes bubbleFloat {
     0%,100% { transform: translateY(0) scale(1); opacity: 0.8; }
@@ -3668,23 +3669,31 @@ export default function App() {
       renderer.setClearColor(0x000000, 0);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 2.8;
+      renderer.toneMappingExposure = 3.5;
 
       const scene = new THREE.Scene();
       const cam = new THREE.PerspectiveCamera(42, W / H, 0.1, 1000);
       cam.position.set(0, 0, 3.2);
 
-      const ambLight = new THREE.AmbientLight(0x88ff44, 0.06);
+      // Ambient — warm yellow-green tint
+      const ambLight = new THREE.AmbientLight(0xccff44, 0.3);
       scene.add(ambLight);
-      const keyLight = new THREE.PointLight(0xaaff44, 2.2, 20);
-      keyLight.position.set(2, 2, 4);
+      // Key — bright yellow-lime from top-front-right
+      const keyLight = new THREE.PointLight(0xeeff44, 6.0, 20);
+      keyLight.position.set(2, 3, 4);
       scene.add(keyLight);
-      const fillLight = new THREE.PointLight(0x44cc00, 0.7, 20);
+      // Fill — deep green
+      const fillLight = new THREE.PointLight(0x44cc00, 1.2, 20);
       fillLight.position.set(-2, -1, 2);
       scene.add(fillLight);
-      const rimLight = new THREE.PointLight(0x226600, 0.5, 20);
+      // Rim — yellow-green from behind for edge shine
+      const rimLight = new THREE.PointLight(0x88cc00, 1.5, 20);
       rimLight.position.set(0, -3, -3);
       scene.add(rimLight);
+      // Top highlight — bright specular for Xbox orb top-left shine
+      const topLight = new THREE.PointLight(0xffffff, 2.0, 10);
+      topLight.position.set(-1, 4, 3);
+      scene.add(topLight);
 
       const clock = new THREE.Clock();
       const loader = new GLTFLoader();
@@ -3703,13 +3712,13 @@ export default function App() {
           const orig = child.material;
           const isTrans = orig && orig.name === 'Material.002';
           child.material = new THREE.MeshStandardMaterial({
-            color:             isTrans ? new THREE.Color(0.22, 0.65, 0.0) : new THREE.Color(0.30, 0.80, 0.0),
-            emissive:          new THREE.Color(0.08, 0.28, 0.0),
-            emissiveIntensity: isTrans ? 0.25 : 0.45,
-            metalness:         0.25,
-            roughness:         0.05,
+            color:             isTrans ? new THREE.Color(0.55, 0.95, 0.05) : new THREE.Color(0.30, 0.80, 0.0),
+            emissive:          isTrans ? new THREE.Color(0.18, 0.45, 0.0) : new THREE.Color(0.05, 0.20, 0.0),
+            emissiveIntensity: isTrans ? 0.6 : 0.3,
+            metalness:         0.1,
+            roughness:         0.02,
             transparent:       isTrans,
-            opacity:           isTrans ? 0.72 : 1.0,
+            opacity:           isTrans ? 0.82 : 1.0,
             side:              THREE.DoubleSide,
           });
         });
