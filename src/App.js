@@ -3668,8 +3668,8 @@ export default function App() {
       renderer.setSize(W, H);
       renderer.setClearColor(0x000000, 0);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 0.85;
+      renderer.toneMapping = THREE.LinearToneMapping;
+      renderer.toneMappingExposure = 2.2;
 
       const scene = new THREE.Scene();
       const cam = new THREE.PerspectiveCamera(42, W / H, 0.1, 1000);
