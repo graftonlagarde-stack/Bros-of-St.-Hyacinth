@@ -3646,7 +3646,7 @@ export default function App() {
     if (mainRef.current) mainRef.current.scrollTop = 0;
   }, [page]);
 
-  // ── GLB orb renderer ──────────────────────────────────────────────
+  // ── GLB orb renderer (uses Three.js r128 via CDN for pixel-exact match with HTML preview) ──
   useEffect(() => {
     const RAILWAY_URL = "https://bros-of-st-hyacinth-production.up.railway.app";
     const GLB_URL = `${RAILWAY_URL}/Hyacinth_Sphere.glb`;
@@ -3658,135 +3658,70 @@ export default function App() {
       const canvas = glbCanvasRef.current;
       if (!canvas) { setTimeout(init, 150); return; }
 
+      const T = window.THREE_r128;
+      if (!T || !T.GLTFLoader) { setTimeout(init, 150); return; }
+
       const W = canvas.offsetWidth  || 220;
       const H = canvas.offsetHeight || 220;
       if (W < 10) { setTimeout(init, 150); return; }
 
-      renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+      renderer = new T.WebGLRenderer({ canvas, alpha: true, antialias: true });
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(W, H);
       renderer.setClearColor(0x000000, 0);
-      renderer.outputColorSpace = THREE.SRGBColorSpace;
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 3.5;
+      renderer.outputEncoding = T.sRGBEncoding;
+      renderer.toneMapping = T.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 0.85;
 
-      const scene = new THREE.Scene();
-      const cam = new THREE.PerspectiveCamera(42, W / H, 0.1, 1000);
+      const scene = new T.Scene();
+      const cam = new T.PerspectiveCamera(42, W / H, 0.1, 1000);
       cam.position.set(0, 0, 3.2);
 
-      // Very low ambient — shadows fall to deep green, not filled in
-      const ambLight = new THREE.AmbientLight(0x003300, 0.5);
+      const ambLight = new T.AmbientLight(0x88ff44, 0.06);
       scene.add(ambLight);
-      // Key — strong yellow-lime, drives lit areas to bright lime-yellow
-      const keyLight = new THREE.PointLight(0xeeff44, 14.0, 20);
-      keyLight.position.set(2, 3, 4);
+      const keyLight = new T.PointLight(0xaaff44, 2.2, 20);
+      keyLight.position.set(2, 2, 4);
       scene.add(keyLight);
-      // Fill — weak green opposite side, keeps shadow side green not black
-      const fillLight = new THREE.PointLight(0x005500, 1.2, 20);
-      fillLight.position.set(-3, -1, 2);
+      const fillLight = new T.PointLight(0x44cc00, 0.7, 20);
+      fillLight.position.set(-2, -1, 2);
       scene.add(fillLight);
-      // Rim — yellow-green from behind for outer shell edge glow
-      const rimLight = new THREE.PointLight(0xaaff00, 2.5, 15);
-      rimLight.position.set(0, 0, -4);
+      const rimLight = new T.PointLight(0x226600, 0.5, 20);
+      rimLight.position.set(0, -3, -3);
       scene.add(rimLight);
-      // Top — sharp white for cross rim specular
-      const topLight = new THREE.PointLight(0xffffff, 4.0, 8);
-      topLight.position.set(-0.5, 3, 2);
-      scene.add(topLight);
 
-      const clock = new THREE.Clock();
-      const loader = new GLTFLoader();
+      const clock = new T.Clock();
+      const loader = new T.GLTFLoader();
       loader.load(GLB_URL, (gltf) => {
         const model = gltf.scene;
-        const box = new THREE.Box3().setFromObject(model);
-        const centre = box.getCenter(new THREE.Vector3());
-        const size = box.getSize(new THREE.Vector3());
+        const box = new T.Box3().setFromObject(model);
+        const centre = box.getCenter(new T.Vector3());
+        const size = box.getSize(new T.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
         model.position.sub(centre);
         model.scale.setScalar(2.0 / maxDim);
         model.rotation.set(0, -Math.PI / 2, 0);
 
-        const innerMeshes = [];
-
         model.traverse(child => {
           if (!child.isMesh) return;
           const orig = child.material;
           const isTrans = orig && orig.name === 'Material.002';
-
-          if (isTrans) {
-            // Outer shell — physically transmissive glass, very low opacity
-            child.material = new THREE.MeshPhysicalMaterial({
-              color:             new THREE.Color(0.35, 0.85, 0.02),
-              emissive:          new THREE.Color(0.15, 0.55, 0.02),
-              emissiveIntensity: 1.2,
-              transmission:      1.0,
-              opacity:           0.06,
-              roughness:         0.08,
-              metalness:         0.0,
-              transparent:       true,
-              side:              THREE.DoubleSide,
-              depthWrite:        false,
-            });
-
-            // Bloom clone — DoubleSide so wireframe edges show,
-            // AdditiveBlending for soft neon glow with no hard edge
-            const bloomGeo = child.geometry.clone();
-            const bloomMat = new THREE.MeshBasicMaterial({
-              color:       new THREE.Color(0.20, 0.90, 0.02),
-              transparent: true,
-              opacity:     0.12,
-              side:        THREE.DoubleSide,
-              blending:    THREE.AdditiveBlending,
-              depthWrite:  false,
-              wireframe:   false,
-            });
-            const bloomMesh = new THREE.Mesh(bloomGeo, bloomMat);
-            bloomMesh.scale.setScalar(1.06);
-            model.add(bloomMesh);
-
-          } else {
-            // Inner orb — dark base, roughness 0.05 for broad specular
-            child.material = new THREE.MeshStandardMaterial({
-              color:             new THREE.Color(0.10, 0.50, 0.0),
-              emissive:          new THREE.Color(0.02, 0.10, 0.0),
-              emissiveIntensity: 0.3,
-              metalness:         0.0,
-              roughness:         0.05,
-              transparent:       false,
-              side:              THREE.FrontSide,
-            });
-            innerMeshes.push(child);
-          }
-        });
-
-        // Clearcoat clone for cross rim speculars
-        // Base is opaque black with depthWrite false so it doesn't occlude —
-        // only the clearcoat specular layer is visible on top of the inner orb
-        innerMeshes.forEach(mesh => {
-          const ccMat = new THREE.MeshPhysicalMaterial({
-            color:              new THREE.Color(0, 0, 0),
-            transparent:        false,
-            opacity:            1.0,
-            roughness:          0.05,
-            metalness:          0.0,
-            clearcoat:          1.0,
-            clearcoatRoughness: 0.0,
-            side:               THREE.FrontSide,
-            depthWrite:         false,
-            depthTest:          true,
+          child.material = new T.MeshStandardMaterial({
+            color:             isTrans ? new T.Color(0.22, 0.65, 0.0) : new T.Color(0.30, 0.80, 0.0),
+            emissive:          new T.Color(0.08, 0.28, 0.0),
+            emissiveIntensity: isTrans ? 0.25 : 0.45,
+            metalness:         0.25,
+            roughness:         0.05,
+            transparent:       isTrans,
+            opacity:           isTrans ? 0.72 : 1.0,
+            side:              T.DoubleSide,
           });
-          const ccMesh = new THREE.Mesh(mesh.geometry, ccMat);
-          ccMesh.position.copy(mesh.position);
-          ccMesh.rotation.copy(mesh.rotation);
-          ccMesh.scale.copy(mesh.scale);
-          mesh.parent.add(ccMesh);
         });
 
         scene.add(model);
 
         let mixer = null;
         if (gltf.animations && gltf.animations.length) {
-          mixer = new THREE.AnimationMixer(model);
+          mixer = new T.AnimationMixer(model);
           gltf.animations.forEach(clip => mixer.clipAction(clip).play());
         }
 
@@ -3920,7 +3855,7 @@ export default function App() {
           {/* Orb — click to toggle nav */}
           <div className="xbox-orb-wrap" onClick={() => setNavExpanded(v => !v)}>
             <div className="xbox-orb" />
-            <canvas ref={glbCanvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",borderRadius:"50%",pointerEvents:"none",zIndex:2}} />
+            <canvas ref={glbCanvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",borderRadius:"50%",pointerEvents:"none",zIndex:2,filter:"drop-shadow(0 0 6px #88ff00) drop-shadow(0 0 18px #66dd00aa) drop-shadow(0 0 40px #44aa0066)"}} />
             <div className="xbox-bubble" />
             <div className="xbox-bubble" />
             <div className="xbox-bubble" />
