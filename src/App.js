@@ -3633,10 +3633,10 @@ export default function App() {
       keyLight.shadow.camera.far = 20;
       keyLight.shadow.bias = -0.002;
       scene.add(keyLight);
-      const fillLight = new THREE.PointLight(0x44cc00, 0.35, 20);
+      const fillLight = new THREE.PointLight(0x44cc00, 0.7, 20);
       fillLight.position.set(-2, -1, 2);
       scene.add(fillLight);
-      const rimLight = new THREE.PointLight(0x226600, 0.4, 20);
+      const rimLight = new THREE.PointLight(0x226600, 0.5, 20);
       rimLight.position.set(0, -3, -3);
       scene.add(rimLight);
 
