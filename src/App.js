@@ -3794,7 +3794,7 @@ export default function App() {
       if (W < 10) { setTimeout(init, 150); return; }
 
       renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       renderer.setSize(W, H);
       renderer.setClearColor(0x000000, 0);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -3927,22 +3927,14 @@ export default function App() {
 
   const handleSetPage = (id) => {
     if (id === page) return;
-    const delay = 500;
-
-    // Fade out current backdrop then unmount it
-    if (page === "boards")    { setBoardsFading(true);    setTimeout(() => { setShowBoards(false);    setBoardsFading(false);    }, delay); }
-    if (page === "audio")     { setAudioFading(true);     setTimeout(() => { setShowAudio(false);     setAudioFading(false);     }, delay); }
-    if (page === "topcharts") { setTopChartsFading(true); setTimeout(() => { setShowTopCharts(false); setTopChartsFading(false); }, delay); }
-    if (page === "workout")   { setWorkoutFading(true);   setTimeout(() => { setShowWorkout(false);   setWorkoutFading(false);   }, delay); }
-
-    // Mount new backdrop only after old one is gone — prevents two Three.js scenes loading simultaneously
-    setTimeout(() => {
-      if (id === "boards")    setShowBoards(true);
-      if (id === "audio")     setShowAudio(true);
-      if (id === "topcharts") setShowTopCharts(true);
-      if (id === "workout")   setShowWorkout(true);
-    }, delay);
-
+    if (page === "boards")    { setBoardsFading(true);    setTimeout(() => { setShowBoards(false);    setBoardsFading(false);    }, 500); }
+    if (page === "audio")     { setAudioFading(true);     setTimeout(() => { setShowAudio(false);     setAudioFading(false);     }, 500); }
+    if (page === "topcharts") { setTopChartsFading(true); setTimeout(() => { setShowTopCharts(false); setTopChartsFading(false); }, 500); }
+    if (page === "workout")   { setWorkoutFading(true);   setTimeout(() => { setShowWorkout(false);   setWorkoutFading(false);   }, 500); }
+    if (id === "boards")    setShowBoards(true);
+    if (id === "audio")     setShowAudio(true);
+    if (id === "topcharts") setShowTopCharts(true);
+    if (id === "workout")   setShowWorkout(true);
     setPage(id);
   };
 
