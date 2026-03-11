@@ -835,6 +835,20 @@ const css = `
     33%      { transform: translate( 1.2px, -1.8px); }
     66%      { transform: translate(-0.8px,  1.2px); }
   }
+  .nav-item-wrap {
+    position: relative;
+    width: 240px;
+    height: 46px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .nav-item-wrap .nav-item {
+    pointer-events: none;
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    inset: 0;
+  }
   .nav-item::before { display: none; }
   .nav-item:hover {
     background: rgba(0,60,0,0.7);
@@ -1400,7 +1414,7 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
       // Far enough back to see full figure; x offset shifts figure to 2/3 right of screen
-      camera.position.set(0, 160, 660);
+      camera.position.set(-w * 0.32, 160, 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -1506,7 +1520,7 @@ function AudioFigureBackdrop({ fading = false }) {
 
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 5000);
-      camera.position.set(0, 160, 660);
+      camera.position.set(-w * 0.32, 160, 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -1997,7 +2011,7 @@ function WorkoutFigureBackdrop({ fading = false }) {
 
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
-      camera.position.set(0, 160, 660);
+      camera.position.set(-w * 0.32, 160, 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
