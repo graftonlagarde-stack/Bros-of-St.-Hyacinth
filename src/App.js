@@ -805,7 +805,7 @@ const css = `
     font-family: 'Orbitron', sans-serif;
     font-size: 11px; font-weight: 900;
     letter-spacing: 3px; text-transform: uppercase;
-    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    transition: all 0.15s ease;
     border: 1px solid rgba(136,255,0,0.15);
     background: rgba(0,20,0,0.55);
     color: rgba(136,255,120,0.55);
@@ -1428,8 +1428,8 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
       camera.position.set(-w * 0.32, 160, 660);
       camera.lookAt(0, 160, 0);
 
-      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: "high-performance" });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
       el.appendChild(renderer.domElement);
@@ -1499,7 +1499,6 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
       opacity: fbxFile ? opacity : 0,
       transition: "opacity 0.5s ease",
       filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)",
-      willChange: "opacity",
     }} />
   );
 }
@@ -1536,8 +1535,8 @@ function AudioFigureBackdrop({ fading = false }) {
       camera.position.set(-w * 0.32, 160, 660);
       camera.lookAt(0, 160, 0);
 
-      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: "high-performance" });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
       el.appendChild(renderer.domElement);
@@ -1770,10 +1769,7 @@ function AudioFigureBackdrop({ fading = false }) {
             const dt = Math.min(clock.getDelta(), 0.05);
             if (mixer) mixer.update(dt);
 
-            const toCamX = camera.position.x - crossGroup.position.x;
-            const toCamZ = camera.position.z - crossGroup.position.z;
-            const camAngle = Math.atan2(toCamX, toCamZ);
-            crossGroup.rotation.set(0, camAngle, 0);
+            crossGroup.rotation.set(0, 0, 0);
             updateGlitter(clock.elapsedTime);
             crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
 
@@ -1937,7 +1933,7 @@ function AudioFigureBackdrop({ fading = false }) {
     // Crux screen position read from projected Three.js coords each frame via cruxScreenPos ref
 
     // Fog layers — all centered tightly on crux, varied radii
-    const NUM_BLOBS = 10;
+    const NUM_BLOBS = 18;
     const blobs = Array.from({ length: NUM_BLOBS }, (_, i) => ({
       offX:      (Math.random() - 0.5) * 0.04,  // tight cluster around crux
       offY:      (Math.random() - 0.5) * 0.04,
@@ -1953,15 +1949,11 @@ function AudioFigureBackdrop({ fading = false }) {
       b: 255,
     }));
 
-    let lastFog = 0;
-    const draw = (ts) => {
-      rafId = requestAnimationFrame(draw);
-      if (ts - lastFog < 33) return; // throttle to ~30fps
-      lastFog = ts;
+    const draw = () => {
       const t  = (performance.now() - startTime) / 1000;
       const cw = canvas.offsetWidth;
       const ch = canvas.offsetHeight;
-      if (cw === 0 || ch === 0) return;
+      if (cw === 0 || ch === 0) { rafId = requestAnimationFrame(draw); return; }
       canvas.width  = cw;
       canvas.height = ch;
       const ctx = canvas.getContext("2d");
@@ -1971,8 +1963,8 @@ function AudioFigureBackdrop({ fading = false }) {
       const oy = ch * cruxScreenPos.current.y;
 
       blobs.forEach(b => {
-        const f1 = Math.abs(Math.sin(t * b.speed1 + b.phase1));
-        const f2 = Math.sin(t * b.speed2 + b.phase2) * 0.5 + 0.5;
+        const f1 = Math.abs(Math.sin(t * b.speed1 + b.phase1));  // rapid flicker
+        const f2 = Math.sin(t * b.speed2 + b.phase2) * 0.5 + 0.5; // slow modulation
         const alpha = b.baseAlpha * f1 * (0.4 + f2 * 0.6);
         if (alpha < 0.005) return;
         const bx = ox + b.offX * cw;
@@ -1988,8 +1980,10 @@ function AudioFigureBackdrop({ fading = false }) {
         ctx.arc(bx, by, r, 0, Math.PI * 2);
         ctx.fill();
       });
+
+      rafId = requestAnimationFrame(draw);
     };
-    rafId = requestAnimationFrame(draw);
+    draw();
     return () => cancelAnimationFrame(rafId);
   }, []);
 
@@ -1998,7 +1992,6 @@ function AudioFigureBackdrop({ fading = false }) {
       position: "fixed", left: 224, top: 0, right: 0, bottom: 70,
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
-      willChange: "opacity",
     }}>
       <div ref={mountRef} style={{ position: "absolute", inset: 0, filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)" }} />
       <canvas ref={fogCanvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
@@ -2038,8 +2031,8 @@ function WorkoutFigureBackdrop({ fading = false }) {
       camera.position.set(-w * 0.32, 160, 660);
       camera.lookAt(0, 160, 0);
 
-      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: "high-performance" });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
       el.appendChild(renderer.domElement);
@@ -2193,7 +2186,6 @@ function WorkoutFigureBackdrop({ fading = false }) {
       pointerEvents: "none", zIndex: -1,
       opacity, transition: "opacity 0.5s ease",
       filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)",
-      willChange: "opacity",
     }} />
   );
 }
@@ -3794,7 +3786,7 @@ export default function App() {
       if (W < 10) { setTimeout(init, 150); return; }
 
       renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(W, H);
       renderer.setClearColor(0x000000, 0);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -3926,15 +3918,26 @@ export default function App() {
   };
 
   const handleSetPage = (id) => {
-    if (id === page) return;
-    if (page === "boards")    { setBoardsFading(true);    setTimeout(() => { setShowBoards(false);    setBoardsFading(false);    }, 500); }
-    if (page === "audio")     { setAudioFading(true);     setTimeout(() => { setShowAudio(false);     setAudioFading(false);     }, 500); }
-    if (page === "topcharts") { setTopChartsFading(true); setTimeout(() => { setShowTopCharts(false); setTopChartsFading(false); }, 500); }
-    if (page === "workout")   { setWorkoutFading(true);   setTimeout(() => { setShowWorkout(false);   setWorkoutFading(false);   }, 500); }
-    if (id === "boards")    setShowBoards(true);
-    if (id === "audio")     setShowAudio(true);
-    if (id === "topcharts") setShowTopCharts(true);
-    if (id === "workout")   setShowWorkout(true);
+    if (id !== "boards" && page === "boards") {
+      setBoardsFading(true);
+      setTimeout(() => { setShowBoards(false); setBoardsFading(false); }, 500);
+    }
+    if (id === "boards") { setShowBoards(true); setBoardsFading(false); }
+    if (id !== "audio" && page === "audio") {
+      setAudioFading(true);
+      setTimeout(() => { setShowAudio(false); setAudioFading(false); }, 500);
+    }
+    if (id === "audio") { setShowAudio(true); setAudioFading(false); }
+    if (id !== "topcharts" && page === "topcharts") {
+      setTopChartsFading(true);
+      setTimeout(() => { setShowTopCharts(false); setTopChartsFading(false); }, 500);
+    }
+    if (id === "topcharts") { setShowTopCharts(true); setTopChartsFading(false); }
+    if (id !== "workout" && page === "workout") {
+      setWorkoutFading(true);
+      setTimeout(() => { setShowWorkout(false); setWorkoutFading(false); }, 500);
+    }
+    if (id === "workout") { setShowWorkout(true); setWorkoutFading(false); }
     setPage(id);
   };
 
