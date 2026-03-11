@@ -1586,7 +1586,12 @@ function AudioFigureBackdrop({ fading = false }) {
       const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), crossMat.clone());
       hBar.position.y = crossH * 0.70;
       crossGroup.add(vBar, hBar);
-      crossGroup.position.set(0, 0, 0);
+      // Center cross in full browser window (canvas starts at left:224, so canvas center ≠ screen center)
+      const crossCamDist = 660;
+      const crossFovRad = (40 * Math.PI) / 180;
+      const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
+      const crossCenterX = (w / 2 + 224 - window.innerWidth / 2) * crossWorldPerPx;
+      crossGroup.position.set(crossCenterX, 0, 0);
       scene.add(crossGroup);
 
       const wireMat = new THREE.MeshBasicMaterial({
@@ -1758,7 +1763,10 @@ function AudioFigureBackdrop({ fading = false }) {
             const dt = Math.min(clock.getDelta(), 0.05);
             if (mixer) mixer.update(dt);
 
-            crossGroup.rotation.set(0, 0, 0);
+            const toCamX = camera.position.x - crossGroup.position.x;
+            const toCamZ = camera.position.z - crossGroup.position.z;
+            const camAngle = Math.atan2(toCamX, toCamZ);
+            crossGroup.rotation.set(0, camAngle, 0);
             updateGlitter(clock.elapsedTime);
             crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
 
