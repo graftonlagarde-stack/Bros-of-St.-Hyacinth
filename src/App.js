@@ -746,7 +746,15 @@ const css = `
       inset -15px -15px 50px rgba(0,0,0,0.4);
     animation: orbPulse 3s ease-in-out infinite;
   }
-
+  .xbox-orb::after {
+    content: '✕';
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 72px; font-weight: 900;
+    color: rgba(0,0,0,0.35);
+    text-shadow: 0 0 20px rgba(0,255,0,0.3);
+    font-family: 'Orbitron', sans-serif;
+  }
   .xbox-bubble {
     position: absolute; border-radius: 50%;
     background: radial-gradient(circle at 35% 30%, rgba(180,255,80,0.7), rgba(0,180,0,0.3) 60%, transparent);
@@ -754,7 +762,7 @@ const css = `
     box-shadow: 0 0 12px rgba(136,255,0,0.3);
     animation: bubbleFloat 4s ease-in-out infinite;
   }
-  .xbox-bubble:nth-child(2) { width:38px; height:38px; top:8%;  left:62%; animation-delay:0s;    animation-duration:3.8s; z-index:3; position:absolute; }
+  .xbox-bubble:nth-child(2) { width:38px; height:38px; top:8%;  left:62%; animation-delay:0s;    animation-duration:3.8s; }
   .xbox-bubble:nth-child(3) { width:24px; height:24px; top:22%; left:80%; animation-delay:0.7s;  animation-duration:4.5s; }
   .xbox-bubble:nth-child(4) { width:18px; height:18px; top:55%; left:84%; animation-delay:1.4s;  animation-duration:3.2s; }
   .xbox-bubble:nth-child(5) { width:30px; height:30px; top:72%; left:68%; animation-delay:0.3s;  animation-duration:5s;   }
@@ -800,9 +808,9 @@ const css = `
     border: none;
     background: transparent;
     color: rgba(136,255,120,0.55);
+    backdrop-filter: none;
     display: flex; align-items: center;
     animation: navIdle 8s ease-in-out infinite;
-    overflow: visible;
   }
   .nav-item::before {
     content: '';
@@ -823,7 +831,7 @@ const css = `
       0.00%  12.29%
     );
     z-index: -1;
-    transition: all 0.15s ease;
+    transition: background 0.15s ease, border-color 0.15s ease;
   }
   .nav-item:nth-child(1) { animation-delay:  0.0s; }
   .nav-item:nth-child(2) { animation-delay: -1.6s; }
@@ -1521,10 +1529,7 @@ function AudioFigureBackdrop({ fading = false }) {
       rendererInst = renderer;
 
       // ── Cross ──────────────────────────────────────────────────────────────
-      const crossDist = 60;
-      const facingRad = (195 * Math.PI) / 180;
-      const cx = Math.sin(facingRad) * crossDist;
-      const cz = Math.cos(facingRad) * crossDist;
+
 
       // Dynamic silver-white glitter texture — regenerated each frame
       const glitterCanvas = document.createElement("canvas");
@@ -1745,7 +1750,6 @@ function AudioFigureBackdrop({ fading = false }) {
             const dt = Math.min(clock.getDelta(), 0.05);
             if (mixer) mixer.update(dt);
 
-            // Cross faces perfectly forward toward camera
             crossGroup.rotation.set(0, 0, 0);
             updateGlitter(clock.elapsedTime);
             crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
@@ -3149,11 +3153,11 @@ function TopChartsPage({ username }) {
                         {entry.name}{entry.isMe ? " (You)" : ""}
                       </div>
                       <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>
-                        {barPct < 100 ? `${Math.round(barPct)}% of top ${isPullup ? "count" : "lift"}` : "◈ CURRENT LEADER"}
+                        {barPct < 100 ? `${Math.round(barPct)}% of top ${isBodyweightChart ? "count" : "lift"}` : "◈ CURRENT LEADER"}
                       </div>
                     </div>
                     <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:22,fontWeight:900,color: isTop ? "var(--accent)" : "var(--chrome)",letterSpacing:2,textShadow: isTop ? "var(--glow-sm)" : "none"}}>
-                      {entry.weight} <span style={{fontSize:11,color:"var(--muted)",fontFamily:"'Rajdhani',sans-serif",fontWeight:400}}>{isPullup ? "reps" : "lbs"}</span>
+                      {entry.weight} <span style={{fontSize:11,color:"var(--muted)",fontFamily:"'Rajdhani',sans-serif",fontWeight:400}}>{isBodyweightChart ? "reps" : "lbs"}</span>
                     </div>
                   </div>
                 </div>
@@ -3170,7 +3174,7 @@ function TopChartsPage({ username }) {
           <thead><tr><th>Exercise</th><th>Leader</th><th>Top</th></tr></thead>
           <tbody>
             {EXERCISE_LIST.map(ex => {
-              const board = ex === "Pull-up" ? buildPullupLeaderboard() : buildLeaderboard(ex, chartRep);
+              const board = (ex === "Pull-up" || ex === "Push-up") ? buildBodyweightLeaderboard(ex) : buildLeaderboard(ex, chartRep);
               const top = board[0];
               return (
                 <tr key={ex}>
@@ -3774,10 +3778,10 @@ export default function App() {
       cam.position.set(0, 0, 3.2);
 
       // Ambient — warm yellow-green tint
-      const ambLight = new THREE.AmbientLight(0xccff44, 0.3);
+      const ambLight = new THREE.AmbientLight(0xccff44, 0.12);
       scene.add(ambLight);
       // Key — bright yellow-lime from top-front-right
-      const keyLight = new THREE.PointLight(0xeeff44, 6.0, 20);
+      const keyLight = new THREE.PointLight(0xeeff44, 10.0, 20);
       keyLight.position.set(2, 3, 4);
       scene.add(keyLight);
       // Fill — deep green
@@ -3809,7 +3813,9 @@ export default function App() {
           if (!child.isMesh) return;
           const orig = child.material;
           const isTrans = orig && orig.name === 'Material.002';
+
           if (isTrans) {
+            // Outer shell — increased opacity, still transparent
             child.material = new THREE.MeshStandardMaterial({
               color:             new THREE.Color(0.55, 0.95, 0.05),
               emissive:          new THREE.Color(0.18, 0.45, 0.0),
@@ -3817,21 +3823,24 @@ export default function App() {
               metalness:         0.1,
               roughness:         0.02,
               transparent:       true,
-              opacity:           0.25,
+              opacity:           0.35,
               side:              THREE.DoubleSide,
               depthWrite:        false,
             });
-            // Edges wireframe — hard edges only at 15° threshold, moves with shell
+            // EdgesGeometry — hard edges only (cross contours), blurred via CSS
             const edgesGeo = new THREE.EdgesGeometry(child.geometry, 15);
             const edgesMat = new THREE.LineBasicMaterial({
               color:       0xccff00,
               transparent: true,
-              opacity:     0.95,
+              opacity:     0.75,
               blending:    THREE.AdditiveBlending,
               depthWrite:  false,
+              linewidth:   2,
             });
-            child.add(new THREE.LineSegments(edgesGeo, edgesMat));
+            const edgesMesh = new THREE.LineSegments(edgesGeo, edgesMat);
+            child.add(edgesMesh);
           } else {
+            // Inner orb — restored to reference values
             child.material = new THREE.MeshStandardMaterial({
               color:             new THREE.Color(0.30, 0.80, 0.0),
               emissive:          new THREE.Color(0.05, 0.20, 0.0),
@@ -3983,8 +3992,7 @@ export default function App() {
           {/* Orb — click to toggle nav */}
           <div className="xbox-orb-wrap" onClick={() => setNavExpanded(v => !v)}>
             <div className="xbox-orb" />
-            <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(circle at 50% 55%, transparent 30%, rgba(0,5,0,0.5) 62%, rgba(0,0,0,0.80) 100%)",zIndex:1,pointerEvents:"none"}} />
-            <canvas ref={glbCanvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",borderRadius:"50%",pointerEvents:"none",zIndex:2}} />
+            <canvas ref={glbCanvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",borderRadius:"50%",pointerEvents:"none",zIndex:2,filter:"blur(0.5px) drop-shadow(0 0 10px #aaff00cc) drop-shadow(0 0 25px #88ff0099) drop-shadow(0 0 55px #55dd0066) drop-shadow(0 0 90px #33aa0033)"}} />
             <div className="xbox-bubble" />
             <div className="xbox-bubble" />
             <div className="xbox-bubble" />
