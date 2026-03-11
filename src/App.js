@@ -805,7 +805,7 @@ const css = `
     font-family: 'Orbitron', sans-serif;
     font-size: 11px; font-weight: 900;
     letter-spacing: 3px; text-transform: uppercase;
-    transition: all 0.15s ease;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
     border: 1px solid rgba(136,255,0,0.15);
     background: rgba(0,20,0,0.55);
     color: rgba(136,255,120,0.55);
@@ -837,10 +837,14 @@ const css = `
   }
   .nav-item-wrap {
     position: relative;
-    width: 240px;
+    width: 220px;
     height: 46px;
     cursor: pointer;
     flex-shrink: 0;
+    transition: width 0.15s ease;
+  }
+  .nav-item-wrap.active-wrap {
+    width: 270px;
   }
   .nav-item-wrap.active-wrap .nav-item {
     background: linear-gradient(90deg, #aaee00 0%, #88cc00 60%, #669900 100%);
@@ -850,7 +854,7 @@ const css = `
     text-shadow: none;
     transform: translateX(6px) scaleY(1.06);
     font-size: 12px;
-    width: 240px;
+    width: 100%;
   }
   .nav-item-wrap .nav-item {
     pointer-events: none;
@@ -858,6 +862,8 @@ const css = `
     height: 100%;
     position: absolute;
     inset: 0;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+                box-shadow 0.15s ease, transform 0.15s ease, font-size 0.15s ease, width 0.15s ease;
   }
   .nav-item-wrap:hover .nav-item {
     background: rgba(0,60,0,0.7);
