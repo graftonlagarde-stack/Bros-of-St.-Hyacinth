@@ -2,45 +2,6 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
-import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader";
-
-const RAILWAY_URL = "https://bros-of-st-hyacinth-production.up.railway.app";
-
-// ─── ASSET PRELOADER ──────────────────────────────────────────────────────────
-// Fetch + fully parse all 3D assets once at startup.
-// Backdrops clone the pre-built objects — zero parse cost on tab switch.
-const objCache  = new Map(); // url -> parsed THREE object (FBX group / GLTF)
-const gltfCache = new Map(); // url -> parsed GLTF result
-
-const _fbxLoader  = new FBXLoader();
-const _gltfLoader = new GLTFLoader();
-
-const FBX_URLS = [
-  "/Talking_On_A_Cell_Phone.fbx",
-  "/Warming_Up.fbx",
-  "/Praying.fbx",
-  "/Idle_To_Push_Up.fbx",
-  "/Push_Up.fbx",
-];
-const GLB_URL_PRELOAD = `${RAILWAY_URL}/Hyacinth_Sphere.glb`;
-
-(async () => {
-  // Parse FBX files
-  for (const url of FBX_URLS) {
-    try {
-      const buf = await fetch(url).then(r => r.arrayBuffer());
-      const obj = _fbxLoader.parse(buf, "");
-      objCache.set(url, obj);
-    } catch (e) { console.warn("FBX preload failed:", url, e); }
-  }
-  // Parse GLB
-  try {
-    const buf = await fetch(GLB_URL_PRELOAD).then(r => r.arrayBuffer());
-    await new Promise((res, rej) => _gltfLoader.parse(buf, "", res, rej));
-    // Re-parse fresh each time since GLTFLoader mutates; store the buffer instead
-    objCache.set(GLB_URL_PRELOAD, buf);
-  } catch (e) { console.warn("GLB preload failed:", e); }
-})();
 
 
 // ─── STORAGE HELPERS ──────────────────────────────────────────────────────────
@@ -844,7 +805,7 @@ const css = `
     font-family: 'Orbitron', sans-serif;
     font-size: 11px; font-weight: 900;
     letter-spacing: 3px; text-transform: uppercase;
-    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    transition: all 0.15s ease;
     border: 1px solid rgba(136,255,0,0.15);
     background: rgba(0,20,0,0.55);
     color: rgba(136,255,120,0.55);
@@ -876,14 +837,10 @@ const css = `
   }
   .nav-item-wrap {
     position: relative;
-    width: 220px;
+    width: 240px;
     height: 46px;
     cursor: pointer;
     flex-shrink: 0;
-    transition: width 0.15s ease;
-  }
-  .nav-item-wrap.active-wrap {
-    width: 270px;
   }
   .nav-item-wrap.active-wrap .nav-item {
     background: linear-gradient(90deg, #aaee00 0%, #88cc00 60%, #669900 100%);
@@ -893,7 +850,7 @@ const css = `
     text-shadow: none;
     transform: translateX(6px) scaleY(1.06);
     font-size: 12px;
-    width: 100%;
+    width: 240px;
   }
   .nav-item-wrap .nav-item {
     pointer-events: none;
@@ -901,8 +858,6 @@ const css = `
     height: 100%;
     position: absolute;
     inset: 0;
-    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
-                box-shadow 0.15s ease, transform 0.15s ease, font-size 0.15s ease, width 0.15s ease;
   }
   .nav-item-wrap:hover .nav-item {
     background: rgba(0,60,0,0.7);
@@ -1453,69 +1408,68 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
     let rendererInst = null;
     let cancelled = false;
 
-    if (cancelled) return;
-    const w = window.innerWidth - 224;
-    const h = window.innerHeight - 70;
-
-    const scene  = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
-    // Far enough back to see full figure; x offset shifts figure to 2/3 right of screen
-    camera.position.set(-w * 0.32, 160, 660);
-    camera.lookAt(0, 160, 0);
-
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "high-performance" });
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(w, h);
-    renderer.setClearColor(0x000000, 0);
-    el.appendChild(renderer.domElement);
-    rendererInst = renderer;
-
-    const wireMat = new THREE.MeshBasicMaterial({
-      color: 0x00ffcc, wireframe: true,
-      transparent: true, opacity: 0.32,
-      blending: THREE.AdditiveBlending, depthWrite: false,
-    });
-
-    let mixer = null;
-    const clock = new THREE.Clock();
-
-    const _loadFigObj = (obj) => {
+    Promise.all([
+      import("three"),
+      import("three/examples/jsm/loaders/FBXLoader"),
+    ]).then(([THREE, { FBXLoader }]) => {
       if (cancelled) return;
-      obj.traverse(c => {
-        if (c.isMesh) { c.material = wireMat; c.castShadow = c.receiveShadow = false; }
+      const w = window.innerWidth - 224;
+      const h = window.innerHeight - 70;
+
+      const scene  = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
+      // Far enough back to see full figure; x offset shifts figure to 2/3 right of screen
+      camera.position.set(-w * 0.32, 160, 660);
+      camera.lookAt(0, 160, 0);
+
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(w, h);
+      renderer.setClearColor(0x000000, 0);
+      el.appendChild(renderer.domElement);
+      rendererInst = renderer;
+
+      const wireMat = new THREE.MeshBasicMaterial({
+        color: 0x00ffcc, wireframe: true,
+        transparent: true, opacity: 0.32,
+        blending: THREE.AdditiveBlending, depthWrite: false,
       });
-      const box    = new THREE.Box3().setFromObject(obj);
-      const size   = box.getSize(new THREE.Vector3());
-      const fovRad = (40 * Math.PI) / 180;
-      const worldH = 2 * Math.tan(fovRad / 2) * 600;
-      const scale  = (worldH * 0.65) / size.y;
-      const newScale = scale * 1.495;
-      obj.scale.setScalar(newScale);
-      const box2   = new THREE.Box3().setFromObject(obj);
-      const extraH = size.y * (newScale - scale);
-      obj.position.set(110, -box2.min.y - extraH + 70, 0);
-      obj.rotation.y = -Math.PI / 6;  // 30° clockwise
-      scene.add(obj);
-      if (obj.animations?.length) {
-        mixer = new THREE.AnimationMixer(obj);
-        const a = mixer.clipAction(obj.animations[0]);
-        a.setLoop(THREE.LoopRepeat, Infinity);
-        a.play();
-      }
-    };
-    if (objCache.has(fbxFile)) {
-      _loadFigObj(objCache.get(fbxFile).clone(true));
-    } else {
-      new FBXLoader().load(fbxFile, _loadFigObj, undefined, e => console.warn("FBX load error:", e));
-    }
 
-    const animate = () => {
-      animId = requestAnimationFrame(animate);
-      if (mixer) mixer.update(clock.getDelta());
-      renderer.render(scene, camera);
-    };
-    animate();
+      let mixer = null;
+      const clock = new THREE.Clock();
 
+      new FBXLoader().load(fbxFile, (obj) => {
+        if (cancelled) return;
+        obj.traverse(c => {
+          if (c.isMesh) { c.material = wireMat; c.castShadow = c.receiveShadow = false; }
+        });
+        const box    = new THREE.Box3().setFromObject(obj);
+        const size   = box.getSize(new THREE.Vector3());
+        const fovRad = (40 * Math.PI) / 180;
+        const worldH = 2 * Math.tan(fovRad / 2) * 600;
+        const scale  = (worldH * 0.65) / size.y;
+        const newScale = scale * 1.495;
+        obj.scale.setScalar(newScale);
+        const box2   = new THREE.Box3().setFromObject(obj);
+        const extraH = size.y * (newScale - scale);
+        obj.position.set(110, -box2.min.y - extraH + 70, 0);
+        obj.rotation.y = -Math.PI / 6;  // 30° clockwise
+        scene.add(obj);
+        if (obj.animations?.length) {
+          mixer = new THREE.AnimationMixer(obj);
+          const a = mixer.clipAction(obj.animations[0]);
+          a.setLoop(THREE.LoopRepeat, Infinity);
+          a.play();
+        }
+      }, undefined, e => console.warn("FBX load error:", e));
+
+      const animate = () => {
+        animId = requestAnimationFrame(animate);
+        if (mixer) mixer.update(clock.getDelta());
+        renderer.render(scene, camera);
+      };
+      animate();
+    }).catch(e => console.warn("Three.js import error:", e));
 
     return () => {
       cancelled = true;
@@ -1539,7 +1493,6 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
       opacity: fbxFile ? opacity : 0,
       transition: "opacity 0.5s ease",
       filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)",
-      willChange: "opacity",
     }} />
   );
 }
@@ -1563,397 +1516,396 @@ function AudioFigureBackdrop({ fading = false }) {
     let rendererInst = null;
     let cancelled = false;
 
-    if (cancelled) return;
-    const w = window.innerWidth - 224;
-    const h = window.innerHeight - 70;
-
-    const scene  = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 5000);
-    camera.position.set(-w * 0.32, 160, 660);
-    camera.lookAt(0, 160, 0);
-
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "high-performance" });
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(w, h);
-    renderer.setClearColor(0x000000, 0);
-    el.appendChild(renderer.domElement);
-    rendererInst = renderer;
-
-    // ── Cross ──────────────────────────────────────────────────────────────
-
-
-    // Dynamic silver-white glitter texture — regenerated each frame
-    const glitterCanvas = document.createElement("canvas");
-    glitterCanvas.width = glitterCanvas.height = 128;
-    const gCtx = glitterCanvas.getContext("2d");
-    const glitterTex = new THREE.CanvasTexture(glitterCanvas);
-
-    const updateGlitter = (time) => {
-      gCtx.clearRect(0, 0, 128, 128);
-      // Silver-white base gradient
-      const grd = gCtx.createLinearGradient(0, 0, 128, 128);
-      grd.addColorStop(0,   "#e8eef2");
-      grd.addColorStop(0.4, "#ffffff");
-      grd.addColorStop(0.7, "#d4e4f0");
-      grd.addColorStop(1,   "#f0f4f8");
-      gCtx.fillStyle = grd;
-      gCtx.fillRect(0, 0, 128, 128);
-      // Animated sparkles
-      const rng = (s) => { let x = Math.sin(s) * 43758.5453; return x - Math.floor(x); };
-      for (let i = 0; i < 180; i++) {
-        const tx = time * 0.7 + i * 1.3;
-        const x  = rng(tx) * 128;
-        const y  = rng(tx + 99) * 128;
-        const r  = rng(tx + 17) * 3 + 0.5;
-        const br = Math.sin(time * (2 + rng(i) * 4) + i) * 0.5 + 0.5;
-        const a  = br * 0.9 + 0.1;
-        const spark = gCtx.createRadialGradient(x, y, 0, x, y, r * 4);
-        spark.addColorStop(0,   `rgba(255,255,255,${a})`);
-        spark.addColorStop(0.3, `rgba(210,230,245,${a * 0.5})`);
-        spark.addColorStop(1,   "rgba(255,255,255,0)");
-        gCtx.fillStyle = spark;
-        gCtx.beginPath(); gCtx.arc(x, y, r * 4, 0, Math.PI * 2); gCtx.fill();
-      }
-      glitterTex.needsUpdate = true;
-    };
-
-    const crossMat = new THREE.MeshBasicMaterial({
-      map: glitterTex, transparent: true, opacity: 1.0,
-      blending: THREE.AdditiveBlending, depthWrite: false,
-    });
-
-    const crossGroup = new THREE.Group();
-    const crossH = 230, crossW = 125, barThick = 23;
-    const vBar = new THREE.Mesh(new THREE.BoxGeometry(barThick, crossH, barThick), crossMat);
-    vBar.position.y = crossH / 2;
-    const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), crossMat.clone());
-    hBar.position.y = crossH * 0.70;
-    crossGroup.add(vBar, hBar);
-    // Center cross in full browser window (canvas starts at left:224, so canvas center ≠ screen center)
-    const crossCamDist = 660;
-    const crossFovRad = (40 * Math.PI) / 180;
-    const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
-    const crossCenterX = -160 * crossWorldPerPx;
-    crossGroup.position.set(crossCenterX, 0, 0);
-    scene.add(crossGroup);
-
-    const wireMat = new THREE.MeshBasicMaterial({
-      color: 0x00ffcc, wireframe: true,
-      transparent: true, opacity: 0.32,
-      blending: THREE.AdditiveBlending, depthWrite: false,
-    });
-
-    let mixer = null;
-    const clock = new THREE.Clock();
-
-    const _loadPraying = (obj) => {
+    Promise.all([
+      import("three"),
+      import("three/examples/jsm/loaders/FBXLoader"),
+    ]).then(([THREE, { FBXLoader }]) => {
       if (cancelled) return;
-      obj.traverse(c => {
-        if (c.isMesh) { c.material = wireMat; c.castShadow = c.receiveShadow = false; }
+      const w = window.innerWidth - 224;
+      const h = window.innerHeight - 70;
+
+      const scene  = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 5000);
+      camera.position.set(-w * 0.32, 160, 660);
+      camera.lookAt(0, 160, 0);
+
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(w, h);
+      renderer.setClearColor(0x000000, 0);
+      el.appendChild(renderer.domElement);
+      rendererInst = renderer;
+
+      // ── Cross ──────────────────────────────────────────────────────────────
+
+
+      // Dynamic silver-white glitter texture — regenerated each frame
+      const glitterCanvas = document.createElement("canvas");
+      glitterCanvas.width = glitterCanvas.height = 128;
+      const gCtx = glitterCanvas.getContext("2d");
+      const glitterTex = new THREE.CanvasTexture(glitterCanvas);
+
+      const updateGlitter = (time) => {
+        gCtx.clearRect(0, 0, 128, 128);
+        // Silver-white base gradient
+        const grd = gCtx.createLinearGradient(0, 0, 128, 128);
+        grd.addColorStop(0,   "#e8eef2");
+        grd.addColorStop(0.4, "#ffffff");
+        grd.addColorStop(0.7, "#d4e4f0");
+        grd.addColorStop(1,   "#f0f4f8");
+        gCtx.fillStyle = grd;
+        gCtx.fillRect(0, 0, 128, 128);
+        // Animated sparkles
+        const rng = (s) => { let x = Math.sin(s) * 43758.5453; return x - Math.floor(x); };
+        for (let i = 0; i < 180; i++) {
+          const tx = time * 0.7 + i * 1.3;
+          const x  = rng(tx) * 128;
+          const y  = rng(tx + 99) * 128;
+          const r  = rng(tx + 17) * 3 + 0.5;
+          const br = Math.sin(time * (2 + rng(i) * 4) + i) * 0.5 + 0.5;
+          const a  = br * 0.9 + 0.1;
+          const spark = gCtx.createRadialGradient(x, y, 0, x, y, r * 4);
+          spark.addColorStop(0,   `rgba(255,255,255,${a})`);
+          spark.addColorStop(0.3, `rgba(210,230,245,${a * 0.5})`);
+          spark.addColorStop(1,   "rgba(255,255,255,0)");
+          gCtx.fillStyle = spark;
+          gCtx.beginPath(); gCtx.arc(x, y, r * 4, 0, Math.PI * 2); gCtx.fill();
+        }
+        glitterTex.needsUpdate = true;
+      };
+
+      const crossMat = new THREE.MeshBasicMaterial({
+        map: glitterTex, transparent: true, opacity: 1.0,
+        blending: THREE.AdditiveBlending, depthWrite: false,
       });
-      const box    = new THREE.Box3().setFromObject(obj);
-      const size   = box.getSize(new THREE.Vector3());
-      const fovRad = (40 * Math.PI) / 180;
-      const worldH = 2 * Math.tan(fovRad / 2) * 600;
-      const scale  = (worldH * 0.65) / size.y;
-      const newScale = scale * 1.495;
-      obj.scale.setScalar(newScale);
-      const box2   = new THREE.Box3().setFromObject(obj);
-      const extraH = size.y * (newScale - scale);
-      obj.position.set(110, -box2.min.y - extraH + 70, 0);
-      // 195° clockwise rotation (135 + 60)
-      obj.rotation.y = -(Math.PI * 195) / 180;
-      scene.add(obj);
 
-      // Align cross base to figure's ground level (vBar.position.y = crossH/2 already lifts it)
-      crossGroup.position.y = -box2.min.y - extraH + 70 + 180;
+      const crossGroup = new THREE.Group();
+      const crossH = 230, crossW = 125, barThick = 23;
+      const vBar = new THREE.Mesh(new THREE.BoxGeometry(barThick, crossH, barThick), crossMat);
+      vBar.position.y = crossH / 2;
+      const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), crossMat.clone());
+      hBar.position.y = crossH * 0.70;
+      crossGroup.add(vBar, hBar);
+      // Center cross in full browser window (canvas starts at left:224, so canvas center ≠ screen center)
+      const crossCamDist = 660;
+      const crossFovRad = (40 * Math.PI) / 180;
+      const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
+      const crossCenterX = (w / 2 + 224 - window.innerWidth / 2) * crossWorldPerPx;
+      crossGroup.position.set(crossCenterX, 0, 0);
+      scene.add(crossGroup);
 
-      if (obj.animations?.length) {
-        const clip = obj.animations[0];
-        const fps  = 30;
-        mixer = new THREE.AnimationMixer(obj);
+      const wireMat = new THREE.MeshBasicMaterial({
+        color: 0x00ffcc, wireframe: true,
+        transparent: true, opacity: 0.32,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
 
-        // Intro: play frames 0–45 once at 0.4x speed
-        const intro = THREE.AnimationUtils.subclip(clip, "intro", 0, 45, fps);
-        const introAction = mixer.clipAction(intro);
-        introAction.setLoop(THREE.LoopOnce, 1);
-        introAction.clampWhenFinished = true;
-        introAction.timeScale = 0.5;
-        introAction.play();
+      let mixer = null;
+      const clock = new THREE.Clock();
 
-        // Phase tracking: "intro" → "bounce" → "breathing"
-        let phase = "intro";
-        let breathTime = 0;
-        let bounceTime = 0;
-
-        // Physics bounce — upward kick, 1.5x faster than before
-        const restY     = obj.position.y;
-        let   vel       = 0;
-        let   disp      = 0;
-        const stiffness = 90;
-        const damping   = 18.0;
-        const kickVel   = 44;   // upward, modest
-
-        // Collect foot bones
-        const footBones = [];
+      new FBXLoader().load("/Praying.fbx", (obj) => {
+        if (cancelled) return;
         obj.traverse(c => {
-          if (c.isBone && (c.name.toLowerCase().includes("foot") ||
-                           c.name.toLowerCase().includes("toe") ||
-                           c.name.toLowerCase().includes("ankle"))) {
-            footBones.push({ bone: c, worldPos: new THREE.Vector3() });
-          }
+          if (c.isMesh) { c.material = wireMat; c.castShadow = c.receiveShadow = false; }
         });
-        let footPositionsLocked = false;
+        const box    = new THREE.Box3().setFromObject(obj);
+        const size   = box.getSize(new THREE.Vector3());
+        const fovRad = (40 * Math.PI) / 180;
+        const worldH = 2 * Math.tan(fovRad / 2) * 600;
+        const scale  = (worldH * 0.65) / size.y;
+        const newScale = scale * 1.495;
+        obj.scale.setScalar(newScale);
+        const box2   = new THREE.Box3().setFromObject(obj);
+        const extraH = size.y * (newScale - scale);
+        obj.position.set(110, -box2.min.y - extraH + 70, 0);
+        // 195° clockwise rotation (135 + 60)
+        obj.rotation.y = -(Math.PI * 195) / 180;
+        scene.add(obj);
 
-        // Collect torso/thigh bones for forward lean
-        const leanBones = [];
-        obj.traverse(c => {
-          if (c.isBone && (c.name.toLowerCase().includes("spine") ||
-                           c.name.toLowerCase().includes("chest") ||
-                           c.name.toLowerCase().includes("thigh") ||
-                           c.name.toLowerCase().includes("upleg"))) {
-            leanBones.push({ bone: c, baseRot: c.quaternion.clone() });
-          }
-        });
+        // Align cross base to figure's ground level (vBar.position.y = crossH/2 already lifts it)
+        crossGroup.position.y = -box2.min.y - extraH + 70 + 180;
 
-        // Collect arm bones for ragdoll
-        const armBones = [];
-        obj.traverse(c => {
-          if (c.isBone && (c.name.toLowerCase().includes("arm") ||
-                           c.name.toLowerCase().includes("forearm") ||
-                           c.name.toLowerCase().includes("shoulder") ||
-                           c.name.toLowerCase().includes("elbow") ||
-                           c.name.toLowerCase().includes("hand"))) {
-            armBones.push({ bone: c, baseRot: null, dispX: 0, dispY: 0, velX: 0, velY: 0 });
-          }
-        });
+        if (obj.animations?.length) {
+          const clip = obj.animations[0];
+          const fps  = 30;
+          mixer = new THREE.AnimationMixer(obj);
 
-        // Estimate bounce duration for normalizing t (stiffness/damping gives ~settle time)
-        const bounceDuration = 1.2; // seconds estimate
+          // Intro: play frames 0–45 once at 0.4x speed
+          const intro = THREE.AnimationUtils.subclip(clip, "intro", 0, 45, fps);
+          const introAction = mixer.clipAction(intro);
+          introAction.setLoop(THREE.LoopOnce, 1);
+          introAction.clampWhenFinished = true;
+          introAction.timeScale = 0.5;
+          introAction.play();
 
-        mixer.addEventListener("finished", () => {
-          if (phase === "intro") {
-            phase = "bounce";
-            vel   = kickVel;
-            disp  = 0;
-            bounceTime = 0;
-            footBones.forEach(fb => {
-              fb.bone.updateWorldMatrix(true, false);
-              fb.worldPos = new THREE.Vector3();
-              fb.bone.getWorldPosition(fb.worldPos);
-            });
-            footPositionsLocked = true;
-            // Snapshot base rotations at frame 45
-            leanBones.forEach(lb => { lb.baseRot = lb.bone.quaternion.clone(); });
-            armBones.forEach(ab => {
-              ab.baseRot = ab.bone.quaternion.clone();
-              ab.dispX = 0; ab.dispY = 0; ab.velX = 0; ab.velY = 0;
-            });
-          }
-        });
+          // Phase tracking: "intro" → "bounce" → "breathing"
+          let phase = "intro";
+          let breathTime = 0;
+          let bounceTime = 0;
 
-        const breathBones = [];
-        obj.traverse(c => {
-          if (c.isBone && (c.name.toLowerCase().includes("spine") ||
-                           c.name.toLowerCase().includes("chest") ||
-                           c.name.toLowerCase().includes("neck"))) {
-            breathBones.push({ bone: c, baseScale: c.scale.clone() });
-          }
-        });
+          // Physics bounce — upward kick, 1.5x faster than before
+          const restY     = obj.position.y;
+          let   vel       = 0;
+          let   disp      = 0;
+          const stiffness = 90;
+          const damping   = 18.0;
+          const kickVel   = 44;   // upward, modest
 
-        // Idle sway — upper body bones only (no knees/feet/ankles/toes)
-        const idleBones = [];
-        obj.traverse(c => {
-          if (!c.isBone) return;
-          const n = c.name.toLowerCase();
-          const isUpper = n.includes("spine") || n.includes("chest") ||
-                          n.includes("neck")  || n.includes("head")  ||
-                          n.includes("shoulder") || n.includes("arm") ||
-                          n.includes("forearm")  || n.includes("hand") ||
-                          n.includes("clavicle");
-          if (isUpper) {
-            // Each bone gets unique phase offsets for organic, non-repeating feel
-            idleBones.push({
-              bone:   c,
-              baseRot: null, // snapshotted when breathing starts
-              // Sway frequencies and phases — all slightly irrational for aperiodic motion
-              phX1: Math.random() * Math.PI * 2, frX1: 0.31 + Math.random() * 0.18,
-              phX2: Math.random() * Math.PI * 2, frX2: 0.71 + Math.random() * 0.22,
-              phZ1: Math.random() * Math.PI * 2, frZ1: 0.27 + Math.random() * 0.15,
-              phZ2: Math.random() * Math.PI * 2, frZ2: 0.63 + Math.random() * 0.19,
-              ampX: 0.008 + Math.random() * 0.006,
-              ampZ: 0.006 + Math.random() * 0.005,
-            });
-          }
-        });
+          // Collect foot bones
+          const footBones = [];
+          obj.traverse(c => {
+            if (c.isBone && (c.name.toLowerCase().includes("foot") ||
+                             c.name.toLowerCase().includes("toe") ||
+                             c.name.toLowerCase().includes("ankle"))) {
+              footBones.push({ bone: c, worldPos: new THREE.Vector3() });
+            }
+          });
+          let footPositionsLocked = false;
 
-        // Lower leg / foot bones to keep locked during idle
-        const lowerLockBones = [];
-        obj.traverse(c => {
-          if (!c.isBone) return;
-          const n = c.name.toLowerCase();
-          if (n.includes("knee") || n.includes("foot") ||
-              n.includes("toe")  || n.includes("ankle")) {
-            lowerLockBones.push({ bone: c, worldPos: null });
-          }
-        });
+          // Collect torso/thigh bones for forward lean
+          const leanBones = [];
+          obj.traverse(c => {
+            if (c.isBone && (c.name.toLowerCase().includes("spine") ||
+                             c.name.toLowerCase().includes("chest") ||
+                             c.name.toLowerCase().includes("thigh") ||
+                             c.name.toLowerCase().includes("upleg"))) {
+              leanBones.push({ bone: c, baseRot: c.quaternion.clone() });
+            }
+          });
 
-        const tmpQ  = new THREE.Quaternion();
-        const leanQ = new THREE.Quaternion();
+          // Collect arm bones for ragdoll
+          const armBones = [];
+          obj.traverse(c => {
+            if (c.isBone && (c.name.toLowerCase().includes("arm") ||
+                             c.name.toLowerCase().includes("forearm") ||
+                             c.name.toLowerCase().includes("shoulder") ||
+                             c.name.toLowerCase().includes("elbow") ||
+                             c.name.toLowerCase().includes("hand"))) {
+              armBones.push({ bone: c, baseRot: null, dispX: 0, dispY: 0, velX: 0, velY: 0 });
+            }
+          });
 
-        const animateWithBreath = () => {
-          animId = requestAnimationFrame(animateWithBreath);
-          const dt = Math.min(clock.getDelta(), 0.05);
-          if (mixer) mixer.update(dt);
+          // Estimate bounce duration for normalizing t (stiffness/damping gives ~settle time)
+          const bounceDuration = 1.2; // seconds estimate
 
-          const toCamX = camera.position.x - crossGroup.position.x;
-          const toCamZ = camera.position.z - crossGroup.position.z;
-          const camAngle = Math.atan2(toCamX, toCamZ);
-          crossGroup.rotation.set(0, camAngle, 0);
-          updateGlitter(clock.elapsedTime);
-          crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
-
-          // Project crux world position → normalized screen coords for fog canvas
-          const cruxWorld = new THREE.Vector3(crossGroup.position.x, crossGroup.position.y + crossH * 0.70, crossGroup.position.z);
-          cruxWorld.project(camera);
-          cruxScreenPos.current = {
-            x: (cruxWorld.x + 1) / 2,
-            y: (1 - cruxWorld.y) / 2,
-          };
-
-          if (phase === "bounce") {
-            bounceTime += dt;
-            const force = -stiffness * disp - damping * vel;
-            vel  += force * dt;
-            disp += vel   * dt;
-            obj.position.y = restY + disp;
-
-            // t: 0→1 over bounce duration, clamped, used to blend back to base
-            const t = Math.min(bounceTime / bounceDuration, 1.0);
-
-            // Torso/thigh: slight forward lean peaking at bounce apex, fades with t
-            // Max lean ~4° forward (positive x rotation in local space)
-            const leanAmt = (disp / kickVel) * 0.07 * (1 - t * t);
-            leanBones.forEach(lb => {
-              leanQ.setFromAxisAngle(new THREE.Vector3(1, 0, 0), leanAmt);
-              lb.bone.quaternion.copy(lb.baseRot).multiply(leanQ);
-            });
-
-            // Arm ragdoll: each arm bone driven by figure's vertical acceleration
-            const armStiff = 8, armDamp = 2.5;
-            const accel = force; // reuse spring force as proxy for acceleration
-            armBones.forEach(ab => {
-              if (!ab.baseRot) return;
-              const extForce = accel * 0.004;
-              const fx = -armStiff * ab.dispX - armDamp * ab.velX + extForce;
-              const fy = -armStiff * ab.dispY - armDamp * ab.velY + extForce * 0.5;
-              ab.velX += fx * dt; ab.dispX += ab.velX * dt;
-              ab.velY += fy * dt; ab.dispY += ab.velY * dt;
-              const blend = 1 - t;
-              const rx = ab.dispX * blend * 0.35;
-              const ry = ab.dispY * blend * 0.20;
-              tmpQ.setFromEuler(new THREE.Euler(rx, ry, 0));
-              ab.bone.quaternion.copy(ab.baseRot).multiply(tmpQ);
-            });
-
-            // Foot locking
-            if (footPositionsLocked) {
+          mixer.addEventListener("finished", () => {
+            if (phase === "intro") {
+              phase = "bounce";
+              vel   = kickVel;
+              disp  = 0;
+              bounceTime = 0;
               footBones.forEach(fb => {
-                if (!fb.worldPos) return;
-                const parent = fb.bone.parent;
+                fb.bone.updateWorldMatrix(true, false);
+                fb.worldPos = new THREE.Vector3();
+                fb.bone.getWorldPosition(fb.worldPos);
+              });
+              footPositionsLocked = true;
+              // Snapshot base rotations at frame 45
+              leanBones.forEach(lb => { lb.baseRot = lb.bone.quaternion.clone(); });
+              armBones.forEach(ab => {
+                ab.baseRot = ab.bone.quaternion.clone();
+                ab.dispX = 0; ab.dispY = 0; ab.velX = 0; ab.velY = 0;
+              });
+            }
+          });
+
+          const breathBones = [];
+          obj.traverse(c => {
+            if (c.isBone && (c.name.toLowerCase().includes("spine") ||
+                             c.name.toLowerCase().includes("chest") ||
+                             c.name.toLowerCase().includes("neck"))) {
+              breathBones.push({ bone: c, baseScale: c.scale.clone() });
+            }
+          });
+
+          // Idle sway — upper body bones only (no knees/feet/ankles/toes)
+          const idleBones = [];
+          obj.traverse(c => {
+            if (!c.isBone) return;
+            const n = c.name.toLowerCase();
+            const isUpper = n.includes("spine") || n.includes("chest") ||
+                            n.includes("neck")  || n.includes("head")  ||
+                            n.includes("shoulder") || n.includes("arm") ||
+                            n.includes("forearm")  || n.includes("hand") ||
+                            n.includes("clavicle");
+            if (isUpper) {
+              // Each bone gets unique phase offsets for organic, non-repeating feel
+              idleBones.push({
+                bone:   c,
+                baseRot: null, // snapshotted when breathing starts
+                // Sway frequencies and phases — all slightly irrational for aperiodic motion
+                phX1: Math.random() * Math.PI * 2, frX1: 0.31 + Math.random() * 0.18,
+                phX2: Math.random() * Math.PI * 2, frX2: 0.71 + Math.random() * 0.22,
+                phZ1: Math.random() * Math.PI * 2, frZ1: 0.27 + Math.random() * 0.15,
+                phZ2: Math.random() * Math.PI * 2, frZ2: 0.63 + Math.random() * 0.19,
+                ampX: 0.008 + Math.random() * 0.006,
+                ampZ: 0.006 + Math.random() * 0.005,
+              });
+            }
+          });
+
+          // Lower leg / foot bones to keep locked during idle
+          const lowerLockBones = [];
+          obj.traverse(c => {
+            if (!c.isBone) return;
+            const n = c.name.toLowerCase();
+            if (n.includes("knee") || n.includes("foot") ||
+                n.includes("toe")  || n.includes("ankle")) {
+              lowerLockBones.push({ bone: c, worldPos: null });
+            }
+          });
+
+          const tmpQ  = new THREE.Quaternion();
+          const leanQ = new THREE.Quaternion();
+
+          const animateWithBreath = () => {
+            animId = requestAnimationFrame(animateWithBreath);
+            const dt = Math.min(clock.getDelta(), 0.05);
+            if (mixer) mixer.update(dt);
+
+            const toCamX = camera.position.x - crossGroup.position.x;
+            const toCamZ = camera.position.z - crossGroup.position.z;
+            const camAngle = Math.atan2(toCamX, toCamZ);
+            crossGroup.rotation.set(0, camAngle, 0);
+            updateGlitter(clock.elapsedTime);
+            crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
+
+            // Project crux world position → normalized screen coords for fog canvas
+            const cruxWorld = new THREE.Vector3(crossGroup.position.x, crossGroup.position.y + crossH * 0.70, crossGroup.position.z);
+            cruxWorld.project(camera);
+            cruxScreenPos.current = {
+              x: (cruxWorld.x + 1) / 2,
+              y: (1 - cruxWorld.y) / 2,
+            };
+
+            if (phase === "bounce") {
+              bounceTime += dt;
+              const force = -stiffness * disp - damping * vel;
+              vel  += force * dt;
+              disp += vel   * dt;
+              obj.position.y = restY + disp;
+
+              // t: 0→1 over bounce duration, clamped, used to blend back to base
+              const t = Math.min(bounceTime / bounceDuration, 1.0);
+
+              // Torso/thigh: slight forward lean peaking at bounce apex, fades with t
+              // Max lean ~4° forward (positive x rotation in local space)
+              const leanAmt = (disp / kickVel) * 0.07 * (1 - t * t);
+              leanBones.forEach(lb => {
+                leanQ.setFromAxisAngle(new THREE.Vector3(1, 0, 0), leanAmt);
+                lb.bone.quaternion.copy(lb.baseRot).multiply(leanQ);
+              });
+
+              // Arm ragdoll: each arm bone driven by figure's vertical acceleration
+              const armStiff = 8, armDamp = 2.5;
+              const accel = force; // reuse spring force as proxy for acceleration
+              armBones.forEach(ab => {
+                if (!ab.baseRot) return;
+                const extForce = accel * 0.004;
+                const fx = -armStiff * ab.dispX - armDamp * ab.velX + extForce;
+                const fy = -armStiff * ab.dispY - armDamp * ab.velY + extForce * 0.5;
+                ab.velX += fx * dt; ab.dispX += ab.velX * dt;
+                ab.velY += fy * dt; ab.dispY += ab.velY * dt;
+                const blend = 1 - t;
+                const rx = ab.dispX * blend * 0.35;
+                const ry = ab.dispY * blend * 0.20;
+                tmpQ.setFromEuler(new THREE.Euler(rx, ry, 0));
+                ab.bone.quaternion.copy(ab.baseRot).multiply(tmpQ);
+              });
+
+              // Foot locking
+              if (footPositionsLocked) {
+                footBones.forEach(fb => {
+                  if (!fb.worldPos) return;
+                  const parent = fb.bone.parent;
+                  if (parent) {
+                    parent.updateWorldMatrix(true, false);
+                    const invParent = new THREE.Matrix4().copy(parent.matrixWorld).invert();
+                    const localTarget = fb.worldPos.clone().applyMatrix4(invParent);
+                    fb.bone.position.copy(localTarget);
+                  }
+                });
+              }
+
+              if (Math.abs(disp) < 0.8 && Math.abs(vel) < 0.8) {
+                obj.position.y = restY;
+
+                // Snapshot every idle bone's current world quaternion BEFORE any resets
+                // so idle starts exactly where bounce left off
+                idleBones.forEach(ib => {
+                  ib.bone.updateWorldMatrix(true, false);
+                  // Store world-space quat; we'll apply relative to parent each frame
+                  const worldQ = new THREE.Quaternion();
+                  ib.bone.getWorldQuaternion(worldQ);
+                  ib.worldBaseQ = worldQ;
+                  // Also store local quat as-is right now
+                  ib.baseRot = ib.bone.quaternion.clone();
+                });
+
+                // Snapshot lower-leg world positions before any movement
+                lowerLockBones.forEach(lb => {
+                  lb.bone.updateWorldMatrix(true, false);
+                  lb.worldPos = new THREE.Vector3();
+                  lb.bone.getWorldPosition(lb.worldPos);
+                });
+
+                leanBones.forEach(lb => { lb.bone.quaternion.copy(lb.baseRot); });
+                // Arms stay where they landed — no reset
+                disp = 0; vel = 0;
+                breathTime = 0;
+                phase = "breathing";
+              }
+            }
+
+            if (phase === "breathing") {
+              breathTime += dt;
+
+              // Subtle upper-body idle sway — aperiodic, zero displacement at t=0
+              const eq = new THREE.Euler();
+              const qq = new THREE.Quaternion();
+              idleBones.forEach(ib => {
+                if (!ib.baseRot) return;
+                // Subtract the t=0 value so displacement starts exactly at zero
+                const rx = (Math.sin(breathTime * ib.frX1 * Math.PI * 2 + ib.phX1) - Math.sin(ib.phX1)) * ib.ampX
+                         + (Math.sin(breathTime * ib.frX2 * Math.PI * 2 + ib.phX2) - Math.sin(ib.phX2)) * ib.ampX * 0.5;
+                const rz = (Math.sin(breathTime * ib.frZ1 * Math.PI * 2 + ib.phZ1) - Math.sin(ib.phZ1)) * ib.ampZ
+                         + (Math.sin(breathTime * ib.frZ2 * Math.PI * 2 + ib.phZ2) - Math.sin(ib.phZ2)) * ib.ampZ * 0.5;
+                eq.set(rx, 0, rz);
+                qq.setFromEuler(eq);
+                // Apply on top of snapshotted pose — starts exactly where bounce ended
+                ib.bone.quaternion.copy(ib.baseRot).multiply(qq);
+              });
+
+              // Keep knees and feet world-locked
+              lowerLockBones.forEach(lb => {
+                if (!lb.worldPos) return;
+                const parent = lb.bone.parent;
                 if (parent) {
                   parent.updateWorldMatrix(true, false);
-                  const invParent = new THREE.Matrix4().copy(parent.matrixWorld).invert();
-                  const localTarget = fb.worldPos.clone().applyMatrix4(invParent);
-                  fb.bone.position.copy(localTarget);
+                  const inv = new THREE.Matrix4().copy(parent.matrixWorld).invert();
+                  lb.bone.position.copy(lb.worldPos.clone().applyMatrix4(inv));
                 }
               });
             }
 
-            if (Math.abs(disp) < 0.8 && Math.abs(vel) < 0.8) {
-              obj.position.y = restY;
+            renderer.render(scene, camera);
+          };
+          animId = requestAnimationFrame(animateWithBreath);
+          return;
+        }
+      }, undefined, e => console.warn("Audio FBX load error:", e));
 
-              // Snapshot every idle bone's current world quaternion BEFORE any resets
-              // so idle starts exactly where bounce left off
-              idleBones.forEach(ib => {
-                ib.bone.updateWorldMatrix(true, false);
-                // Store world-space quat; we'll apply relative to parent each frame
-                const worldQ = new THREE.Quaternion();
-                ib.bone.getWorldQuaternion(worldQ);
-                ib.worldBaseQ = worldQ;
-                // Also store local quat as-is right now
-                ib.baseRot = ib.bone.quaternion.clone();
-              });
-
-              // Snapshot lower-leg world positions before any movement
-              lowerLockBones.forEach(lb => {
-                lb.bone.updateWorldMatrix(true, false);
-                lb.worldPos = new THREE.Vector3();
-                lb.bone.getWorldPosition(lb.worldPos);
-              });
-
-              leanBones.forEach(lb => { lb.bone.quaternion.copy(lb.baseRot); });
-              // Arms stay where they landed — no reset
-              disp = 0; vel = 0;
-              breathTime = 0;
-              phase = "breathing";
-            }
-          }
-
-          if (phase === "breathing") {
-            breathTime += dt;
-
-            // Subtle upper-body idle sway — aperiodic, zero displacement at t=0
-            const eq = new THREE.Euler();
-            const qq = new THREE.Quaternion();
-            idleBones.forEach(ib => {
-              if (!ib.baseRot) return;
-              // Subtract the t=0 value so displacement starts exactly at zero
-              const rx = (Math.sin(breathTime * ib.frX1 * Math.PI * 2 + ib.phX1) - Math.sin(ib.phX1)) * ib.ampX
-                       + (Math.sin(breathTime * ib.frX2 * Math.PI * 2 + ib.phX2) - Math.sin(ib.phX2)) * ib.ampX * 0.5;
-              const rz = (Math.sin(breathTime * ib.frZ1 * Math.PI * 2 + ib.phZ1) - Math.sin(ib.phZ1)) * ib.ampZ
-                       + (Math.sin(breathTime * ib.frZ2 * Math.PI * 2 + ib.phZ2) - Math.sin(ib.phZ2)) * ib.ampZ * 0.5;
-              eq.set(rx, 0, rz);
-              qq.setFromEuler(eq);
-              // Apply on top of snapshotted pose — starts exactly where bounce ended
-              ib.bone.quaternion.copy(ib.baseRot).multiply(qq);
-            });
-
-            // Keep knees and feet world-locked
-            lowerLockBones.forEach(lb => {
-              if (!lb.worldPos) return;
-              const parent = lb.bone.parent;
-              if (parent) {
-                parent.updateWorldMatrix(true, false);
-                const inv = new THREE.Matrix4().copy(parent.matrixWorld).invert();
-                lb.bone.position.copy(lb.worldPos.clone().applyMatrix4(inv));
-              }
-            });
-          }
-
-          renderer.render(scene, camera);
-        };
-        animId = requestAnimationFrame(animateWithBreath);
-        return;
-      }
-    };
-    if (objCache.has("/Praying.fbx")) {
-      _loadPraying(objCache.get("/Praying.fbx").clone(true));
-    } else {
-      new FBXLoader().load("/Praying.fbx", _loadPraying, undefined, e => console.warn("Audio FBX load error:", e));
-    }
-
-    // Default fallback animate — only runs if FBX fails to load
-    setTimeout(() => {
-      if (!animId) {
-        const animate = () => {
-          animId = requestAnimationFrame(animate);
-          renderer.render(scene, camera);
-        };
-        animate();
-      }
-    }, 3000);
-
+      // Default fallback animate — only runs if FBX fails to load
+      setTimeout(() => {
+        if (!animId) {
+          const animate = () => {
+            animId = requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+          };
+          animate();
+        }
+      }, 3000);
+    }).catch(e => console.warn("Three.js import error:", e));
 
     return () => {
       cancelled = true;
@@ -1978,7 +1930,7 @@ function AudioFigureBackdrop({ fading = false }) {
     // Crux screen position read from projected Three.js coords each frame via cruxScreenPos ref
 
     // Fog layers — all centered tightly on crux, varied radii
-    const NUM_BLOBS = 10;
+    const NUM_BLOBS = 18;
     const blobs = Array.from({ length: NUM_BLOBS }, (_, i) => ({
       offX:      (Math.random() - 0.5) * 0.04,  // tight cluster around crux
       offY:      (Math.random() - 0.5) * 0.04,
@@ -1994,15 +1946,11 @@ function AudioFigureBackdrop({ fading = false }) {
       b: 255,
     }));
 
-    let lastFog = 0;
-    const draw = (ts) => {
-      rafId = requestAnimationFrame(draw);
-      if (ts - lastFog < 33) return; // throttle to ~30fps
-      lastFog = ts;
+    const draw = () => {
       const t  = (performance.now() - startTime) / 1000;
       const cw = canvas.offsetWidth;
       const ch = canvas.offsetHeight;
-      if (cw === 0 || ch === 0) return;
+      if (cw === 0 || ch === 0) { rafId = requestAnimationFrame(draw); return; }
       canvas.width  = cw;
       canvas.height = ch;
       const ctx = canvas.getContext("2d");
@@ -2012,8 +1960,8 @@ function AudioFigureBackdrop({ fading = false }) {
       const oy = ch * cruxScreenPos.current.y;
 
       blobs.forEach(b => {
-        const f1 = Math.abs(Math.sin(t * b.speed1 + b.phase1));
-        const f2 = Math.sin(t * b.speed2 + b.phase2) * 0.5 + 0.5;
+        const f1 = Math.abs(Math.sin(t * b.speed1 + b.phase1));  // rapid flicker
+        const f2 = Math.sin(t * b.speed2 + b.phase2) * 0.5 + 0.5; // slow modulation
         const alpha = b.baseAlpha * f1 * (0.4 + f2 * 0.6);
         if (alpha < 0.005) return;
         const bx = ox + b.offX * cw;
@@ -2029,8 +1977,10 @@ function AudioFigureBackdrop({ fading = false }) {
         ctx.arc(bx, by, r, 0, Math.PI * 2);
         ctx.fill();
       });
+
+      rafId = requestAnimationFrame(draw);
     };
-    rafId = requestAnimationFrame(draw);
+    draw();
     return () => cancelAnimationFrame(rafId);
   }, []);
 
@@ -2039,7 +1989,6 @@ function AudioFigureBackdrop({ fading = false }) {
       position: "fixed", left: 224, top: 0, right: 0, bottom: 70,
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
-      willChange: "opacity",
     }}>
       <div ref={mountRef} style={{ position: "absolute", inset: 0, filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)" }} />
       <canvas ref={fogCanvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
@@ -2066,156 +2015,156 @@ function WorkoutFigureBackdrop({ fading = false }) {
     let rendererInst = null;
     let cancelled = false;
 
-    if (cancelled) return;
-    const w = window.innerWidth - 224;
-    const h = window.innerHeight - 70;
-
-    const scene  = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
-    camera.position.set(-w * 0.32, 160, 660);
-    camera.lookAt(0, 160, 0);
-
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "high-performance" });
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(w, h);
-    renderer.setClearColor(0x000000, 0);
-    el.appendChild(renderer.domElement);
-    rendererInst = renderer;
-
-    const wireMat = new THREE.MeshBasicMaterial({
-      color: 0x00ffcc, wireframe: true,
-      transparent: true, opacity: 0.32,
-      blending: THREE.AdditiveBlending, depthWrite: false,
-    });
-
-    const clock = new THREE.Clock();
-    const ROTATION_Y = -(Math.PI / 6) - (20 * Math.PI / 180);
-
-    const applyTransform = (THREE, obj) => {
-      obj.traverse(c => {
-        if (c.isMesh) { c.material = wireMat; c.castShadow = c.receiveShadow = false; }
-      });
-      const box    = new THREE.Box3().setFromObject(obj);
-      const size   = box.getSize(new THREE.Vector3());
-      const fovRad = (40 * Math.PI) / 180;
-      const worldH = 2 * Math.tan(fovRad / 2) * 600;
-      const scale  = (worldH * 0.65) / size.y;
-      const newScale = scale * 1.495;
-      obj.scale.setScalar(newScale);
-      const box2   = new THREE.Box3().setFromObject(obj);
-      const extraH = size.y * (newScale - scale);
-      obj.position.set(110, -box2.min.y - extraH + 70, 0);
-      obj.rotation.y = ROTATION_Y;
-      return { savedScale: obj.scale.clone(), savedPos: obj.position.clone() };
-    };
-
-    // Preload both FBX files simultaneously so loop is ready instantly
     Promise.all([
-      objCache.has("/Idle_To_Push_Up.fbx")
-        ? Promise.resolve(objCache.get("/Idle_To_Push_Up.fbx").clone(true))
-        : new Promise((res, rej) => new FBXLoader().load("/Idle_To_Push_Up.fbx", res, undefined, rej)),
-      objCache.has("/Push_Up.fbx")
-        ? Promise.resolve(objCache.get("/Push_Up.fbx").clone(true))
-        : new Promise((res, rej) => new FBXLoader().load("/Push_Up.fbx", res, undefined, rej)),
-    ]).then(([introObj, loopObj]) => {
+      import("three"),
+      import("three/examples/jsm/loaders/FBXLoader"),
+    ]).then(([THREE, { FBXLoader }]) => {
       if (cancelled) return;
+      const w = window.innerWidth - 224;
+      const h = window.innerHeight - 70;
 
-      const { savedScale, savedPos } = applyTransform(THREE, introObj);
-      applyTransform(THREE, loopObj);
+      const scene  = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
+      camera.position.set(-w * 0.32, 160, 660);
+      camera.lookAt(0, 160, 0);
 
-      // Keep loop hidden until needed
-      loopObj.visible = false;
-      scene.add(introObj);
-      scene.add(loopObj);
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(w, h);
+      renderer.setClearColor(0x000000, 0);
+      el.appendChild(renderer.domElement);
+      rendererInst = renderer;
 
-      let activeMixer = new THREE.AnimationMixer(introObj);
-      let loopMixer   = null;
+      const wireMat = new THREE.MeshBasicMaterial({
+        color: 0x00ffcc, wireframe: true,
+        transparent: true, opacity: 0.32,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
 
-      // Pre-build loop mixer so it's ready with no load delay
-      if (loopObj.animations?.length) {
-        loopMixer = new THREE.AnimationMixer(loopObj);
-        const loopAction = loopMixer.clipAction(loopObj.animations[0]);
-        loopAction.setLoop(THREE.LoopRepeat, Infinity);
-        loopAction.play();
-        loopMixer.update(0); // prime first frame
-      }
+      const clock = new THREE.Clock();
+      const ROTATION_Y = -(Math.PI / 6) - (20 * Math.PI / 180);
 
-      if (introObj.animations?.length) {
-        const introAction = activeMixer.clipAction(introObj.animations[0]);
-        introAction.setLoop(THREE.LoopOnce, 1);
-        introAction.clampWhenFinished = true;
-        introAction.play();
-      }
+      const applyTransform = (THREE, obj) => {
+        obj.traverse(c => {
+          if (c.isMesh) { c.material = wireMat; c.castShadow = c.receiveShadow = false; }
+        });
+        const box    = new THREE.Box3().setFromObject(obj);
+        const size   = box.getSize(new THREE.Vector3());
+        const fovRad = (40 * Math.PI) / 180;
+        const worldH = 2 * Math.tan(fovRad / 2) * 600;
+        const scale  = (worldH * 0.65) / size.y;
+        const newScale = scale * 1.495;
+        obj.scale.setScalar(newScale);
+        const box2   = new THREE.Box3().setFromObject(obj);
+        const extraH = size.y * (newScale - scale);
+        obj.position.set(110, -box2.min.y - extraH + 70, 0);
+        obj.rotation.y = ROTATION_Y;
+        return { savedScale: obj.scale.clone(), savedPos: obj.position.clone() };
+      };
 
-      let swapped = false;
-      activeMixer.addEventListener("finished", () => {
-        if (cancelled || swapped) return;
-        swapped = true;
+      // Preload both FBX files simultaneously so loop is ready instantly
+      Promise.all([
+        new Promise((res, rej) => new FBXLoader().load("/Idle_To_Push_Up.fbx", res, undefined, rej)),
+        new Promise((res, rej) => new FBXLoader().load("/Push_Up.fbx",         res, undefined, rej)),
+      ]).then(([introObj, loopObj]) => {
+        if (cancelled) return;
 
-        // Reset loop to frame 0 first so bone positions are at start pose
-        if (loopMixer && loopObj.animations?.length) {
-          loopMixer.stopAllAction();
+        const { savedScale, savedPos } = applyTransform(THREE, introObj);
+        applyTransform(THREE, loopObj);
+
+        // Keep loop hidden until needed
+        loopObj.visible = false;
+        scene.add(introObj);
+        scene.add(loopObj);
+
+        let activeMixer = new THREE.AnimationMixer(introObj);
+        let loopMixer   = null;
+
+        // Pre-build loop mixer so it's ready with no load delay
+        if (loopObj.animations?.length) {
+          loopMixer = new THREE.AnimationMixer(loopObj);
           const loopAction = loopMixer.clipAction(loopObj.animations[0]);
           loopAction.setLoop(THREE.LoopRepeat, Infinity);
-          loopAction.time = 0;
           loopAction.play();
-          loopMixer.update(0);
+          loopMixer.update(0); // prime first frame
         }
 
-        // Find the root/hips bone in each skeleton
-        let introBone = null, loopBone = null;
-        const rootNames = ["hips", "pelvis", "root", "spine"];
-        introObj.traverse(c => {
-          if (!introBone && c.isBone) {
-            const n = c.name.toLowerCase();
-            if (rootNames.some(r => n.includes(r))) introBone = c;
-          }
-        });
-        loopObj.traverse(c => {
-          if (!loopBone && c.isBone) {
-            const n = c.name.toLowerCase();
-            if (rootNames.some(r => n.includes(r))) loopBone = c;
-          }
-        });
-        // Fallback: use first bone found
-        if (!introBone) introObj.traverse(c => { if (!introBone && c.isBone) introBone = c; });
-        if (!loopBone)  loopObj.traverse(c  => { if (!loopBone  && c.isBone) loopBone  = c; });
-
-        if (introBone && loopBone) {
-          // Get world positions of both root bones
-          introBone.updateWorldMatrix(true, false);
-          loopBone.updateWorldMatrix(true, false);
-          const introWorldPos = new THREE.Vector3();
-          const loopWorldPos  = new THREE.Vector3();
-          introBone.getWorldPosition(introWorldPos);
-          loopBone.getWorldPosition(loopWorldPos);
-
-          // Shift loop object so its root bone lands exactly where intro's root bone is
-          loopObj.position.x += introWorldPos.x - loopWorldPos.x;
-          loopObj.position.y += introWorldPos.y - loopWorldPos.y;
-          loopObj.position.z += introWorldPos.z - loopWorldPos.z;
-        } else {
-          // Fallback: match bounding box bottoms
-          const introBox = new THREE.Box3().setFromObject(introObj);
-          const loopBox  = new THREE.Box3().setFromObject(loopObj);
-          loopObj.position.y += introBox.min.y - loopBox.min.y;
+        if (introObj.animations?.length) {
+          const introAction = activeMixer.clipAction(introObj.animations[0]);
+          introAction.setLoop(THREE.LoopOnce, 1);
+          introAction.clampWhenFinished = true;
+          introAction.play();
         }
 
-        // Swap visibility
-        introObj.visible = false;
-        loopObj.visible  = true;
-        activeMixer      = loopMixer;
-      });
+        let swapped = false;
+        activeMixer.addEventListener("finished", () => {
+          if (cancelled || swapped) return;
+          swapped = true;
 
-      const animate = () => {
-        animId = requestAnimationFrame(animate);
-        const dt = Math.min(clock.getDelta(), 0.05);
-        if (activeMixer) activeMixer.update(dt);
-        renderer.render(scene, camera);
-      };
-      animate();
-    }).catch(e => console.warn("Workout FBX load error:", e));
+          // Reset loop to frame 0 first so bone positions are at start pose
+          if (loopMixer && loopObj.animations?.length) {
+            loopMixer.stopAllAction();
+            const loopAction = loopMixer.clipAction(loopObj.animations[0]);
+            loopAction.setLoop(THREE.LoopRepeat, Infinity);
+            loopAction.time = 0;
+            loopAction.play();
+            loopMixer.update(0);
+          }
 
+          // Find the root/hips bone in each skeleton
+          let introBone = null, loopBone = null;
+          const rootNames = ["hips", "pelvis", "root", "spine"];
+          introObj.traverse(c => {
+            if (!introBone && c.isBone) {
+              const n = c.name.toLowerCase();
+              if (rootNames.some(r => n.includes(r))) introBone = c;
+            }
+          });
+          loopObj.traverse(c => {
+            if (!loopBone && c.isBone) {
+              const n = c.name.toLowerCase();
+              if (rootNames.some(r => n.includes(r))) loopBone = c;
+            }
+          });
+          // Fallback: use first bone found
+          if (!introBone) introObj.traverse(c => { if (!introBone && c.isBone) introBone = c; });
+          if (!loopBone)  loopObj.traverse(c  => { if (!loopBone  && c.isBone) loopBone  = c; });
+
+          if (introBone && loopBone) {
+            // Get world positions of both root bones
+            introBone.updateWorldMatrix(true, false);
+            loopBone.updateWorldMatrix(true, false);
+            const introWorldPos = new THREE.Vector3();
+            const loopWorldPos  = new THREE.Vector3();
+            introBone.getWorldPosition(introWorldPos);
+            loopBone.getWorldPosition(loopWorldPos);
+
+            // Shift loop object so its root bone lands exactly where intro's root bone is
+            loopObj.position.x += introWorldPos.x - loopWorldPos.x;
+            loopObj.position.y += introWorldPos.y - loopWorldPos.y;
+            loopObj.position.z += introWorldPos.z - loopWorldPos.z;
+          } else {
+            // Fallback: match bounding box bottoms
+            const introBox = new THREE.Box3().setFromObject(introObj);
+            const loopBox  = new THREE.Box3().setFromObject(loopObj);
+            loopObj.position.y += introBox.min.y - loopBox.min.y;
+          }
+
+          // Swap visibility
+          introObj.visible = false;
+          loopObj.visible  = true;
+          activeMixer      = loopMixer;
+        });
+
+        const animate = () => {
+          animId = requestAnimationFrame(animate);
+          const dt = Math.min(clock.getDelta(), 0.05);
+          if (activeMixer) activeMixer.update(dt);
+          renderer.render(scene, camera);
+        };
+        animate();
+      }).catch(e => console.warn("Workout FBX load error:", e));
+    }).catch(e => console.warn("Three.js import error:", e));
 
     return () => {
       cancelled = true;
@@ -2234,7 +2183,6 @@ function WorkoutFigureBackdrop({ fading = false }) {
       pointerEvents: "none", zIndex: -1,
       opacity, transition: "opacity 0.5s ease",
       filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)",
-      willChange: "opacity",
     }} />
   );
 }
@@ -3820,6 +3768,7 @@ export default function App() {
 
   // ── GLB orb renderer ──────────────────────────────────────────────
   useEffect(() => {
+    const RAILWAY_URL = "https://bros-of-st-hyacinth-production.up.railway.app";
     const GLB_URL = `${RAILWAY_URL}/Hyacinth_Sphere.glb`;
 
     let animId;
@@ -3867,7 +3816,7 @@ export default function App() {
 
       const clock = new THREE.Clock();
       const loader = new GLTFLoader();
-      const _loadGLB = (gltf) => {
+      loader.load(GLB_URL, (gltf) => {
         const model = gltf.scene;
         const box = new THREE.Box3().setFromObject(model);
         const centre = box.getCenter(new THREE.Vector3());
@@ -3938,12 +3887,7 @@ export default function App() {
           renderer.render(scene, cam);
         }
         animate();
-      };
-      if (objCache.has(GLB_URL)) {
-        loader.parse(objCache.get(GLB_URL).slice(0), "", _loadGLB, err => console.warn("GLB parse error:", err));
-      } else {
-        loader.load(GLB_URL, _loadGLB, undefined, err => console.warn("GLB load error:", err));
-      }
+      }, undefined, err => console.warn("GLB load error:", err));
     }
 
     const t = setTimeout(init, 100);
@@ -3971,15 +3915,26 @@ export default function App() {
   };
 
   const handleSetPage = (id) => {
-    if (id === page) return;
-    if (page === "boards")    { setBoardsFading(true);    setTimeout(() => { setShowBoards(false);    setBoardsFading(false);    }, 500); }
-    if (page === "audio")     { setAudioFading(true);     setTimeout(() => { setShowAudio(false);     setAudioFading(false);     }, 500); }
-    if (page === "topcharts") { setTopChartsFading(true); setTimeout(() => { setShowTopCharts(false); setTopChartsFading(false); }, 500); }
-    if (page === "workout")   { setWorkoutFading(true);   setTimeout(() => { setShowWorkout(false);   setWorkoutFading(false);   }, 500); }
-    if (id === "boards")    setShowBoards(true);
-    if (id === "audio")     setShowAudio(true);
-    if (id === "topcharts") setShowTopCharts(true);
-    if (id === "workout")   setShowWorkout(true);
+    if (id !== "boards" && page === "boards") {
+      setBoardsFading(true);
+      setTimeout(() => { setShowBoards(false); setBoardsFading(false); }, 500);
+    }
+    if (id === "boards") { setShowBoards(true); setBoardsFading(false); }
+    if (id !== "audio" && page === "audio") {
+      setAudioFading(true);
+      setTimeout(() => { setShowAudio(false); setAudioFading(false); }, 500);
+    }
+    if (id === "audio") { setShowAudio(true); setAudioFading(false); }
+    if (id !== "topcharts" && page === "topcharts") {
+      setTopChartsFading(true);
+      setTimeout(() => { setShowTopCharts(false); setTopChartsFading(false); }, 500);
+    }
+    if (id === "topcharts") { setShowTopCharts(true); setTopChartsFading(false); }
+    if (id !== "workout" && page === "workout") {
+      setWorkoutFading(true);
+      setTimeout(() => { setShowWorkout(false); setWorkoutFading(false); }, 500);
+    }
+    if (id === "workout") { setShowWorkout(true); setWorkoutFading(false); }
     setPage(id);
   };
 
