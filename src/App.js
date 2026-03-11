@@ -735,14 +735,15 @@ const css = `
   .xbox-orb {
     position: absolute; inset: 0; border-radius: 50%;
     background: radial-gradient(circle at 38% 35%,
-      #ccff88 0%, #88ff00 18%, #44cc00 40%, #007700 65%, #001a00 100%
+      #eeff88 0%, #aaff00 15%, #66dd00 35%, #009900 60%, #001a00 100%
     );
     box-shadow:
-      0 0 40px #88ff0099,
-      0 0 80px #44cc0066,
-      0 0 140px #22880033,
-      inset 0 0 30px rgba(255,255,255,0.15),
-      inset -20px -20px 60px rgba(0,0,0,0.5);
+      0 0 30px #aaff00cc,
+      0 0 60px #88ff0099,
+      0 0 100px #44cc0066,
+      0 0 160px #22880033,
+      inset 0 0 40px rgba(255,255,255,0.25),
+      inset -15px -15px 50px rgba(0,0,0,0.4);
     animation: orbPulse 3s ease-in-out infinite;
   }
   .xbox-orb::after {
@@ -767,8 +768,8 @@ const css = `
   .xbox-bubble:nth-child(5) { width:30px; height:30px; top:72%; left:68%; animation-delay:0.3s;  animation-duration:5s;   }
   .xbox-bubble:nth-child(6) { width:14px; height:14px; top:80%; left:82%; animation-delay:1.9s;  animation-duration:4.1s; }
   @keyframes orbPulse {
-    0%,100% { box-shadow: 0 0 40px #88ff0099, 0 0 80px #44cc0066, 0 0 140px #22880033, inset 0 0 30px rgba(255,255,255,0.15), inset -20px -20px 60px rgba(0,0,0,0.5); }
-    50%      { box-shadow: 0 0 60px #aaff00bb, 0 0 110px #66ee0088, 0 0 180px #33990044, inset 0 0 40px rgba(255,255,255,0.2),  inset -20px -20px 60px rgba(0,0,0,0.5); }
+    0%,100% { box-shadow: 0 0 30px #aaff00cc, 0 0 60px #88ff0099, 0 0 100px #44cc0066, 0 0 160px #22880033, inset 0 0 40px rgba(255,255,255,0.25), inset -15px -15px 50px rgba(0,0,0,0.4); }
+    50%      { box-shadow: 0 0 50px #ccff00ee, 0 0 90px #aaff00bb, 0 0 140px #66ee0088, 0 0 200px #33990044, inset 0 0 55px rgba(255,255,255,0.35), inset -15px -15px 50px rgba(0,0,0,0.4); }
   }
   @keyframes bubbleFloat {
     0%,100% { transform: translateY(0) scale(1); opacity: 0.8; }
@@ -3668,29 +3669,30 @@ export default function App() {
       renderer.setClearColor(0x000000, 0);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.2;
+      renderer.toneMappingExposure = 3.5;
 
       const scene = new THREE.Scene();
       const cam = new THREE.PerspectiveCamera(42, W / H, 0.1, 1000);
       cam.position.set(0, 0, 3.2);
 
-      const ambLight = new THREE.AmbientLight(0x115511, 1.0);
+      // Ambient — warm yellow-green tint
+      const ambLight = new THREE.AmbientLight(0xccff44, 0.3);
       scene.add(ambLight);
+      // Key — bright yellow-lime from top-front-right
       const keyLight = new THREE.PointLight(0xeeff44, 6.0, 20);
       keyLight.position.set(2, 3, 4);
       scene.add(keyLight);
-      const fillLight = new THREE.PointLight(0x33aa33, 1.0, 20);
-      fillLight.position.set(-3, -1, 2);
+      // Fill — deep green
+      const fillLight = new THREE.PointLight(0x44cc00, 1.2, 20);
+      fillLight.position.set(-2, -1, 2);
       scene.add(fillLight);
-      const rimLight = new THREE.PointLight(0xaaff00, 2.5, 15);
-      rimLight.position.set(0, 0, -4);
+      // Rim — yellow-green from behind for edge shine
+      const rimLight = new THREE.PointLight(0x88cc00, 1.5, 20);
+      rimLight.position.set(0, -3, -3);
       scene.add(rimLight);
-      // Cross rim specular — close front light to catch hard edges of cross cutout
-      const crossLight = new THREE.PointLight(0xffffff, 5.0, 4);
-      crossLight.position.set(0, 0, 1.8);
-      scene.add(crossLight);
-      const topLight = new THREE.PointLight(0xffffff, 3.0, 8);
-      topLight.position.set(-0.5, 3, 2);
+      // Top highlight — bright specular for Xbox orb top-left shine
+      const topLight = new THREE.PointLight(0xffffff, 2.0, 10);
+      topLight.position.set(-1, 4, 3);
       scene.add(topLight);
 
       const clock = new THREE.Clock();
@@ -3711,38 +3713,41 @@ export default function App() {
           const isTrans = orig && orig.name === 'Material.002';
 
           if (isTrans) {
-            // Outer shell — very low opacity surface
+            // Outer shell — increased opacity, still transparent
             child.material = new THREE.MeshStandardMaterial({
-              color:             new THREE.Color(0.35, 0.85, 0.02),
-              emissive:          new THREE.Color(0.15, 0.55, 0.02),
-              emissiveIntensity: 1.2,
-              opacity:           0.06,
-              roughness:         0.08,
-              metalness:         0.0,
+              color:             new THREE.Color(0.55, 0.95, 0.05),
+              emissive:          new THREE.Color(0.18, 0.45, 0.0),
+              emissiveIntensity: 0.6,
+              metalness:         0.1,
+              roughness:         0.02,
               transparent:       true,
+              opacity:           0.35,
               side:              THREE.DoubleSide,
               depthWrite:        false,
             });
-            // EdgesGeometry — only hard edges (cross cutout contours), not every polygon
+            // EdgesGeometry — hard edges only (cross contours), blurred via CSS
             const edgesGeo = new THREE.EdgesGeometry(child.geometry, 15);
             const edgesMat = new THREE.LineBasicMaterial({
-              color:       0xaaff00,
+              color:       0xccff00,
               transparent: true,
-              opacity:     0.40,
+              opacity:     0.75,
               blending:    THREE.AdditiveBlending,
               depthWrite:  false,
+              linewidth:   2,
             });
             const edgesMesh = new THREE.LineSegments(edgesGeo, edgesMat);
             child.add(edgesMesh);
           } else {
+            // Inner orb — restored to reference values
             child.material = new THREE.MeshStandardMaterial({
-              color:             new THREE.Color(0.10, 0.50, 0.0),
-              emissive:          new THREE.Color(0.02, 0.10, 0.0),
+              color:             new THREE.Color(0.30, 0.80, 0.0),
+              emissive:          new THREE.Color(0.05, 0.20, 0.0),
               emissiveIntensity: 0.3,
-              metalness:         0.0,
-              roughness:         0.05,
+              metalness:         0.1,
+              roughness:         0.02,
               transparent:       false,
-              side:              THREE.FrontSide,
+              opacity:           1.0,
+              side:              THREE.DoubleSide,
             });
           }
         });
@@ -3885,7 +3890,7 @@ export default function App() {
           {/* Orb — click to toggle nav */}
           <div className="xbox-orb-wrap" onClick={() => setNavExpanded(v => !v)}>
             <div className="xbox-orb" />
-            <canvas ref={glbCanvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",borderRadius:"50%",pointerEvents:"none",zIndex:2,filter:"drop-shadow(0 0 6px #88ff00) drop-shadow(0 0 18px #66dd00aa) drop-shadow(0 0 40px #44aa0066)"}} />
+            <canvas ref={glbCanvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",borderRadius:"50%",pointerEvents:"none",zIndex:2,filter:"blur(0.5px) drop-shadow(0 0 10px #aaff00cc) drop-shadow(0 0 25px #88ff0099) drop-shadow(0 0 55px #55dd0066) drop-shadow(0 0 90px #33aa0033)"}} />
             <div className="xbox-bubble" />
             <div className="xbox-bubble" />
             <div className="xbox-bubble" />
