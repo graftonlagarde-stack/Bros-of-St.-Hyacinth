@@ -757,12 +757,13 @@ const css = `
   }
   .xbox-bubble {
     position: absolute; border-radius: 50%;
+    z-index: 4;
     background: radial-gradient(circle at 35% 30%, rgba(180,255,80,0.7), rgba(0,180,0,0.3) 60%, transparent);
     border: 1px solid rgba(136,255,0,0.4);
     box-shadow: 0 0 12px rgba(136,255,0,0.3);
     animation: bubbleFloat 4s ease-in-out infinite;
   }
-  .xbox-bubble:nth-child(2) { width:38px; height:38px; top:8%;  left:62%; animation-delay:0s;    animation-duration:3.8s; position:absolute; z-index:3; }
+  .xbox-bubble:nth-child(2) { width:38px; height:38px; top:8%;  left:62%; animation-delay:0s;    animation-duration:3.8s; z-index:5; }
   .xbox-bubble:nth-child(3) { width:24px; height:24px; top:22%; left:80%; animation-delay:0.7s;  animation-duration:4.5s; }
   .xbox-bubble:nth-child(4) { width:18px; height:18px; top:55%; left:84%; animation-delay:1.4s;  animation-duration:3.2s; }
   .xbox-bubble:nth-child(5) { width:30px; height:30px; top:72%; left:68%; animation-delay:0.3s;  animation-duration:5s;   }
@@ -851,12 +852,12 @@ const css = `
     width: 240px;
   }
   .nav-item.active::before { display: none; }
-  /* Full-rectangle hit area overlay — sits over clip-path so entire shape is clickable */
-  .nav-item-hit {
-    position: absolute;
-    inset: 0;
+  .nav-item-wrap {
+    position: relative;
+    width: 220px;
     cursor: pointer;
   }
+  .nav-item-wrap.active-wrap { width: 240px; }
   .nav-icon { display: none; }
   .xbox-orb-wrap { z-index: 4 !important; }
 
@@ -1399,7 +1400,7 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
       // Far enough back to see full figure; x offset shifts figure to 2/3 right of screen
-      camera.position.set(-w * 0.32, 160, 660);
+      camera.position.set(0, 160, 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -1505,7 +1506,7 @@ function AudioFigureBackdrop({ fading = false }) {
 
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 5000);
-      camera.position.set(-w * 0.32, 160, 660);
+      camera.position.set(0, 160, 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -1996,7 +1997,7 @@ function WorkoutFigureBackdrop({ fading = false }) {
 
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
-      camera.position.set(-w * 0.32, 160, 660);
+      camera.position.set(0, 160, 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -3990,20 +3991,17 @@ export default function App() {
           {/* Blade nav */}
           <div className={`nav-wrap${navExpanded ? "" : " retracted"}`}>
             {navItems.map(n => (
-              <div key={n.id} className={`nav-item ${page===n.id?"active":""}`} onClick={() => handleSetPage(n.id)}>
-                <div className="nav-item-hit" />
-                {n.label}
+              <div key={n.id} className={`nav-item-wrap${page===n.id?" active-wrap":""}`} onClick={() => handleSetPage(n.id)}>
+                <div className={`nav-item ${page===n.id?"active":""}`}>{n.label}</div>
               </div>
             ))}
             {(user.role === "arch_admin" || user.role === "admin") && (
-              <div className="nav-item" onClick={() => setShowAdmin(true)}>
-                <div className="nav-item-hit" />
-                {user.role === "arch_admin" ? "Arch-Admin" : "Admin"}
+              <div className="nav-item-wrap" onClick={() => setShowAdmin(true)}>
+                <div className="nav-item">{user.role === "arch_admin" ? "Arch-Admin" : "Admin"}</div>
               </div>
             )}
-            <div className="nav-item" onClick={() => setShowProfile(true)}>
-              <div className="nav-item-hit" />
-              {username}
+            <div className="nav-item-wrap" onClick={() => setShowProfile(true)}>
+              <div className="nav-item">{username}</div>
             </div>
           </div>
         </div>
