@@ -238,8 +238,26 @@ function BoardPage({ username }) {
 
   useEffect(() => { fetchMessages(); }, []);
 
+  const hasScrolledToBottom = useRef(false);
+
   useEffect(() => {
-    if (bottomRef.current) bottomRef.current.scrollIntoView();
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    // Each time messages load, reset the flag so we scroll to bottom again
+    hasScrolledToBottom.current = false;
+    el.scrollTop = el.scrollHeight;
+    // ResizeObserver catches media/images rendering in after the initial paint
+    const ro = new ResizeObserver(() => {
+      if (!hasScrolledToBottom.current) {
+        el.scrollTop = el.scrollHeight;
+        // Once we've reached the true bottom, stop forcing scroll
+        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 2) {
+          hasScrolledToBottom.current = true;
+        }
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [messages]);
 
   const uploadToCloudinary = (file) => new Promise((resolve, reject) => {
@@ -745,7 +763,15 @@ const css = `
       inset -15px -15px 50px rgba(0,0,0,0.4);
     animation: orbPulse 3s ease-in-out infinite;
   }
-  .xbox-orb::after { display: none; }
+  .xbox-orb::after {
+    content: '✕';
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 72px; font-weight: 900;
+    color: rgba(0,0,0,0.35);
+    text-shadow: 0 0 20px rgba(0,255,0,0.3);
+    font-family: 'Orbitron', sans-serif;
+  }
   .xbox-bubble {
     position: absolute; border-radius: 50%;
     z-index: 4;
@@ -3838,8 +3864,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!mainRef.current) return;
-    mainRef.current.scrollTop = 0;
+    if (mainRef.current) mainRef.current.scrollTop = 0;
   }, [page]);
 
   // ── GLB orb renderer ──────────────────────────────────────────────
