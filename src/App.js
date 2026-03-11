@@ -1430,7 +1430,7 @@ function FigureBackdrop({ variant = "workout", visible = false }) {
       camera.position.set(-w * 0.32, 160, 660);
       camera.lookAt(0, 160, 0);
 
-      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
@@ -1471,7 +1471,9 @@ function FigureBackdrop({ variant = "workout", visible = false }) {
         }
 
         let wasVisible = visibleRef.current;
-        const animate = () => {
+        const FRAME_MS = 1000 / 30;
+        let lastFrame = 0;
+        const animate = (now) => {
           animId = requestAnimationFrame(animate);
           const isVisible = visibleRef.current;
           if (isVisible && !wasVisible && mixer && obj.animations?.length) {
@@ -1481,13 +1483,16 @@ function FigureBackdrop({ variant = "workout", visible = false }) {
             a.time = 0;
             a.play();
             clock.start();
+            lastFrame = now;
           }
           wasVisible = isVisible;
           if (!isVisible) return;
+          if (now - lastFrame < FRAME_MS) return;
+          lastFrame = now - ((now - lastFrame) % FRAME_MS);
           if (mixer) mixer.update(clock.getDelta());
           renderer.render(scene, camera);
         };
-        animate();
+        animate(0);
       }, undefined, e => console.warn("FBX load error:", e));
     }).catch(e => console.warn("Three.js import error:", e));
 
@@ -1551,7 +1556,7 @@ function AudioFigureBackdrop({ visible = false }) {
       camera.position.set(-w * 0.32, 160, 660);
       camera.lookAt(0, 160, 0);
 
-      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
@@ -1579,7 +1584,7 @@ function AudioFigureBackdrop({ visible = false }) {
         gCtx.fillRect(0, 0, 128, 128);
         // Animated sparkles
         const rng = (s) => { let x = Math.sin(s) * 43758.5453; return x - Math.floor(x); };
-        for (let i = 0; i < 180; i++) {
+        for (let i = 0; i < 60; i++) {
           const tx = time * 0.7 + i * 1.3;
           const x  = rng(tx) * 128;
           const y  = rng(tx + 99) * 128;
@@ -1796,13 +1801,17 @@ function AudioFigureBackdrop({ visible = false }) {
             clock.start();
           };
 
+          const FRAME_MS = 1000 / 30;
+          let lastFrame = 0;
           let wasVisible = visibleRef.current;
-          const animateWithBreath = () => {
+          const animateWithBreath = (now) => {
             animId = requestAnimationFrame(animateWithBreath);
             const isVisible = visibleRef.current;
-            if (isVisible && !wasVisible) restartAnimation();
+            if (isVisible && !wasVisible) { restartAnimation(); lastFrame = now; }
             wasVisible = isVisible;
             if (!isVisible) return;
+            if (now - lastFrame < FRAME_MS) return;
+            lastFrame = now - ((now - lastFrame) % FRAME_MS);
             const dt = Math.min(clock.getDelta(), 0.05);
             if (mixer) mixer.update(dt);
 
@@ -1934,7 +1943,6 @@ function AudioFigureBackdrop({ visible = false }) {
             renderer.render(scene, camera);
           };
           animId = requestAnimationFrame(animateWithBreath);
-          return;
         }
       }, undefined, e => console.warn("Audio FBX load error:", e));
 
@@ -2073,7 +2081,7 @@ function WorkoutFigureBackdrop({ visible = false }) {
       camera.position.set(-w * 0.32, 160, 660);
       camera.lookAt(0, 160, 0);
 
-      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
@@ -2201,8 +2209,10 @@ function WorkoutFigureBackdrop({ visible = false }) {
           activeMixer      = loopMixer;
         });
 
+        const FRAME_MS = 1000 / 30;
+        let lastFrame = 0;
         let wasVisible = visibleRef.current;
-        const animate = () => {
+        const animate = (now) => {
           animId = requestAnimationFrame(animate);
           const isVisible = visibleRef.current;
           if (isVisible && !wasVisible) {
@@ -2233,14 +2243,17 @@ function WorkoutFigureBackdrop({ visible = false }) {
               activeMixer      = loopMixer;
             });
             clock.start();
+            lastFrame = now;
           }
           wasVisible = isVisible;
           if (!isVisible) return;
+          if (now - lastFrame < FRAME_MS) return;
+          lastFrame = now - ((now - lastFrame) % FRAME_MS);
           const dt = Math.min(clock.getDelta(), 0.05);
           if (activeMixer) activeMixer.update(dt);
           renderer.render(scene, camera);
         };
-        animate();
+        animate(0);
       }).catch(e => console.warn("Workout FBX load error:", e));
     }).catch(e => console.warn("Three.js import error:", e));
 
