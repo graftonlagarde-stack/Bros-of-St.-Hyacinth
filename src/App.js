@@ -762,7 +762,7 @@ const css = `
     box-shadow: 0 0 12px rgba(136,255,0,0.3);
     animation: bubbleFloat 4s ease-in-out infinite;
   }
-  .xbox-bubble:nth-child(2) { width:38px; height:38px; top:8%;  left:62%; animation-delay:0s;    animation-duration:3.8s; }
+  .xbox-bubble:nth-child(2) { width:38px; height:38px; top:8%;  left:62%; animation-delay:0s;    animation-duration:3.8s; position:absolute; z-index:3; }
   .xbox-bubble:nth-child(3) { width:24px; height:24px; top:22%; left:80%; animation-delay:0.7s;  animation-duration:4.5s; }
   .xbox-bubble:nth-child(4) { width:18px; height:18px; top:55%; left:84%; animation-delay:1.4s;  animation-duration:3.2s; }
   .xbox-bubble:nth-child(5) { width:30px; height:30px; top:72%; left:68%; animation-delay:0.3s;  animation-duration:5s;   }
@@ -805,20 +805,11 @@ const css = `
     font-size: 11px; font-weight: 900;
     letter-spacing: 3px; text-transform: uppercase;
     transition: all 0.15s ease;
-    border: none;
-    background: transparent;
-    color: rgba(136,255,120,0.55);
-    backdrop-filter: none;
-    display: flex; align-items: center;
-    animation: navIdle 8s ease-in-out infinite;
-  }
-  .nav-item::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: rgba(0,20,0,0.55);
     border: 1px solid rgba(136,255,0,0.15);
+    background: rgba(0,20,0,0.55);
+    color: rgba(136,255,120,0.55);
     backdrop-filter: blur(4px);
+    display: flex; align-items: center;
     clip-path: polygon(
       0.00% 84.00%,
       1.58% 100.00%,
@@ -830,8 +821,7 @@ const css = `
       1.58%   0.00%,
       0.00%  12.29%
     );
-    z-index: -1;
-    transition: background 0.15s ease, border-color 0.15s ease;
+    animation: navIdle 8s ease-in-out infinite;
   }
   .nav-item:nth-child(1) { animation-delay:  0.0s; }
   .nav-item:nth-child(2) { animation-delay: -1.6s; }
@@ -845,30 +835,27 @@ const css = `
     66%      { transform: translate(-0.8px,  1.2px); }
   }
   .nav-item::before { display: none; }
-  .nav-item:hover { color: rgba(200,255,150,0.85); }
-  .nav-item:hover::before { background: rgba(0,60,0,0.7); border-color: rgba(136,255,0,0.4); }
+  .nav-item:hover {
+    background: rgba(0,60,0,0.7);
+    color: rgba(200,255,150,0.85);
+    border-color: rgba(136,255,0,0.4);
+  }
   .nav-item.active {
+    background: linear-gradient(90deg, #aaee00 0%, #88cc00 60%, #669900 100%);
     color: #001a00;
+    border-color: #ccff00;
+    box-shadow: 0 0 18px #88ff0088, 0 0 40px #44cc0044, inset 0 1px 0 rgba(255,255,255,0.3);
     text-shadow: none;
     transform: translateX(6px) scaleY(1.06);
     font-size: 12px;
     width: 240px;
   }
-  .nav-item.active::before {
-    background: linear-gradient(90deg, #aaee00 0%, #88cc00 60%, #669900 100%);
-    border-color: #ccff00;
-    box-shadow: 0 0 18px #88ff0088, 0 0 40px #44cc0044, inset 0 1px 0 rgba(255,255,255,0.3);
-    clip-path: polygon(
-      0.00% 84.00%,
-      1.58% 100.00%,
-      9.47% 100.00%,
-      10.69% 84.00%,
-      100.00% 84.00%,
-      100.00% 20.00%,
-      97.37%  0.00%,
-      1.58%   0.00%,
-      0.00%  12.29%
-    );
+  .nav-item.active::before { display: none; }
+  /* Full-rectangle hit area overlay — sits over clip-path so entire shape is clickable */
+  .nav-item-hit {
+    position: absolute;
+    inset: 0;
+    cursor: pointer;
   }
   .nav-icon { display: none; }
   .xbox-orb-wrap { z-index: 4 !important; }
@@ -3992,6 +3979,7 @@ export default function App() {
           {/* Orb — click to toggle nav */}
           <div className="xbox-orb-wrap" onClick={() => setNavExpanded(v => !v)}>
             <div className="xbox-orb" />
+            <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(circle at 50% 55%, transparent 30%, rgba(0,5,0,0.5) 62%, rgba(0,0,0,0.80) 100%)",zIndex:1,pointerEvents:"none"}} />
             <canvas ref={glbCanvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",borderRadius:"50%",pointerEvents:"none",zIndex:2,filter:"blur(0.5px) drop-shadow(0 0 10px #aaff00cc) drop-shadow(0 0 25px #88ff0099) drop-shadow(0 0 55px #55dd0066) drop-shadow(0 0 90px #33aa0033)"}} />
             <div className="xbox-bubble" />
             <div className="xbox-bubble" />
@@ -4003,15 +3991,18 @@ export default function App() {
           <div className={`nav-wrap${navExpanded ? "" : " retracted"}`}>
             {navItems.map(n => (
               <div key={n.id} className={`nav-item ${page===n.id?"active":""}`} onClick={() => handleSetPage(n.id)}>
+                <div className="nav-item-hit" />
                 {n.label}
               </div>
             ))}
             {(user.role === "arch_admin" || user.role === "admin") && (
               <div className="nav-item" onClick={() => setShowAdmin(true)}>
+                <div className="nav-item-hit" />
                 {user.role === "arch_admin" ? "Arch-Admin" : "Admin"}
               </div>
             )}
             <div className="nav-item" onClick={() => setShowProfile(true)}>
+              <div className="nav-item-hit" />
               {username}
             </div>
           </div>
