@@ -746,15 +746,7 @@ const css = `
       inset -15px -15px 50px rgba(0,0,0,0.4);
     animation: orbPulse 3s ease-in-out infinite;
   }
-  .xbox-orb::after {
-    content: '✕';
-    position: absolute; inset: 0;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 72px; font-weight: 900;
-    color: rgba(0,0,0,0.35);
-    text-shadow: 0 0 20px rgba(0,255,0,0.3);
-    font-family: 'Orbitron', sans-serif;
-  }
+  .xbox-orb::after { display: none; }
   .xbox-bubble {
     position: absolute; border-radius: 50%;
     z-index: 4;
@@ -3847,7 +3839,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (mainRef.current) mainRef.current.scrollTop = 0;
+    if (!mainRef.current) return;
+    if (page === "boards") {
+      mainRef.current.scrollTop = mainRef.current.scrollHeight;
+    } else {
+      mainRef.current.scrollTop = 0;
+    }
   }, [page]);
 
   // ── GLB orb renderer ──────────────────────────────────────────────
@@ -3866,8 +3863,8 @@ export default function App() {
       const H = canvas.offsetHeight || 220;
       if (W < 10) { setTimeout(init, 150); return; }
 
-      renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: false });
-      renderer.setPixelRatio(1);
+      renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       renderer.setSize(W, H);
       renderer.setClearColor(0x000000, 0);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
