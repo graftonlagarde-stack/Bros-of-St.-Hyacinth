@@ -852,6 +852,7 @@ const css = `
     cursor: pointer;
     flex-shrink: 0;
     transition: width 0.15s ease;
+    background: transparent;
   }
   .nav-item-wrap.active-wrap {
     width: 270px;
@@ -1496,10 +1497,9 @@ function FigureBackdrop({ variant = "workout", visible = false }) {
             lastFrame = now;
           }
           wasVisible = isVisible;
-          if (!isVisible) return;
           if (now - lastFrame < FRAME_MS) return;
           lastFrame = now - ((now - lastFrame) % FRAME_MS);
-          if (mixer) mixer.update(clock.getDelta());
+          if (mixer && isVisible) mixer.update(clock.getDelta());
           renderer.render(scene, camera);
         };
         animate(0);
@@ -1819,9 +1819,9 @@ function AudioFigureBackdrop({ visible = false }) {
             const isVisible = visibleRef.current;
             if (isVisible && !wasVisible) { restartAnimation(); lastFrame = now; }
             wasVisible = isVisible;
-            if (!isVisible) return;
             if (now - lastFrame < FRAME_MS) return;
             lastFrame = now - ((now - lastFrame) % FRAME_MS);
+            if (!isVisible) { renderer.render(scene, camera); return; }
             const dt = Math.min(clock.getDelta(), 0.05);
             if (mixer) mixer.update(dt);
 
@@ -2256,11 +2256,10 @@ function WorkoutFigureBackdrop({ visible = false }) {
             lastFrame = now;
           }
           wasVisible = isVisible;
-          if (!isVisible) return;
           if (now - lastFrame < FRAME_MS) return;
           lastFrame = now - ((now - lastFrame) % FRAME_MS);
           const dt = Math.min(clock.getDelta(), 0.05);
-          if (activeMixer) activeMixer.update(dt);
+          if (activeMixer && isVisible) activeMixer.update(dt);
           renderer.render(scene, camera);
         };
         animate(0);
