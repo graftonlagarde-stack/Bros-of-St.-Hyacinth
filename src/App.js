@@ -664,8 +664,8 @@ const css = `
     left: -50%; right: -50%;
     top: 0%; bottom: -5%;
     background-image:
-      linear-gradient(rgba(136,255,0,0.22) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(136,255,0,0.22) 1px, transparent 1px);
+      linear-gradient(rgba(136,255,0,0.38) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(136,255,0,0.38) 1px, transparent 1px);
     background-size: 80px 80px;
     background-position: 50% 0%;
     transform: perspective(600px) rotateX(82deg) translateY(35%);
@@ -1431,7 +1431,7 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
 
       const wireMat = new THREE.MeshBasicMaterial({
         color: 0x00ffcc, wireframe: true,
-        transparent: true, opacity: 0.22,
+        transparent: true, opacity: 0.32,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
 
@@ -1492,6 +1492,7 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
       zIndex: -1,
       opacity: fbxFile ? opacity : 0,
       transition: "opacity 0.5s ease",
+      filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)",
     }} />
   );
 }
@@ -1596,7 +1597,7 @@ function AudioFigureBackdrop({ fading = false }) {
 
       const wireMat = new THREE.MeshBasicMaterial({
         color: 0x00ffcc, wireframe: true,
-        transparent: true, opacity: 0.22,
+        transparent: true, opacity: 0.32,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
 
@@ -1990,7 +1991,7 @@ function AudioFigureBackdrop({ fading = false }) {
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
     }}>
-      <div ref={mountRef} style={{ position: "absolute", inset: 0 }} />
+      <div ref={mountRef} style={{ position: "absolute", inset: 0, filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)" }} />
       <canvas ref={fogCanvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
     </div>
   );
@@ -2037,7 +2038,7 @@ function WorkoutFigureBackdrop({ fading = false }) {
 
       const wireMat = new THREE.MeshBasicMaterial({
         color: 0x00ffcc, wireframe: true,
-        transparent: true, opacity: 0.22,
+        transparent: true, opacity: 0.32,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
 
@@ -2182,6 +2183,7 @@ function WorkoutFigureBackdrop({ fading = false }) {
       left: 224, top: 0, right: 0, bottom: 70,
       pointerEvents: "none", zIndex: -1,
       opacity, transition: "opacity 0.5s ease",
+      filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)",
     }} />
   );
 }
