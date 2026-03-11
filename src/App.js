@@ -1590,7 +1590,7 @@ function AudioFigureBackdrop({ fading = false }) {
       const crossCamDist = 660;
       const crossFovRad = (40 * Math.PI) / 180;
       const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
-      const crossCenterX = (w / 2 + 224 - window.innerWidth / 2) * crossWorldPerPx;
+      const crossCenterX = -112 * crossWorldPerPx;
       crossGroup.position.set(crossCenterX, 0, 0);
       scene.add(crossGroup);
 
