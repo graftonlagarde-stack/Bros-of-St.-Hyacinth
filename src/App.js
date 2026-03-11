@@ -1431,7 +1431,7 @@ function FigureBackdrop({ variant = "workout", visible = false }) {
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
       el.appendChild(renderer.domElement);
@@ -1469,26 +1469,26 @@ function FigureBackdrop({ variant = "workout", visible = false }) {
           a.setLoop(THREE.LoopRepeat, Infinity);
           a.play();
         }
-      }, undefined, e => console.warn("FBX load error:", e));
 
-      let wasVisible = visibleRef.current;
-      const animate = () => {
-        animId = requestAnimationFrame(animate);
-        const isVisible = visibleRef.current;
-        if (isVisible && !wasVisible && mixer) {
-          mixer.stopAllAction();
-          const a = mixer.clipAction(obj.animations[0]);
-          a.setLoop(THREE.LoopRepeat, Infinity);
-          a.time = 0;
-          a.play();
-          clock.start();
-        }
-        wasVisible = isVisible;
-        if (!isVisible) return;
-        if (mixer) mixer.update(clock.getDelta());
-        renderer.render(scene, camera);
-      };
-      animate();
+        let wasVisible = visibleRef.current;
+        const animate = () => {
+          animId = requestAnimationFrame(animate);
+          const isVisible = visibleRef.current;
+          if (isVisible && !wasVisible && mixer && obj.animations?.length) {
+            mixer.stopAllAction();
+            const a = mixer.clipAction(obj.animations[0]);
+            a.setLoop(THREE.LoopRepeat, Infinity);
+            a.time = 0;
+            a.play();
+            clock.start();
+          }
+          wasVisible = isVisible;
+          if (!isVisible) return;
+          if (mixer) mixer.update(clock.getDelta());
+          renderer.render(scene, camera);
+        };
+        animate();
+      }, undefined, e => console.warn("FBX load error:", e));
     }).catch(e => console.warn("Three.js import error:", e));
 
     return () => {
@@ -1552,7 +1552,7 @@ function AudioFigureBackdrop({ visible = false }) {
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
       el.appendChild(renderer.domElement);
@@ -1806,7 +1806,10 @@ function AudioFigureBackdrop({ visible = false }) {
             const dt = Math.min(clock.getDelta(), 0.05);
             if (mixer) mixer.update(dt);
 
-            crossGroup.rotation.set(0, 0, 0);
+            const toCamX = camera.position.x - crossGroup.position.x;
+            const toCamZ = camera.position.z - crossGroup.position.z;
+            const camAngle = Math.atan2(toCamX, toCamZ);
+            crossGroup.rotation.set(0, camAngle, 0);
             updateGlitter(clock.elapsedTime);
             crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
 
@@ -2071,7 +2074,7 @@ function WorkoutFigureBackdrop({ visible = false }) {
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
       el.appendChild(renderer.domElement);
@@ -3851,7 +3854,7 @@ export default function App() {
       if (W < 10) { setTimeout(init, 150); return; }
 
       renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       renderer.setSize(W, H);
       renderer.setClearColor(0x000000, 0);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
