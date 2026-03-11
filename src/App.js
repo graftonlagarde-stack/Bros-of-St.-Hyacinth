@@ -3840,11 +3840,7 @@ export default function App() {
 
   useEffect(() => {
     if (!mainRef.current) return;
-    if (page === "boards") {
-      mainRef.current.scrollTop = mainRef.current.scrollHeight;
-    } else {
-      mainRef.current.scrollTop = 0;
-    }
+    mainRef.current.scrollTop = 0;
   }, [page]);
 
   // ── GLB orb renderer ──────────────────────────────────────────────
