@@ -3685,6 +3685,10 @@ export default function App() {
       const rimLight = new THREE.PointLight(0xaaff00, 2.5, 15);
       rimLight.position.set(0, 0, -4);
       scene.add(rimLight);
+      // Cross rim specular — close front light to catch hard edges of cross cutout
+      const crossLight = new THREE.PointLight(0xffffff, 5.0, 4);
+      crossLight.position.set(0, 0, 1.8);
+      scene.add(crossLight);
       const topLight = new THREE.PointLight(0xffffff, 3.0, 8);
       topLight.position.set(-0.5, 3, 2);
       scene.add(topLight);
@@ -3700,8 +3704,6 @@ export default function App() {
         model.position.sub(centre);
         model.scale.setScalar(2.0 / maxDim);
         model.rotation.set(0, -Math.PI / 2, 0);
-
-        const innerMeshes = [];
 
         model.traverse(child => {
           if (!child.isMesh) return;
@@ -3721,20 +3723,17 @@ export default function App() {
               side:              THREE.DoubleSide,
               depthWrite:        false,
             });
-            // Explicit wireframe mesh — always visible neon green electric outline
-            const wfGeo = new THREE.WireframeGeometry(child.geometry);
-            const wfMat = new THREE.LineBasicMaterial({
+            // EdgesGeometry — only hard edges (cross cutout contours), not every polygon
+            const edgesGeo = new THREE.EdgesGeometry(child.geometry, 15);
+            const edgesMat = new THREE.LineBasicMaterial({
               color:       0xaaff00,
               transparent: true,
-              opacity:     0.55,
+              opacity:     0.40,
               blending:    THREE.AdditiveBlending,
               depthWrite:  false,
             });
-            const wfMesh = new THREE.LineSegments(wfGeo, wfMat);
-            wfMesh.rotation.copy(child.rotation);
-            wfMesh.position.copy(child.position);
-            wfMesh.scale.copy(child.scale);
-            model.add(wfMesh);
+            const edgesMesh = new THREE.LineSegments(edgesGeo, edgesMat);
+            child.add(edgesMesh);
           } else {
             child.material = new THREE.MeshStandardMaterial({
               color:             new THREE.Color(0.10, 0.50, 0.0),
@@ -3745,28 +3744,7 @@ export default function App() {
               transparent:       false,
               side:              THREE.FrontSide,
             });
-            innerMeshes.push(child);
           }
-        });
-
-        innerMeshes.forEach(mesh => {
-          const ccMat = new THREE.MeshPhysicalMaterial({
-            color:              new THREE.Color(0, 0, 0),
-            transparent:        false,
-            opacity:            1.0,
-            roughness:          0.05,
-            metalness:          0.0,
-            clearcoat:          1.0,
-            clearcoatRoughness: 0.0,
-            side:               THREE.FrontSide,
-            depthWrite:         false,
-            depthTest:          true,
-          });
-          const ccMesh = new THREE.Mesh(mesh.geometry, ccMat);
-          ccMesh.position.copy(mesh.position);
-          ccMesh.rotation.copy(mesh.rotation);
-          ccMesh.scale.copy(mesh.scale);
-          mesh.parent.add(ccMesh);
         });
 
         scene.add(model);
