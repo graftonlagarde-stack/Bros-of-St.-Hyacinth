@@ -538,7 +538,7 @@ function BoardPage({ username }) {
 
 
 
-const EXERCISE_LIST = ["Bench Press", "Squat", "Deadlift", "Hex-Bar Deadlift", "Curls", "Overhead Press", "Pull-up", "Row"];
+const EXERCISE_LIST = ["Bench Press", "Squat", "Deadlift", "Hex-Bar Deadlift", "Curls", "Overhead Press", "Pull-up", "Push-up", "Row"];
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 const css = `
@@ -664,8 +664,8 @@ const css = `
     left: -50%; right: -50%;
     top: 0%; bottom: -5%;
     background-image:
-      linear-gradient(rgba(136,255,0,0.38) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(136,255,0,0.38) 1px, transparent 1px);
+      linear-gradient(rgba(136,255,0,0.22) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(136,255,0,0.22) 1px, transparent 1px);
     background-size: 80px 80px;
     background-position: 50% 0%;
     transform: perspective(600px) rotateX(82deg) translateY(35%);
@@ -746,15 +746,7 @@ const css = `
       inset -15px -15px 50px rgba(0,0,0,0.4);
     animation: orbPulse 3s ease-in-out infinite;
   }
-  .xbox-orb::after {
-    content: '✕';
-    position: absolute; inset: 0;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 72px; font-weight: 900;
-    color: rgba(0,0,0,0.35);
-    text-shadow: 0 0 20px rgba(0,255,0,0.3);
-    font-family: 'Orbitron', sans-serif;
-  }
+
   .xbox-bubble {
     position: absolute; border-radius: 50%;
     background: radial-gradient(circle at 35% 30%, rgba(180,255,80,0.7), rgba(0,180,0,0.3) 60%, transparent);
@@ -762,7 +754,7 @@ const css = `
     box-shadow: 0 0 12px rgba(136,255,0,0.3);
     animation: bubbleFloat 4s ease-in-out infinite;
   }
-  .xbox-bubble:nth-child(2) { width:38px; height:38px; top:8%;  left:62%; animation-delay:0s;    animation-duration:3.8s; }
+  .xbox-bubble:nth-child(2) { width:38px; height:38px; top:8%;  left:62%; animation-delay:0s;    animation-duration:3.8s; z-index:3; position:absolute; }
   .xbox-bubble:nth-child(3) { width:24px; height:24px; top:22%; left:80%; animation-delay:0.7s;  animation-duration:4.5s; }
   .xbox-bubble:nth-child(4) { width:18px; height:18px; top:55%; left:84%; animation-delay:1.4s;  animation-duration:3.2s; }
   .xbox-bubble:nth-child(5) { width:30px; height:30px; top:72%; left:68%; animation-delay:0.3s;  animation-duration:5s;   }
@@ -805,11 +797,20 @@ const css = `
     font-size: 11px; font-weight: 900;
     letter-spacing: 3px; text-transform: uppercase;
     transition: all 0.15s ease;
-    border: 1px solid rgba(136,255,0,0.15);
-    background: rgba(0,20,0,0.55);
+    border: none;
+    background: transparent;
     color: rgba(136,255,120,0.55);
-    backdrop-filter: blur(4px);
     display: flex; align-items: center;
+    animation: navIdle 8s ease-in-out infinite;
+    overflow: visible;
+  }
+  .nav-item::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0,20,0,0.55);
+    border: 1px solid rgba(136,255,0,0.15);
+    backdrop-filter: blur(4px);
     clip-path: polygon(
       0.00% 84.00%,
       1.58% 100.00%,
@@ -821,7 +822,8 @@ const css = `
       1.58%   0.00%,
       0.00%  12.29%
     );
-    animation: navIdle 8s ease-in-out infinite;
+    z-index: -1;
+    transition: all 0.15s ease;
   }
   .nav-item:nth-child(1) { animation-delay:  0.0s; }
   .nav-item:nth-child(2) { animation-delay: -1.6s; }
@@ -835,22 +837,31 @@ const css = `
     66%      { transform: translate(-0.8px,  1.2px); }
   }
   .nav-item::before { display: none; }
-  .nav-item:hover {
-    background: rgba(0,60,0,0.7);
-    color: rgba(200,255,150,0.85);
-    border-color: rgba(136,255,0,0.4);
-  }
+  .nav-item:hover { color: rgba(200,255,150,0.85); }
+  .nav-item:hover::before { background: rgba(0,60,0,0.7); border-color: rgba(136,255,0,0.4); }
   .nav-item.active {
-    background: linear-gradient(90deg, #aaee00 0%, #88cc00 60%, #669900 100%);
     color: #001a00;
-    border-color: #ccff00;
-    box-shadow: 0 0 18px #88ff0088, 0 0 40px #44cc0044, inset 0 1px 0 rgba(255,255,255,0.3);
     text-shadow: none;
     transform: translateX(6px) scaleY(1.06);
     font-size: 12px;
     width: 240px;
   }
-  .nav-item.active::before { display: none; }
+  .nav-item.active::before {
+    background: linear-gradient(90deg, #aaee00 0%, #88cc00 60%, #669900 100%);
+    border-color: #ccff00;
+    box-shadow: 0 0 18px #88ff0088, 0 0 40px #44cc0044, inset 0 1px 0 rgba(255,255,255,0.3);
+    clip-path: polygon(
+      0.00% 84.00%,
+      1.58% 100.00%,
+      9.47% 100.00%,
+      10.69% 84.00%,
+      100.00% 84.00%,
+      100.00% 20.00%,
+      97.37%  0.00%,
+      1.58%   0.00%,
+      0.00%  12.29%
+    );
+  }
   .nav-icon { display: none; }
   .xbox-orb-wrap { z-index: 4 !important; }
 
@@ -1405,7 +1416,7 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
 
       const wireMat = new THREE.MeshBasicMaterial({
         color: 0x00ffcc, wireframe: true,
-        transparent: true, opacity: 0.32,
+        transparent: true, opacity: 0.22,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
 
@@ -1567,7 +1578,7 @@ function AudioFigureBackdrop({ fading = false }) {
 
       const wireMat = new THREE.MeshBasicMaterial({
         color: 0x00ffcc, wireframe: true,
-        transparent: true, opacity: 0.32,
+        transparent: true, opacity: 0.22,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
 
@@ -1734,7 +1745,7 @@ function AudioFigureBackdrop({ fading = false }) {
             const dt = Math.min(clock.getDelta(), 0.05);
             if (mixer) mixer.update(dt);
 
-            // Cross faces perfectly forward (toward camera)
+            // Cross faces perfectly forward toward camera
             crossGroup.rotation.set(0, 0, 0);
             updateGlitter(clock.elapsedTime);
             crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
@@ -2006,7 +2017,7 @@ function WorkoutFigureBackdrop({ fading = false }) {
 
       const wireMat = new THREE.MeshBasicMaterial({
         color: 0x00ffcc, wireframe: true,
-        transparent: true, opacity: 0.32,
+        transparent: true, opacity: 0.22,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
 
@@ -2161,6 +2172,93 @@ const REP_COLORS = { 1: "#b5f03c", 5: "#60a5fa", 10: "#f97316", 15: "#a78bfa" };
 
 
 // ─── MY RANK CARD ─────────────────────────────────────────────────────────────
+function BodyweightRankCard({ username, exercise, userLogs, communityUsers = [] }) {
+  const leaderboard = useMemo(() => {
+    const entries = [];
+    const myBest = Math.max(0, ...userLogs.filter(l => l.exercise === exercise).map(l => l.weight));
+    if (myBest > 0) entries.push({ name: username, weight: myBest, isMe: true });
+    communityUsers.forEach(u => {
+      const series = u.logs[exercise]?.[0];
+      if (series?.length) entries.push({ name: u.name, weight: Math.max(...series.map(e => e.weight)), isMe: false });
+    });
+    return entries.sort((a, b) => b.weight - a.weight);
+  }, [username, exercise, userLogs, communityUsers]);
+
+  const myEntry  = leaderboard.find(e => e.isMe);
+  const rank     = myEntry ? leaderboard.findIndex(e => e.isMe) + 1 : null;
+  const total    = leaderboard.length;
+  const ordinal  = n => { const s = ["th","st","nd","rd"], v = n % 100; return n + (s[(v-20)%10] || s[v] || s[0]); };
+  const percentile = rank && total > 1 ? Math.round(((total - rank) / (total - 1)) * 100) : rank === 1 && total === 1 ? 100 : null;
+  const MEDALS = [
+    { color: "#ffdd00", label: "GOLD",   shadow: "0 0 16px #ffdd0099" },
+    { color: "#c8d4de", label: "SILVER", shadow: "0 0 12px #c8d4de55" },
+    { color: "#ff9944", label: "BRONZE", shadow: "0 0 12px #ff994455" },
+  ];
+  const medal  = rank && rank <= 3 ? MEDALS[rank - 1] : null;
+  const barPct = percentile !== null ? Math.max(2, percentile) : 0;
+  const numSize = !rank ? 68 : rank >= 100 ? 46 : rank >= 10 ? 56 : 68;
+
+  return (
+    <div style={{
+      background: "linear-gradient(160deg,rgba(0,22,13,.55),rgba(0,12,7,.38) 50%,rgba(0,4,2,.45))",
+      border: "1px solid rgba(136,255,0,.28)", borderTop: "1px solid rgba(136,255,0,.30)",
+      borderLeft: "1px solid rgba(136,255,0,.18)",
+      boxShadow: "0 2px 0 rgba(136,255,0,0.10), 0 8px 24px rgba(0,0,0,0.6), 0 28px 64px rgba(0,0,0,0.5), inset 0 1px 0 rgba(136,255,0,0.15), inset 0 0 60px rgba(136,255,0,0.025)",
+      borderRadius: "var(--radius)", padding: "26px 30px 24px", marginBottom: 24,
+      position: "relative", overflow: "hidden", animation: "rankGlow 4s ease-in-out infinite",
+    }}>
+      <div style={{ position:"absolute", top:0, left:0, width:18, height:18, borderTop:"2px solid var(--lime)", borderLeft:"2px solid var(--lime)" }} />
+      <div style={{ position:"absolute", bottom:0, right:0, width:18, height:18, borderBottom:"2px solid var(--cyan)", borderRight:"2px solid var(--cyan)" }} />
+      <div style={{ position:"absolute", top:0, left:0, right:0, height:1, background:"var(--energy-grad)", backgroundSize:"300% 300%", animation:"sheen 2s ease-in-out infinite" }} />
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:22 }}>
+        <div style={{ fontFamily:"'Orbitron',sans-serif", fontWeight:700, fontSize:11, letterSpacing:2, textTransform:"uppercase", color:"var(--accent)", display:"flex", alignItems:"center", gap:8 }}>
+          <span style={{ color:"var(--lime)" }}>◆</span> Your Rank
+        </div>
+        <div style={{ fontFamily:"'Orbitron',sans-serif", fontSize:10, color:"var(--muted)", letterSpacing:1.5, textTransform:"uppercase", background:"rgba(136,255,0,.05)", border:"1px solid var(--border)", padding:"3px 10px", borderRadius:2 }}>
+          {exercise} · Rep Count
+        </div>
+      </div>
+      {!myEntry ? (
+        <div style={{ textAlign:"center", padding:"28px 0", color:"var(--muted)", fontSize:12, fontFamily:"'Orbitron',sans-serif", letterSpacing:2, textTransform:"uppercase" }}>
+          Log a {exercise} entry to see your rank
+        </div>
+      ) : (
+        <div style={{ display:"flex", alignItems:"center", gap:28, flexWrap:"wrap" }}>
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, flexShrink:0 }}>
+            <div style={{ fontFamily:"'Orbitron',sans-serif", fontWeight:900, fontSize:numSize, lineHeight:1, letterSpacing:-2, background:"var(--chrome-grad)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", backgroundClip:"text", filter: medal ? "drop-shadow(0 0 28px "+medal.color+"cc)" : "drop-shadow(0 0 22px rgba(136,255,0,.9))" }}>
+              {ordinal(rank)}
+            </div>
+            <div style={{ fontSize:11, color:"var(--muted)", fontFamily:"'Orbitron',sans-serif", letterSpacing:1.5, textTransform:"uppercase" }}>of {total} athlete{total !== 1 ? "s" : ""}</div>
+            {medal && <div style={{ fontSize:10, fontFamily:"'Orbitron',sans-serif", fontWeight:700, letterSpacing:2, textTransform:"uppercase", padding:"3px 10px", borderRadius:2, color:medal.color, border:"1px solid "+medal.color+"55", background:medal.color+"10", boxShadow:medal.shadow }}>{medal.label}</div>}
+          </div>
+          <div style={{ width:1, height:64, flexShrink:0, background:"linear-gradient(180deg,transparent,rgba(136,255,0,.25),transparent)" }} />
+          <div style={{ display:"flex", flexDirection:"column", gap:16, flex:1, minWidth:190 }}>
+            <div>
+              <div style={{ fontSize:10, color:"var(--muted)", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, textTransform:"uppercase", marginBottom:4 }}>Your best</div>
+              <div style={{ fontFamily:"'Orbitron',sans-serif", fontWeight:700, fontSize:16, color:"var(--accent)", textShadow:"var(--glow-sm)" }}>
+                {myEntry.weight} <span style={{ fontSize:11, color:"var(--muted)", fontWeight:400, fontFamily:"'Rajdhani',sans-serif" }}>reps</span>
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize:10, color:"var(--muted)", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, textTransform:"uppercase", marginBottom:4 }}>Percentile rank</div>
+              <div style={{ display:"flex", alignItems:"baseline", gap:8, marginBottom:6 }}>
+                <span style={{ fontFamily:"'Orbitron',sans-serif", fontWeight:900, fontSize:22, color: percentile >= 90 ? "var(--lime)" : percentile >= 50 ? "var(--accent)" : "var(--muted)", textShadow: percentile >= 90 ? "var(--glow-lime)" : percentile >= 50 ? "var(--glow-sm)" : "none" }}>
+                  {percentile !== null ? percentile+"th" : "—"}
+                </span>
+                <span style={{ fontSize:11, color:"var(--muted)", fontFamily:"'Orbitron',sans-serif", letterSpacing:1 }}>percentile</span>
+              </div>
+              <div style={{ height:5, background:"rgba(136,255,0,.06)", border:"1px solid rgba(136,255,0,.1)", overflow:"hidden", marginBottom:4 }}>
+                <div style={{ height:"100%", width:barPct+"%", background:"var(--energy-grad)", backgroundSize:"300% 300%", animation:"sheen 2s ease-in-out infinite", boxShadow:"0 0 10px #88ff0077", transition:"width 1s cubic-bezier(.16,1,.3,1)" }} />
+              </div>
+              <div style={{ fontSize:11, color:"var(--muted)" }}>{percentile !== null ? "Does more than "+percentile+"% of logged athletes" : ""}</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MyRankCard({ username, exercise, repCat, userLogs, communityUsers = [] }) {
   const leaderboard = useMemo(() => {
     const entries = [];
@@ -2268,9 +2366,11 @@ function WorkoutPage({ username }) {
   const [form, setForm] = useState({ exercise: "Bench Press", repCat: 1, weight: "" });
 
   // When switching to/from Pull-up, reset the weight field
-  const setExercise = (ex) => setForm(f => ({ ...f, exercise: ex, repCat: ex === "Pull-up" ? null : (f.repCat === null ? 1 : f.repCat), weight: "" }));
+  const setExercise = (ex) => setForm(f => ({ ...f, exercise: ex, repCat: (ex === "Pull-up" || ex === "Push-up") ? null : (f.repCat === null ? 1 : f.repCat), weight: "" }));
 
   const isPullup = form.exercise === "Pull-up";
+  const isPushup = form.exercise === "Push-up";
+  const isBodyweight = isPullup || isPushup;
   const [chartEx, setChartEx] = useState("Bench Press");
   const [compareUser, setCompareUser] = useState(null);
   const [dupError, setDupError] = useState(null);
@@ -2282,16 +2382,16 @@ function WorkoutPage({ username }) {
       .catch(err => console.warn("getLogs:", err));
   }, [username]);
 
-  useEffect(() => { setDupError(null); }, [form.exercise, form.repCat, isPullup]);
+  useEffect(() => { setDupError(null); }, [form.exercise, form.repCat, isBodyweight]);
 
   const addLog = async () => {
     if (!form.weight) return;
     const today = new Date();
     const todayStr = today.toLocaleDateString("en-US", { month:"short", day:"numeric" });
-    const duplicate = logs.find(l => l.exercise === form.exercise && (isPullup ? l.exercise === "Pull-up" : l.repCat === Number(form.repCat)) && l.date === todayStr);
+    const duplicate = logs.find(l => l.exercise === form.exercise && (isBodyweight ? l.exercise === form.exercise : l.repCat === Number(form.repCat)) && l.date === todayStr);
     if (duplicate) {
-      setDupError(isPullup
-        ? `You already logged Pull-ups today — come back tomorrow!`
+      setDupError(isBodyweight
+        ? `You already logged ${form.exercise} today — come back tomorrow!`
         : `You already logged ${form.exercise} at ${Number(form.repCat)} rep${Number(form.repCat)>1?"s":""} today — come back tomorrow!`);
       return;
     }
@@ -2299,7 +2399,7 @@ function WorkoutPage({ username }) {
     const ts = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0).getTime();
     const entry = {
       exercise: form.exercise,
-      repCat: isPullup ? 0 : Number(form.repCat),
+      repCat: isBodyweight ? 0 : Number(form.repCat),
       weight:   Number(form.weight),
       date:     todayStr,
       ts,
@@ -2390,7 +2490,7 @@ function WorkoutPage({ username }) {
             <select value={form.exercise} onChange={e => setExercise(e.target.value)} style={{marginBottom:14}}>
               {EXERCISE_LIST.map(ex => <option key={ex}>{ex}</option>)}
             </select>
-            {!isPullup && (<>
+            {!isBodyweight && (<>
             <div className="form-label" style={{marginBottom:8}}>Rep Category</div>
             <div style={{display:"flex",gap:8,marginBottom:14}}>
               {REP_CATS.map(r => (
@@ -2412,11 +2512,11 @@ function WorkoutPage({ username }) {
               onKeyDown={e => e.key==="Enter" && addLog()} style={{marginBottom:4}} />
             <div style={{fontSize:11,color:"var(--muted)",marginBottom:16}}>Enter the max weight you lifted for {form.repCat} rep{form.repCat>1?"s":""}.</div>
             </>)}
-            {isPullup && (<>
-            <div className="form-label" style={{marginBottom:6}}>Number of Pull-ups</div>
+            {isBodyweight && (<>
+            <div className="form-label" style={{marginBottom:6}}>Number of {form.exercise}s</div>
             <input type="number" placeholder="e.g. 12" min="1" value={form.weight} onChange={e=>setForm({...form,weight:e.target.value})}
               onKeyDown={e => e.key==="Enter" && addLog()} style={{marginBottom:4}} />
-            <div style={{fontSize:11,color:"var(--muted)",marginBottom:16}}>Enter the total number of pull-ups you did.</div>
+            <div style={{fontSize:11,color:"var(--muted)",marginBottom:16}}>Enter the total number of {form.exercise.toLowerCase()}s you did.</div>
             </>)}
             {dupError && (
               <div style={{background:"rgba(255,60,60,0.12)",border:"1px solid rgba(255,60,60,0.4)",borderRadius:4,padding:"9px 12px",marginBottom:12,fontSize:12,color:"#ff6666",fontFamily:"'Rajdhani',sans-serif",letterSpacing:0.5}}>
@@ -2446,10 +2546,10 @@ function WorkoutPage({ username }) {
                 <tr key={l.id}>
                   <td><span className="badge">{l.exercise}</span></td>
                   <td style={{color: l.exercise === "Pull-up" ? "var(--accent)" : REP_COLORS[l.repCat], fontWeight:700}}>
-                    {l.exercise === "Pull-up" ? "Pull-ups" : `${l.repCat} Rep${l.repCat>1?"s":""}`}
+                    {(l.exercise === "Pull-up" || l.exercise === "Push-up") ? l.exercise+"s" : `${l.repCat} Rep${l.repCat>1?"s":""}`}
                   </td>
                   <td style={{fontWeight:600}}>
-                    {l.exercise === "Pull-up" ? <>{l.weight} <span style={{fontSize:11,color:"var(--muted)",fontWeight:400}}>reps</span></> : <>{l.weight} <span style={{fontSize:11,color:"var(--muted)",fontWeight:400}}>lbs</span></>}
+                    {(l.exercise === "Pull-up" || l.exercise === "Push-up") ? <>{l.weight} <span style={{fontSize:11,color:"var(--muted)",fontWeight:400}}>reps</span></> : <>{l.weight} <span style={{fontSize:11,color:"var(--muted)",fontWeight:400}}>lbs</span></>}
                   </td>
                   <td style={{color:"var(--muted)"}}>{l.date}</td>
                   <td><button className="action-btn" onClick={() => delLog(l.id)} title="Delete" style={{fontSize:16, lineHeight:1, padding:"2px 6px", background:"none", border:"none", color:"var(--muted)", cursor:"pointer"}}>×</button></td>
@@ -2927,6 +3027,8 @@ function TopChartsPage({ username }) {
   const [chartRep, setChartRep] = useState(1);
   const { communityUsers } = useCommunityUsers(username);
   const isPullup = chartEx === "Pull-up";
+  const isPushup = chartEx === "Push-up";
+  const isBodyweightChart = isPullup || isPushup;
 
   useEffect(() => {
     api.getLogs()
@@ -2949,13 +3051,13 @@ function TopChartsPage({ username }) {
     return entries.sort((a, b) => b.weight - a.weight);
   };
 
-  // Pull-up leaderboard: best count (repCat=0)
-  const buildPullupLeaderboard = () => {
+  // Bodyweight leaderboard (pull-up or push-up)
+  const buildBodyweightLeaderboard = (exercise) => {
     const entries = [];
-    const myBest = Math.max(0, ...userLogs.filter(l => l.exercise === "Pull-up").map(l => l.weight));
+    const myBest = Math.max(0, ...userLogs.filter(l => l.exercise === exercise).map(l => l.weight));
     if (myBest > 0) entries.push({ name: username, weight: myBest, isMe: true });
     communityUsers.forEach(u => {
-      const series = u.logs["Pull-up"]?.[0];
+      const series = u.logs[exercise]?.[0];
       if (series && series.length) {
         const best = Math.max(...series.map(e => e.weight));
         entries.push({ name: u.name, weight: best, isMe: false });
@@ -2964,7 +3066,7 @@ function TopChartsPage({ username }) {
     return entries.sort((a, b) => b.weight - a.weight);
   };
 
-  const leaders = isPullup ? buildPullupLeaderboard() : buildLeaderboard(chartEx, chartRep);
+  const leaders = isBodyweightChart ? buildBodyweightLeaderboard(chartEx) : buildLeaderboard(chartEx, chartRep);
   const topWeight = leaders[0]?.weight || 0;
 
   const medalColors = ["#ffdd00", "#c0c8d4", "#ff9944"];
@@ -2984,7 +3086,7 @@ function TopChartsPage({ username }) {
             ))}
           </div>
         </div>
-        {!isPullup && (
+        {!isBodyweightChart && (
         <div>
           <div className="form-label" style={{marginBottom:8}}>Rep Category</div>
           <div style={{display:"flex",gap:8}}>
@@ -3007,12 +3109,12 @@ function TopChartsPage({ username }) {
       </div>
 
       {/* ── YOUR RANK CARD ── */}
-      {!isPullup && <MyRankCard username={username} exercise={chartEx} repCat={chartRep} userLogs={userLogs} communityUsers={communityUsers} />}
+      {isBodyweightChart ? <BodyweightRankCard username={username} exercise={chartEx} userLogs={userLogs} communityUsers={communityUsers} /> : <MyRankCard username={username} exercise={chartEx} repCat={chartRep} userLogs={userLogs} communityUsers={communityUsers} />}
 
       <div className="card">
         <div className="card-title">
           <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:11,color:"var(--accent)",letterSpacing:2,marginRight:8}}>▲▲▲</span>
-          {isPullup ? "Pull-up Count Leaderboard" : `${chartEx} — ${chartRep} Rep${chartRep>1?"s":""} Leaderboard`}
+          {isBodyweightChart ? `${chartEx} Count Leaderboard` : `${chartEx} — ${chartRep} Rep${chartRep>1?"s":""} Leaderboard`}
         </div>
         {leaders.length === 0 ? (
           <div style={{textAlign:"center",padding:"32px 0",color:"var(--muted)"}}>No data yet for this exercise.</div>
@@ -3707,16 +3809,40 @@ export default function App() {
           if (!child.isMesh) return;
           const orig = child.material;
           const isTrans = orig && orig.name === 'Material.002';
-          child.material = new THREE.MeshStandardMaterial({
-            color:             isTrans ? new THREE.Color(0.55, 0.95, 0.05) : new THREE.Color(0.30, 0.80, 0.0),
-            emissive:          isTrans ? new THREE.Color(0.18, 0.45, 0.0) : new THREE.Color(0.05, 0.20, 0.0),
-            emissiveIntensity: isTrans ? 0.6 : 0.3,
-            metalness:         0.1,
-            roughness:         0.02,
-            transparent:       isTrans,
-            opacity:           isTrans ? 0.82 : 1.0,
-            side:              THREE.DoubleSide,
-          });
+          if (isTrans) {
+            child.material = new THREE.MeshStandardMaterial({
+              color:             new THREE.Color(0.55, 0.95, 0.05),
+              emissive:          new THREE.Color(0.18, 0.45, 0.0),
+              emissiveIntensity: 0.6,
+              metalness:         0.1,
+              roughness:         0.02,
+              transparent:       true,
+              opacity:           0.25,
+              side:              THREE.DoubleSide,
+              depthWrite:        false,
+            });
+            // Edges wireframe — hard edges only at 15° threshold, moves with shell
+            const edgesGeo = new THREE.EdgesGeometry(child.geometry, 15);
+            const edgesMat = new THREE.LineBasicMaterial({
+              color:       0xccff00,
+              transparent: true,
+              opacity:     0.95,
+              blending:    THREE.AdditiveBlending,
+              depthWrite:  false,
+            });
+            child.add(new THREE.LineSegments(edgesGeo, edgesMat));
+          } else {
+            child.material = new THREE.MeshStandardMaterial({
+              color:             new THREE.Color(0.30, 0.80, 0.0),
+              emissive:          new THREE.Color(0.05, 0.20, 0.0),
+              emissiveIntensity: 0.3,
+              metalness:         0.1,
+              roughness:         0.02,
+              transparent:       false,
+              opacity:           1.0,
+              side:              THREE.DoubleSide,
+            });
+          }
         });
 
         scene.add(model);
@@ -3857,6 +3983,7 @@ export default function App() {
           {/* Orb — click to toggle nav */}
           <div className="xbox-orb-wrap" onClick={() => setNavExpanded(v => !v)}>
             <div className="xbox-orb" />
+            <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(circle at 50% 55%, transparent 30%, rgba(0,5,0,0.5) 62%, rgba(0,0,0,0.80) 100%)",zIndex:1,pointerEvents:"none"}} />
             <canvas ref={glbCanvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",borderRadius:"50%",pointerEvents:"none",zIndex:2}} />
             <div className="xbox-bubble" />
             <div className="xbox-bubble" />
