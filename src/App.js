@@ -1429,7 +1429,7 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: "high-performance" });
-      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
       el.appendChild(renderer.domElement);
@@ -1537,7 +1537,7 @@ function AudioFigureBackdrop({ fading = false }) {
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: "high-performance" });
-      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
       el.appendChild(renderer.domElement);
@@ -1937,7 +1937,7 @@ function AudioFigureBackdrop({ fading = false }) {
     // Crux screen position read from projected Three.js coords each frame via cruxScreenPos ref
 
     // Fog layers — all centered tightly on crux, varied radii
-    const NUM_BLOBS = 18;
+    const NUM_BLOBS = 10;
     const blobs = Array.from({ length: NUM_BLOBS }, (_, i) => ({
       offX:      (Math.random() - 0.5) * 0.04,  // tight cluster around crux
       offY:      (Math.random() - 0.5) * 0.04,
@@ -1953,11 +1953,15 @@ function AudioFigureBackdrop({ fading = false }) {
       b: 255,
     }));
 
-    const draw = () => {
+    let lastFog = 0;
+    const draw = (ts) => {
+      rafId = requestAnimationFrame(draw);
+      if (ts - lastFog < 33) return; // throttle to ~30fps
+      lastFog = ts;
       const t  = (performance.now() - startTime) / 1000;
       const cw = canvas.offsetWidth;
       const ch = canvas.offsetHeight;
-      if (cw === 0 || ch === 0) { rafId = requestAnimationFrame(draw); return; }
+      if (cw === 0 || ch === 0) return;
       canvas.width  = cw;
       canvas.height = ch;
       const ctx = canvas.getContext("2d");
@@ -1967,8 +1971,8 @@ function AudioFigureBackdrop({ fading = false }) {
       const oy = ch * cruxScreenPos.current.y;
 
       blobs.forEach(b => {
-        const f1 = Math.abs(Math.sin(t * b.speed1 + b.phase1));  // rapid flicker
-        const f2 = Math.sin(t * b.speed2 + b.phase2) * 0.5 + 0.5; // slow modulation
+        const f1 = Math.abs(Math.sin(t * b.speed1 + b.phase1));
+        const f2 = Math.sin(t * b.speed2 + b.phase2) * 0.5 + 0.5;
         const alpha = b.baseAlpha * f1 * (0.4 + f2 * 0.6);
         if (alpha < 0.005) return;
         const bx = ox + b.offX * cw;
@@ -1984,10 +1988,8 @@ function AudioFigureBackdrop({ fading = false }) {
         ctx.arc(bx, by, r, 0, Math.PI * 2);
         ctx.fill();
       });
-
-      rafId = requestAnimationFrame(draw);
     };
-    draw();
+    rafId = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(rafId);
   }, []);
 
@@ -2037,7 +2039,7 @@ function WorkoutFigureBackdrop({ fading = false }) {
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: "high-performance" });
-      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
       el.appendChild(renderer.domElement);
