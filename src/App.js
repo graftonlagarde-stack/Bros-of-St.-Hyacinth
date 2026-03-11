@@ -842,20 +842,7 @@ const css = `
     cursor: pointer;
     flex-shrink: 0;
   }
-  .nav-item-wrap .nav-item {
-    pointer-events: none;
-    width: 100%;
-    height: 100%;
-    position: absolute;
-    inset: 0;
-  }
-  .nav-item::before { display: none; }
-  .nav-item:hover {
-    background: rgba(0,60,0,0.7);
-    color: rgba(200,255,150,0.85);
-    border-color: rgba(136,255,0,0.4);
-  }
-  .nav-item.active {
+  .nav-item-wrap.active-wrap .nav-item {
     background: linear-gradient(90deg, #aaee00 0%, #88cc00 60%, #669900 100%);
     color: #001a00;
     border-color: #ccff00;
@@ -865,13 +852,31 @@ const css = `
     font-size: 12px;
     width: 240px;
   }
-  .nav-item.active::before { display: none; }
-  .nav-item-wrap {
-    position: relative;
-    width: 220px;
-    cursor: pointer;
+  .nav-item-wrap .nav-item {
+    pointer-events: none;
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    inset: 0;
   }
-  .nav-item-wrap.active-wrap { width: 240px; }
+  .nav-item-wrap:hover .nav-item {
+    background: rgba(0,60,0,0.7);
+    color: rgba(200,255,150,0.85);
+    border-color: rgba(136,255,0,0.4);
+  }
+  .nav-item-wrap:nth-child(1) .nav-item { animation-delay:  0.0s; }
+  .nav-item-wrap:nth-child(2) .nav-item { animation-delay: -1.6s; }
+  .nav-item-wrap:nth-child(3) .nav-item { animation-delay: -3.2s; }
+  .nav-item-wrap:nth-child(4) .nav-item { animation-delay: -4.8s; }
+  .nav-item-wrap:nth-child(5) .nav-item { animation-delay: -5.6s; }
+  .nav-item-wrap:nth-child(6) .nav-item { animation-delay: -2.4s; }
+  .nav-item::before { display: none; }
+  .nav-item:hover {
+    background: rgba(0,60,0,0.7);
+    color: rgba(200,255,150,0.85);
+    border-color: rgba(136,255,0,0.4);
+  }
+  .nav-item.active::before { display: none; }
   .nav-icon { display: none; }
   .xbox-orb-wrap { z-index: 4 !important; }
 
@@ -1580,7 +1585,13 @@ function AudioFigureBackdrop({ fading = false }) {
       const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), crossMat.clone());
       hBar.position.y = crossH * 0.70;
       crossGroup.add(vBar, hBar);
-      crossGroup.position.set(0, 0, 0);
+      const crossDist = 60;
+      const facingRad = (195 * Math.PI) / 180;
+      const cx = Math.sin(facingRad) * crossDist;
+      const cz = Math.cos(facingRad) * crossDist;
+      const camDist = 660 - cz;
+      const worldShift = 200 * (2 * Math.tan((40 * Math.PI / 180) / 2) * camDist / w);
+      crossGroup.position.set(cx - 60 - worldShift, 0, cz);
       scene.add(crossGroup);
 
       const wireMat = new THREE.MeshBasicMaterial({
@@ -1752,7 +1763,10 @@ function AudioFigureBackdrop({ fading = false }) {
             const dt = Math.min(clock.getDelta(), 0.05);
             if (mixer) mixer.update(dt);
 
-            crossGroup.rotation.set(0, 0, 0);
+            const toCamX = camera.position.x - crossGroup.position.x;
+            const toCamZ = camera.position.z - crossGroup.position.z;
+            const camAngle = Math.atan2(toCamX, toCamZ);
+            crossGroup.rotation.set(0, camAngle, 0);
             updateGlitter(clock.elapsedTime);
             crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
 
