@@ -3,6 +3,32 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 
+const RAILWAY_URL = "https://bros-of-st-hyacinth-production.up.railway.app";
+
+// ─── ASSET PRELOADER ──────────────────────────────────────────────────────────
+// Fetch all 3D assets as ArrayBuffers at startup so backdrop mounts are instant
+const assetCache = new Map();
+const PRELOAD_ASSETS = [
+  "/Talking_On_A_Cell_Phone.fbx",
+  "/Warming_Up.fbx",
+  "/Praying.fbx",
+  "/Idle_To_Push_Up.fbx",
+  "/Push_Up.fbx",
+  `${RAILWAY_URL}/Hyacinth_Sphere.glb`,
+];
+// Preload in priority order — workout first (default tab), then others
+(async () => {
+  for (const url of PRELOAD_ASSETS) {
+    try {
+      const res = await fetch(url);
+      const buf = await res.arrayBuffer();
+      assetCache.set(url, buf);
+    } catch (e) {
+      console.warn("Preload failed:", url, e);
+    }
+  }
+})();
+
 
 // ─── STORAGE HELPERS ──────────────────────────────────────────────────────────
 const store = {
@@ -1428,8 +1454,8 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
       camera.position.set(-w * 0.32, 160, 660);
       camera.lookAt(0, 160, 0);
 
-      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: "high-performance" });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "high-performance" });
+      renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
       el.appendChild(renderer.domElement);
@@ -1444,7 +1470,7 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
       let mixer = null;
       const clock = new THREE.Clock();
 
-      new FBXLoader().load(fbxFile, (obj) => {
+      const _loadFigObj = (obj) => {
         if (cancelled) return;
         obj.traverse(c => {
           if (c.isMesh) { c.material = wireMat; c.castShadow = c.receiveShadow = false; }
@@ -1467,7 +1493,12 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
           a.setLoop(THREE.LoopRepeat, Infinity);
           a.play();
         }
-      }, undefined, e => console.warn("FBX load error:", e));
+      };
+      if (assetCache.has(fbxFile)) {
+        _loadFigObj(new FBXLoader().parse(assetCache.get(fbxFile).slice(0), ""));
+      } else {
+        new FBXLoader().load(fbxFile, _loadFigObj, undefined, e => console.warn("FBX load error:", e));
+      }
 
       const animate = () => {
         animId = requestAnimationFrame(animate);
@@ -1536,8 +1567,8 @@ function AudioFigureBackdrop({ fading = false }) {
       camera.position.set(-w * 0.32, 160, 660);
       camera.lookAt(0, 160, 0);
 
-      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: "high-performance" });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "high-performance" });
+      renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
       el.appendChild(renderer.domElement);
@@ -1610,7 +1641,7 @@ function AudioFigureBackdrop({ fading = false }) {
       let mixer = null;
       const clock = new THREE.Clock();
 
-      new FBXLoader().load("/Praying.fbx", (obj) => {
+      const _loadPraying = (obj) => {
         if (cancelled) return;
         obj.traverse(c => {
           if (c.isMesh) { c.material = wireMat; c.castShadow = c.receiveShadow = false; }
@@ -1900,7 +1931,12 @@ function AudioFigureBackdrop({ fading = false }) {
           animId = requestAnimationFrame(animateWithBreath);
           return;
         }
-      }, undefined, e => console.warn("Audio FBX load error:", e));
+      };
+      if (assetCache.has("/Praying.fbx")) {
+        _loadPraying(new FBXLoader().parse(assetCache.get("/Praying.fbx").slice(0), ""));
+      } else {
+        new FBXLoader().load("/Praying.fbx", _loadPraying, undefined, e => console.warn("Audio FBX load error:", e));
+      }
 
       // Default fallback animate — only runs if FBX fails to load
       setTimeout(() => {
@@ -2038,8 +2074,8 @@ function WorkoutFigureBackdrop({ fading = false }) {
       camera.position.set(-w * 0.32, 160, 660);
       camera.lookAt(0, 160, 0);
 
-      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: "high-performance" });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "high-performance" });
+      renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
       el.appendChild(renderer.domElement);
@@ -2074,8 +2110,12 @@ function WorkoutFigureBackdrop({ fading = false }) {
 
       // Preload both FBX files simultaneously so loop is ready instantly
       Promise.all([
-        new Promise((res, rej) => new FBXLoader().load("/Idle_To_Push_Up.fbx", res, undefined, rej)),
-        new Promise((res, rej) => new FBXLoader().load("/Push_Up.fbx",         res, undefined, rej)),
+        assetCache.has("/Idle_To_Push_Up.fbx")
+          ? Promise.resolve(new FBXLoader().parse(assetCache.get("/Idle_To_Push_Up.fbx").slice(0), ""))
+          : new Promise((res, rej) => new FBXLoader().load("/Idle_To_Push_Up.fbx", res, undefined, rej)),
+        assetCache.has("/Push_Up.fbx")
+          ? Promise.resolve(new FBXLoader().parse(assetCache.get("/Push_Up.fbx").slice(0), ""))
+          : new Promise((res, rej) => new FBXLoader().load("/Push_Up.fbx", res, undefined, rej)),
       ]).then(([introObj, loopObj]) => {
         if (cancelled) return;
 
@@ -3779,7 +3819,6 @@ export default function App() {
 
   // ── GLB orb renderer ──────────────────────────────────────────────
   useEffect(() => {
-    const RAILWAY_URL = "https://bros-of-st-hyacinth-production.up.railway.app";
     const GLB_URL = `${RAILWAY_URL}/Hyacinth_Sphere.glb`;
 
     let animId;
@@ -3794,7 +3833,7 @@ export default function App() {
       if (W < 10) { setTimeout(init, 150); return; }
 
       renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(W, H);
       renderer.setClearColor(0x000000, 0);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -3827,7 +3866,7 @@ export default function App() {
 
       const clock = new THREE.Clock();
       const loader = new GLTFLoader();
-      loader.load(GLB_URL, (gltf) => {
+      const _loadGLB = (gltf) => {
         const model = gltf.scene;
         const box = new THREE.Box3().setFromObject(model);
         const centre = box.getCenter(new THREE.Vector3());
@@ -3898,7 +3937,12 @@ export default function App() {
           renderer.render(scene, cam);
         }
         animate();
-      }, undefined, err => console.warn("GLB load error:", err));
+      };
+      if (assetCache.has(GLB_URL)) {
+        loader.parse(assetCache.get(GLB_URL).slice(0), "", _loadGLB, err => console.warn("GLB parse error:", err));
+      } else {
+        loader.load(GLB_URL, _loadGLB, undefined, err => console.warn("GLB load error:", err));
+      }
     }
 
     const t = setTimeout(init, 100);
