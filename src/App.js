@@ -763,15 +763,7 @@ const css = `
       inset -15px -15px 50px rgba(0,0,0,0.4);
     animation: orbPulse 3s ease-in-out infinite;
   }
-  .xbox-orb::after {
-    content: '✕';
-    position: absolute; inset: 0;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 72px; font-weight: 900;
-    color: rgba(0,0,0,0.35);
-    text-shadow: 0 0 20px rgba(0,255,0,0.3);
-    font-family: 'Orbitron', sans-serif;
-  }
+  .xbox-orb::after { display: none; }
   .xbox-bubble {
     position: absolute; border-radius: 50%;
     z-index: 4;
