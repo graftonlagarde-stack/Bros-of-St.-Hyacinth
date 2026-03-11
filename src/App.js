@@ -239,8 +239,7 @@ function BoardPage({ username }) {
   useEffect(() => { fetchMessages(); }, []);
 
   useEffect(() => {
-    const el = scrollContainerRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (bottomRef.current) bottomRef.current.scrollIntoView();
   }, [messages]);
 
   const uploadToCloudinary = (file) => new Promise((resolve, reject) => {
