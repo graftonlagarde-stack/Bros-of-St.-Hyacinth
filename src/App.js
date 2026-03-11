@@ -837,14 +837,10 @@ const css = `
   }
   .nav-item-wrap {
     position: relative;
-    width: 220px;
+    width: 240px;
     height: 46px;
     cursor: pointer;
     flex-shrink: 0;
-    transition: width 0.15s ease;
-  }
-  .nav-item-wrap.active-wrap {
-    width: 270px;
   }
   .nav-item-wrap.active-wrap .nav-item {
     background: linear-gradient(90deg, #aaee00 0%, #88cc00 60%, #669900 100%);
@@ -854,7 +850,7 @@ const css = `
     text-shadow: none;
     transform: translateX(6px) scaleY(1.06);
     font-size: 12px;
-    width: 100%;
+    width: 240px;
   }
   .nav-item-wrap .nav-item {
     pointer-events: none;
@@ -862,8 +858,6 @@ const css = `
     height: 100%;
     position: absolute;
     inset: 0;
-    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
-                box-shadow 0.15s ease, transform 0.15s ease, font-size 0.15s ease, width 0.15s ease;
   }
   .nav-item-wrap:hover .nav-item {
     background: rgba(0,60,0,0.7);
@@ -1395,17 +1389,17 @@ const BACKDROP_MODELS = {
   topcharts: "/Warming_Up.fbx",
 };
 
-function FigureBackdrop({ variant = "workout", fading = false }) {
+function FigureBackdrop({ variant = "workout", visible = false }) {
   const mountRef = useRef(null);
   const fbxFile  = BACKDROP_MODELS[variant];
 
   const [opacity, setOpacity] = useState(0);
 
   useEffect(() => {
-    if (fading) { setOpacity(0); return; }
+    if (!visible) { setOpacity(0); return; }
     const t = setTimeout(() => setOpacity(0.85), 250);
     return () => clearTimeout(t);
-  }, [fading]);
+  }, [visible]);
 
   useEffect(() => {
     if (!fbxFile || !mountRef.current) return;
@@ -1505,15 +1499,15 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
 
 
 // ─── AUDIO FIGURE BACKDROP ────────────────────────────────────────────────────
-function AudioFigureBackdrop({ fading = false }) {
+function AudioFigureBackdrop({ visible = false }) {
   const mountRef = useRef(null);
   const [opacity, setOpacity] = useState(0);
 
   useEffect(() => {
-    if (fading) { setOpacity(0); return; }
+    if (!visible) { setOpacity(0); return; }
     const t = setTimeout(() => setOpacity(0.85), 250);
     return () => clearTimeout(t);
-  }, [fading]);
+  }, [visible]);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -1596,7 +1590,7 @@ function AudioFigureBackdrop({ fading = false }) {
       const crossCamDist = 660;
       const crossFovRad = (40 * Math.PI) / 180;
       const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
-      const crossCenterX = -160 * crossWorldPerPx;
+      const crossCenterX = (w / 2 + 224 - window.innerWidth / 2) * crossWorldPerPx;
       crossGroup.position.set(crossCenterX, 0, 0);
       scene.add(crossGroup);
 
@@ -1769,7 +1763,10 @@ function AudioFigureBackdrop({ fading = false }) {
             const dt = Math.min(clock.getDelta(), 0.05);
             if (mixer) mixer.update(dt);
 
-            crossGroup.rotation.set(0, 0, 0);
+            const toCamX = camera.position.x - crossGroup.position.x;
+            const toCamZ = camera.position.z - crossGroup.position.z;
+            const camAngle = Math.atan2(toCamX, toCamZ);
+            crossGroup.rotation.set(0, camAngle, 0);
             updateGlitter(clock.elapsedTime);
             crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
 
@@ -2001,15 +1998,15 @@ function AudioFigureBackdrop({ fading = false }) {
 
 
 // ─── WORKOUT FIGURE BACKDROP ──────────────────────────────────────────────────
-function WorkoutFigureBackdrop({ fading = false }) {
+function WorkoutFigureBackdrop({ visible = false }) {
   const mountRef = useRef(null);
   const [opacity, setOpacity] = useState(0);
 
   useEffect(() => {
-    if (fading) { setOpacity(0); return; }
+    if (!visible) { setOpacity(0); return; }
     const t = setTimeout(() => setOpacity(0.85), 250);
     return () => clearTimeout(t);
-  }, [fading]);
+  }, [visible]);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -3732,14 +3729,7 @@ export default function App() {
   const [showProfile, setShowProfile]           = useState(false);
   const [showAdmin, setShowAdmin]               = useState(false);
   const [page, setPage]                         = useState("workout");
-  const [showBoards, setShowBoards]             = useState(false);
-  const [boardsFading, setBoardsFading]         = useState(false);
-  const [showAudio, setShowAudio]               = useState(false);
-  const [audioFading, setAudioFading]           = useState(false);
-  const [showTopCharts, setShowTopCharts]       = useState(false);
-  const [topChartsFading, setTopChartsFading]   = useState(false);
-  const [showWorkout, setShowWorkout]           = useState(true);
-  const [workoutFading, setWorkoutFading]       = useState(false);
+  // Backdrops are always mounted (keep-alive). Visibility driven by page state.
   const [navExpanded, setNavExpanded]           = useState(true);
   const [loaded, setLoaded]                     = useState(false);
   const mainRef = useRef(null);
@@ -3918,26 +3908,6 @@ export default function App() {
   };
 
   const handleSetPage = (id) => {
-    if (id !== "boards" && page === "boards") {
-      setBoardsFading(true);
-      setTimeout(() => { setShowBoards(false); setBoardsFading(false); }, 500);
-    }
-    if (id === "boards") { setShowBoards(true); setBoardsFading(false); }
-    if (id !== "audio" && page === "audio") {
-      setAudioFading(true);
-      setTimeout(() => { setShowAudio(false); setAudioFading(false); }, 500);
-    }
-    if (id === "audio") { setShowAudio(true); setAudioFading(false); }
-    if (id !== "topcharts" && page === "topcharts") {
-      setTopChartsFading(true);
-      setTimeout(() => { setShowTopCharts(false); setTopChartsFading(false); }, 500);
-    }
-    if (id === "topcharts") { setShowTopCharts(true); setTopChartsFading(false); }
-    if (id !== "workout" && page === "workout") {
-      setWorkoutFading(true);
-      setTimeout(() => { setShowWorkout(false); setWorkoutFading(false); }, 500);
-    }
-    if (id === "workout") { setShowWorkout(true); setWorkoutFading(false); }
     setPage(id);
   };
 
@@ -4043,10 +4013,10 @@ export default function App() {
           {page === "boards" && <div style={{paddingLeft: navExpanded ? 80 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><BoardPage username={username} /></div>}
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
         </div>
-        {showBoards && <FigureBackdrop variant="boards" fading={boardsFading} />}
-        {showAudio && <AudioFigureBackdrop fading={audioFading} />}
-        {showTopCharts && <FigureBackdrop variant="topcharts" fading={topChartsFading} />}
-        {showWorkout && <WorkoutFigureBackdrop fading={workoutFading} />}
+        <FigureBackdrop variant="boards"    visible={page === "boards"} />
+        <AudioFigureBackdrop               visible={page === "audio"} />
+        <FigureBackdrop variant="topcharts" visible={page === "topcharts"} />
+        <WorkoutFigureBackdrop             visible={page === "workout"} />
       </div>
       {currentTrack && (
         <PlayerBar track={currentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} tracks={PERMANENT_TRACKS} setTrack={setCurrentTrack} />
