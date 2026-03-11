@@ -837,10 +837,14 @@ const css = `
   }
   .nav-item-wrap {
     position: relative;
-    width: 240px;
+    width: 220px;
     height: 46px;
     cursor: pointer;
     flex-shrink: 0;
+    transition: width 0.15s ease;
+  }
+  .nav-item-wrap.active-wrap {
+    width: 270px;
   }
   .nav-item-wrap.active-wrap .nav-item {
     background: linear-gradient(90deg, #aaee00 0%, #88cc00 60%, #669900 100%);
@@ -850,7 +854,7 @@ const css = `
     text-shadow: none;
     transform: translateX(6px) scaleY(1.06);
     font-size: 12px;
-    width: 240px;
+    width: 100%;
   }
   .nav-item-wrap .nav-item {
     pointer-events: none;
@@ -858,6 +862,8 @@ const css = `
     height: 100%;
     position: absolute;
     inset: 0;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+                box-shadow 0.15s ease, transform 0.15s ease, font-size 0.15s ease, width 0.15s ease;
   }
   .nav-item-wrap:hover .nav-item {
     background: rgba(0,60,0,0.7);
@@ -1390,12 +1396,14 @@ const BACKDROP_MODELS = {
 };
 
 function FigureBackdrop({ variant = "workout", visible = false }) {
-  const mountRef = useRef(null);
-  const fbxFile  = BACKDROP_MODELS[variant];
+  const mountRef  = useRef(null);
+  const fbxFile   = BACKDROP_MODELS[variant];
+  const visibleRef = useRef(visible);
 
   const [opacity, setOpacity] = useState(0);
 
   useEffect(() => {
+    visibleRef.current = visible;
     if (!visible) { setOpacity(0); return; }
     const t = setTimeout(() => setOpacity(0.85), 250);
     return () => clearTimeout(t);
@@ -1463,8 +1471,20 @@ function FigureBackdrop({ variant = "workout", visible = false }) {
         }
       }, undefined, e => console.warn("FBX load error:", e));
 
+      let wasVisible = visibleRef.current;
       const animate = () => {
         animId = requestAnimationFrame(animate);
+        const isVisible = visibleRef.current;
+        if (isVisible && !wasVisible && mixer) {
+          mixer.stopAllAction();
+          const a = mixer.clipAction(obj.animations[0]);
+          a.setLoop(THREE.LoopRepeat, Infinity);
+          a.time = 0;
+          a.play();
+          clock.start();
+        }
+        wasVisible = isVisible;
+        if (!isVisible) return;
         if (mixer) mixer.update(clock.getDelta());
         renderer.render(scene, camera);
       };
@@ -1500,10 +1520,12 @@ function FigureBackdrop({ variant = "workout", visible = false }) {
 
 // ─── AUDIO FIGURE BACKDROP ────────────────────────────────────────────────────
 function AudioFigureBackdrop({ visible = false }) {
-  const mountRef = useRef(null);
+  const mountRef   = useRef(null);
+  const visibleRef = useRef(visible);
   const [opacity, setOpacity] = useState(0);
 
   useEffect(() => {
+    visibleRef.current = visible;
     if (!visible) { setOpacity(0); return; }
     const t = setTimeout(() => setOpacity(0.85), 250);
     return () => clearTimeout(t);
@@ -1590,7 +1612,7 @@ function AudioFigureBackdrop({ visible = false }) {
       const crossCamDist = 660;
       const crossFovRad = (40 * Math.PI) / 180;
       const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
-      const crossCenterX = (w / 2 + 224 - window.innerWidth / 2) * crossWorldPerPx;
+      const crossCenterX = -160 * crossWorldPerPx;
       crossGroup.position.set(crossCenterX, 0, 0);
       scene.add(crossGroup);
 
@@ -1758,15 +1780,33 @@ function AudioFigureBackdrop({ visible = false }) {
           const tmpQ  = new THREE.Quaternion();
           const leanQ = new THREE.Quaternion();
 
+          // Restart function: resets mixer and all phase state to beginning
+          const restartAnimation = () => {
+            mixer.stopAllAction();
+            const restartIntro = THREE.AnimationUtils.subclip(clip, "intro", 0, 45, fps);
+            const restartAction = mixer.clipAction(restartIntro);
+            restartAction.setLoop(THREE.LoopOnce, 1);
+            restartAction.clampWhenFinished = true;
+            restartAction.timeScale = 0.5;
+            restartAction.reset().play();
+            phase = "intro";
+            vel = 0; disp = 0; bounceTime = 0; breathTime = 0;
+            footPositionsLocked = false;
+            obj.position.y = restY;
+            clock.start();
+          };
+
+          let wasVisible = visibleRef.current;
           const animateWithBreath = () => {
             animId = requestAnimationFrame(animateWithBreath);
+            const isVisible = visibleRef.current;
+            if (isVisible && !wasVisible) restartAnimation();
+            wasVisible = isVisible;
+            if (!isVisible) return;
             const dt = Math.min(clock.getDelta(), 0.05);
             if (mixer) mixer.update(dt);
 
-            const toCamX = camera.position.x - crossGroup.position.x;
-            const toCamZ = camera.position.z - crossGroup.position.z;
-            const camAngle = Math.atan2(toCamX, toCamZ);
-            crossGroup.rotation.set(0, camAngle, 0);
+            crossGroup.rotation.set(0, 0, 0);
             updateGlitter(clock.elapsedTime);
             crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
 
@@ -1999,10 +2039,12 @@ function AudioFigureBackdrop({ visible = false }) {
 
 // ─── WORKOUT FIGURE BACKDROP ──────────────────────────────────────────────────
 function WorkoutFigureBackdrop({ visible = false }) {
-  const mountRef = useRef(null);
+  const mountRef   = useRef(null);
+  const visibleRef = useRef(visible);
   const [opacity, setOpacity] = useState(0);
 
   useEffect(() => {
+    visibleRef.current = visible;
     if (!visible) { setOpacity(0); return; }
     const t = setTimeout(() => setOpacity(0.85), 250);
     return () => clearTimeout(t);
@@ -2156,8 +2198,41 @@ function WorkoutFigureBackdrop({ visible = false }) {
           activeMixer      = loopMixer;
         });
 
+        let wasVisible = visibleRef.current;
         const animate = () => {
           animId = requestAnimationFrame(animate);
+          const isVisible = visibleRef.current;
+          if (isVisible && !wasVisible) {
+            // Restart: reset to intro animation from frame 0
+            swapped = false;
+            introObj.visible = true;
+            loopObj.visible  = false;
+            activeMixer = new THREE.AnimationMixer(introObj);
+            if (introObj.animations?.length) {
+              const introAction = activeMixer.clipAction(introObj.animations[0]);
+              introAction.setLoop(THREE.LoopOnce, 1);
+              introAction.clampWhenFinished = true;
+              introAction.reset().play();
+            }
+            activeMixer.addEventListener("finished", () => {
+              if (cancelled || swapped) return;
+              swapped = true;
+              if (loopMixer && loopObj.animations?.length) {
+                loopMixer.stopAllAction();
+                const loopAction = loopMixer.clipAction(loopObj.animations[0]);
+                loopAction.setLoop(THREE.LoopRepeat, Infinity);
+                loopAction.time = 0;
+                loopAction.play();
+                loopMixer.update(0);
+              }
+              introObj.visible = false;
+              loopObj.visible  = true;
+              activeMixer      = loopMixer;
+            });
+            clock.start();
+          }
+          wasVisible = isVisible;
+          if (!isVisible) return;
           const dt = Math.min(clock.getDelta(), 0.05);
           if (activeMixer) activeMixer.update(dt);
           renderer.render(scene, camera);
