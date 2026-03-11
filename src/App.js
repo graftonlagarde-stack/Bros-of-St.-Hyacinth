@@ -664,8 +664,8 @@ const css = `
     left: -50%; right: -50%;
     top: 0%; bottom: -5%;
     background-image:
-      linear-gradient(rgba(136,255,0,0.22) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(136,255,0,0.22) 1px, transparent 1px);
+      linear-gradient(rgba(136,255,0,0.38) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(136,255,0,0.38) 1px, transparent 1px);
     background-size: 80px 80px;
     background-position: 50% 0%;
     transform: perspective(600px) rotateX(82deg) translateY(35%);
@@ -1405,7 +1405,7 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
 
       const wireMat = new THREE.MeshBasicMaterial({
         color: 0x00ffcc, wireframe: true,
-        transparent: true, opacity: 0.22,
+        transparent: true, opacity: 0.32,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
 
@@ -1562,12 +1562,12 @@ function AudioFigureBackdrop({ fading = false }) {
       const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), crossMat.clone());
       hBar.position.y = crossH * 0.70;
       crossGroup.add(vBar, hBar);
-      crossGroup.position.set(cx - 60, 0, cz);
+      crossGroup.position.set(0, 0, 0);
       scene.add(crossGroup);
 
       const wireMat = new THREE.MeshBasicMaterial({
         color: 0x00ffcc, wireframe: true,
-        transparent: true, opacity: 0.22,
+        transparent: true, opacity: 0.32,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
 
@@ -1734,12 +1734,8 @@ function AudioFigureBackdrop({ fading = false }) {
             const dt = Math.min(clock.getDelta(), 0.05);
             if (mixer) mixer.update(dt);
 
-            // Cross: face toward wireframe model + extra 20° clockwise
-            // Face cross straight toward camera, then rotate 5° counter-clockwise
-            const toCamX = camera.position.x - crossGroup.position.x;
-            const toCamZ = camera.position.z - crossGroup.position.z;
-            const camAngle = Math.atan2(toCamX, toCamZ);
-            crossGroup.rotation.set(0, camAngle + (5 * Math.PI / 180), 0);
+            // Cross faces perfectly forward (toward camera)
+            crossGroup.rotation.set(0, 0, 0);
             updateGlitter(clock.elapsedTime);
             crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
 
@@ -2010,7 +2006,7 @@ function WorkoutFigureBackdrop({ fading = false }) {
 
       const wireMat = new THREE.MeshBasicMaterial({
         color: 0x00ffcc, wireframe: true,
-        transparent: true, opacity: 0.22,
+        transparent: true, opacity: 0.32,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
 
@@ -3711,45 +3707,16 @@ export default function App() {
           if (!child.isMesh) return;
           const orig = child.material;
           const isTrans = orig && orig.name === 'Material.002';
-
-          if (isTrans) {
-            // Outer shell — increased opacity, still transparent
-            child.material = new THREE.MeshStandardMaterial({
-              color:             new THREE.Color(0.55, 0.95, 0.05),
-              emissive:          new THREE.Color(0.18, 0.45, 0.0),
-              emissiveIntensity: 0.6,
-              metalness:         0.1,
-              roughness:         0.02,
-              transparent:       true,
-              opacity:           0.35,
-              side:              THREE.DoubleSide,
-              depthWrite:        false,
-            });
-            // EdgesGeometry — hard edges only (cross contours), blurred via CSS
-            const edgesGeo = new THREE.EdgesGeometry(child.geometry, 15);
-            const edgesMat = new THREE.LineBasicMaterial({
-              color:       0xccff00,
-              transparent: true,
-              opacity:     0.75,
-              blending:    THREE.AdditiveBlending,
-              depthWrite:  false,
-              linewidth:   2,
-            });
-            const edgesMesh = new THREE.LineSegments(edgesGeo, edgesMat);
-            child.add(edgesMesh);
-          } else {
-            // Inner orb — restored to reference values
-            child.material = new THREE.MeshStandardMaterial({
-              color:             new THREE.Color(0.30, 0.80, 0.0),
-              emissive:          new THREE.Color(0.05, 0.20, 0.0),
-              emissiveIntensity: 0.3,
-              metalness:         0.1,
-              roughness:         0.02,
-              transparent:       false,
-              opacity:           1.0,
-              side:              THREE.DoubleSide,
-            });
-          }
+          child.material = new THREE.MeshStandardMaterial({
+            color:             isTrans ? new THREE.Color(0.55, 0.95, 0.05) : new THREE.Color(0.30, 0.80, 0.0),
+            emissive:          isTrans ? new THREE.Color(0.18, 0.45, 0.0) : new THREE.Color(0.05, 0.20, 0.0),
+            emissiveIntensity: isTrans ? 0.6 : 0.3,
+            metalness:         0.1,
+            roughness:         0.02,
+            transparent:       isTrans,
+            opacity:           isTrans ? 0.82 : 1.0,
+            side:              THREE.DoubleSide,
+          });
         });
 
         scene.add(model);
@@ -3890,7 +3857,7 @@ export default function App() {
           {/* Orb — click to toggle nav */}
           <div className="xbox-orb-wrap" onClick={() => setNavExpanded(v => !v)}>
             <div className="xbox-orb" />
-            <canvas ref={glbCanvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",borderRadius:"50%",pointerEvents:"none",zIndex:2,filter:"blur(0.5px) drop-shadow(0 0 10px #aaff00cc) drop-shadow(0 0 25px #88ff0099) drop-shadow(0 0 55px #55dd0066) drop-shadow(0 0 90px #33aa0033)"}} />
+            <canvas ref={glbCanvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",borderRadius:"50%",pointerEvents:"none",zIndex:2}} />
             <div className="xbox-bubble" />
             <div className="xbox-bubble" />
             <div className="xbox-bubble" />
