@@ -1431,7 +1431,7 @@ function FigureBackdrop({ variant = "workout", visible = false }) {
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      renderer.setPixelRatio(1);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
       el.appendChild(renderer.domElement);
@@ -1557,7 +1557,7 @@ function AudioFigureBackdrop({ visible = false }) {
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      renderer.setPixelRatio(1);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
       el.appendChild(renderer.domElement);
@@ -2082,7 +2082,7 @@ function WorkoutFigureBackdrop({ visible = false }) {
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      renderer.setPixelRatio(1);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
       el.appendChild(renderer.domElement);
