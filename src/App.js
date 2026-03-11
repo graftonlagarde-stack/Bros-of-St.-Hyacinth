@@ -1428,7 +1428,7 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
       camera.position.set(-w * 0.32, 160, 660);
       camera.lookAt(0, 160, 0);
 
-      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: "high-performance" });
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
@@ -1499,6 +1499,7 @@ function FigureBackdrop({ variant = "workout", fading = false }) {
       opacity: fbxFile ? opacity : 0,
       transition: "opacity 0.5s ease",
       filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)",
+      willChange: "opacity",
     }} />
   );
 }
@@ -1535,7 +1536,7 @@ function AudioFigureBackdrop({ fading = false }) {
       camera.position.set(-w * 0.32, 160, 660);
       camera.lookAt(0, 160, 0);
 
-      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: "high-performance" });
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
@@ -1995,6 +1996,7 @@ function AudioFigureBackdrop({ fading = false }) {
       position: "fixed", left: 224, top: 0, right: 0, bottom: 70,
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
+      willChange: "opacity",
     }}>
       <div ref={mountRef} style={{ position: "absolute", inset: 0, filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)" }} />
       <canvas ref={fogCanvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
@@ -2034,7 +2036,7 @@ function WorkoutFigureBackdrop({ fading = false }) {
       camera.position.set(-w * 0.32, 160, 660);
       camera.lookAt(0, 160, 0);
 
-      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: "high-performance" });
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
@@ -2189,6 +2191,7 @@ function WorkoutFigureBackdrop({ fading = false }) {
       pointerEvents: "none", zIndex: -1,
       opacity, transition: "opacity 0.5s ease",
       filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)",
+      willChange: "opacity",
     }} />
   );
 }
@@ -3921,26 +3924,23 @@ export default function App() {
   };
 
   const handleSetPage = (id) => {
-    if (id !== "boards" && page === "boards") {
-      setBoardsFading(true);
-      setTimeout(() => { setShowBoards(false); setBoardsFading(false); }, 500);
-    }
-    if (id === "boards") { setShowBoards(true); setBoardsFading(false); }
-    if (id !== "audio" && page === "audio") {
-      setAudioFading(true);
-      setTimeout(() => { setShowAudio(false); setAudioFading(false); }, 500);
-    }
-    if (id === "audio") { setShowAudio(true); setAudioFading(false); }
-    if (id !== "topcharts" && page === "topcharts") {
-      setTopChartsFading(true);
-      setTimeout(() => { setShowTopCharts(false); setTopChartsFading(false); }, 500);
-    }
-    if (id === "topcharts") { setShowTopCharts(true); setTopChartsFading(false); }
-    if (id !== "workout" && page === "workout") {
-      setWorkoutFading(true);
-      setTimeout(() => { setShowWorkout(false); setWorkoutFading(false); }, 500);
-    }
-    if (id === "workout") { setShowWorkout(true); setWorkoutFading(false); }
+    if (id === page) return;
+    const delay = 500;
+
+    // Fade out current backdrop then unmount it
+    if (page === "boards")    { setBoardsFading(true);    setTimeout(() => { setShowBoards(false);    setBoardsFading(false);    }, delay); }
+    if (page === "audio")     { setAudioFading(true);     setTimeout(() => { setShowAudio(false);     setAudioFading(false);     }, delay); }
+    if (page === "topcharts") { setTopChartsFading(true); setTimeout(() => { setShowTopCharts(false); setTopChartsFading(false); }, delay); }
+    if (page === "workout")   { setWorkoutFading(true);   setTimeout(() => { setShowWorkout(false);   setWorkoutFading(false);   }, delay); }
+
+    // Mount new backdrop only after old one is gone — prevents two Three.js scenes loading simultaneously
+    setTimeout(() => {
+      if (id === "boards")    setShowBoards(true);
+      if (id === "audio")     setShowAudio(true);
+      if (id === "topcharts") setShowTopCharts(true);
+      if (id === "workout")   setShowWorkout(true);
+    }, delay);
+
     setPage(id);
   };
 
