@@ -1586,13 +1586,7 @@ function AudioFigureBackdrop({ fading = false }) {
       const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), crossMat.clone());
       hBar.position.y = crossH * 0.70;
       crossGroup.add(vBar, hBar);
-      const crossDist = 60;
-      const facingRad = (195 * Math.PI) / 180;
-      const cx = Math.sin(facingRad) * crossDist;
-      const cz = Math.cos(facingRad) * crossDist;
-      const camDist = 660 - cz;
-      const worldShift = 200 * (2 * Math.tan((40 * Math.PI / 180) / 2) * camDist / w);
-      crossGroup.position.set(cx - 60 - worldShift, 0, cz);
+      crossGroup.position.set(0, 0, 0);
       scene.add(crossGroup);
 
       const wireMat = new THREE.MeshBasicMaterial({
@@ -1764,10 +1758,7 @@ function AudioFigureBackdrop({ fading = false }) {
             const dt = Math.min(clock.getDelta(), 0.05);
             if (mixer) mixer.update(dt);
 
-            const toCamX = camera.position.x - crossGroup.position.x;
-            const toCamZ = camera.position.z - crossGroup.position.z;
-            const camAngle = Math.atan2(toCamX, toCamZ);
-            crossGroup.rotation.set(0, camAngle, 0);
+            crossGroup.rotation.set(0, 0, 0);
             updateGlitter(clock.elapsedTime);
             crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
 
