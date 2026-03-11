@@ -811,6 +811,7 @@ const css = `
     height: 46px;
     padding: 0 20px;
     cursor: pointer;
+    pointer-events: none;
     font-family: 'Orbitron', sans-serif;
     font-size: 11px; font-weight: 900;
     letter-spacing: 3px; text-transform: uppercase;
