@@ -1,4 +1,14 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
+
+const useIsMobile = () => {
+  const [mobile, setMobile] = useState(() => window.innerWidth <= 768);
+  useEffect(() => {
+    const fn = () => setMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", fn);
+    return () => window.removeEventListener("resize", fn);
+  }, []);
+  return mobile;
+};
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
@@ -215,6 +225,7 @@ const CHAT_STORAGE_CEILING = 20 * 1024 * 1024 * 1024;    // 20 GB — prune befo
 
 // ─── BOARD PAGE ───────────────────────────────────────────────────────────────
 function BoardPage({ username }) {
+  const isMobile = useIsMobile();
   const { messages, fetchMessages, saveMessage, saveReaction } = useBoardMessages();
   const [text, setText]                 = useState("");
   const [mediaFiles, setMediaFiles]     = useState([]);  // up to 3 attachments
@@ -335,7 +346,7 @@ function BoardPage({ username }) {
     <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 0px)", overflow:"hidden", position:"relative" }}>
 
       {/* Messages */}
-      <div ref={scrollContainerRef} style={{ flex:1, overflowY:"scroll", overscrollBehavior:"none", WebkitOverflowScrolling:"auto", padding:"120px 28px 130px", display:"flex", flexDirection:"column", gap:4 }}>
+      <div ref={scrollContainerRef} style={{ flex:1, overflowY:"scroll", overscrollBehavior:"none", WebkitOverflowScrolling:"auto", padding:`120px 28px ${isMobile ? "180px" : "130px"}`, display:"flex", flexDirection:"column", gap:4 }}>
         <div style={{ flex: "1 0 0" }} />
         {messages.map((msg, i) => {
           const isMe = msg.author === username;
@@ -452,7 +463,7 @@ function BoardPage({ username }) {
       {/* Attach warning */}
       {attachWarning && (
         <div style={{
-          position: "fixed", left: 360, right: 0, zIndex: 12,
+          position: "fixed", left: isMobile ? 0 : 360, right: 0, zIndex: 12,
           bottom: inputTop ? (window.innerHeight - inputTop + (mediaFiles.length > 0 ? 96 : 8)) : 150,
           margin: "0 28px",
           padding: "10px 16px",
@@ -473,7 +484,7 @@ function BoardPage({ username }) {
         <div style={{
           position: "fixed",
           bottom: inputTop ? (window.innerHeight - inputTop + 8) : 78,
-          left: 360, right: 0,
+          left: isMobile ? 0 : 360, right: 0,
           padding: "8px 28px",
           display: "flex", gap: 10, zIndex: 11,
         }}>
@@ -505,8 +516,8 @@ function BoardPage({ username }) {
       {/* Input bar */}
       <div style={{
         position: "fixed",
-        bottom: 0,
-        left: 360,
+        bottom: isMobile ? 56 : 0,
+        left: isMobile ? 0 : 360,
         right: 0,
         padding: "12px 28px",
         borderTop: "1px solid var(--border)",
@@ -1346,6 +1357,135 @@ const css = `
   }
   .flex-end { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 
+  /* ─────────────────────────────────────────────────────────────────────────
+     MOBILE LAYOUT  (≤768px) — desktop CSS above is completely untouched
+     ───────────────────────────────────────────────────────────────────────── */
+  @media (max-width: 768px) {
+
+    /* ── Remove sidebar from flex flow so .main can take full width ── */
+    .app {
+      display: block !important;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Sidebar: fixed overlay strip on left, never takes layout space ── */
+    .sidebar {
+      position: fixed !important;
+      left: 0; top: 0; bottom: 0;
+      width: 80px !important; min-width: 80px !important;
+      height: 100vh;
+      z-index: 300;
+      justify-content: center;
+      align-items: flex-start;
+      overflow: visible;
+      /* No width transition on mobile — we use scale on the orb instead */
+      transition: none !important;
+    }
+    /* Collapsed sidebar shrinks just enough for the small orb */
+    .sidebar.nav-collapsed {
+      width: 34px !important; min-width: 34px !important;
+    }
+
+    /* ── Logo: slides out left + fades when nav collapses (not shrinks) ── */
+    .logo {
+      font-size: 9px !important;
+      top: 10px; left: 8px;
+      line-height: 1.2;
+      transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.4,0,0.2,1) !important;
+    }
+    .logo-l1 { letter-spacing: 1.5px !important; }
+    .logo-l2 { letter-spacing: 2.5px !important; }
+    .sidebar.nav-collapsed .logo {
+      opacity: 0 !important;
+      transform: translateX(-70px) !important;
+      pointer-events: none !important;
+    }
+
+    /* ── Orb: full size when nav open, shrinks when collapsed ── */
+    .xbox-orb-wrap {
+      position: absolute;
+      left: -60px !important;
+      top: 50%;
+      transform: translateY(-50%) scale(1) !important;
+      transform-origin: left center;
+      width: 220px !important; height: 220px !important;
+      transition: transform 0.4s cubic-bezier(0.4,0,0.2,1) !important;
+    }
+    /* Orb collapses smaller — bubbles, glb, shadow all scale with it */
+    .sidebar.nav-collapsed .xbox-orb-wrap {
+      transform: translateY(-50%) scale(0.35) !important;
+      left: -60px !important;
+    }
+
+    /* ── Nav tabs: sit just to the right of the orb, full overlay ── */
+    .nav-wrap {
+      position: fixed !important;
+      left: 64px !important;
+      top: 50% !important;
+      transform: translateY(-50%) !important;
+      z-index: 299 !important;
+      pointer-events: all;
+    }
+    .nav-wrap.retracted {
+      opacity: 0 !important;
+      transform: translateY(-50%) translateX(-40px) !important;
+      pointer-events: none !important;
+    }
+
+    /* Active tab style applies instantly — no CSS transition lag */
+    .nav-item-wrap .nav-item {
+      transition: transform 0.1s ease, font-size 0.1s ease !important;
+    }
+
+    /* ── Main: full viewport, sits behind the fixed sidebar overlay ── */
+    .main {
+      display: block !important;
+      width: 100vw !important;
+      margin-left: 0 !important;
+      padding-left: 0 !important;
+      padding-bottom: 80px !important;
+      box-sizing: border-box;
+      z-index: 50;
+      position: relative;
+    }
+
+    /* ── Page: compact padding ── */
+    .page {
+      padding: 20px 16px 20px 16px !important;
+    }
+
+    /* ── Audio player: bottom bar on mobile ── */
+    .player-bar {
+      position: fixed !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      width: 100% !important;
+      border-radius: 0 !important;
+      padding: 8px 14px !important;
+      background: rgba(0,10,4,0.97) !important;
+      border-top: 1px solid rgba(0,255,140,0.25) !important;
+      border-left: none !important; border-right: none !important; border-bottom: none !important;
+      box-shadow: none !important;
+      z-index: 400 !important;
+      flex-direction: column !important;
+      align-items: stretch !important;
+      gap: 6px !important;
+    }
+    .player-bar.retracted {
+      transform: translateY(110%) !important;
+      opacity: 0 !important;
+    }
+
+    /* ── Remove the rounded border squares on ctrl buttons ── */
+    .ctrl-btn {
+      border: none !important;
+      background: none !important;
+      width: 28px !important; height: 28px !important;
+    }
+  }
+
   /* ── ONBOARDING ── */
   .onboard-wrap {
     min-height: 100vh; display: flex; align-items: center; justify-content: center;
@@ -1402,7 +1542,7 @@ const BACKDROP_MODELS = {
   topcharts: "/Warming_Up.fbx",
 };
 
-function FigureBackdrop({ variant = "workout", visible = false }) {
+function FigureBackdrop({ variant = "workout", visible = false, isMobile = false }) {
   const mountRef  = useRef(null);
   const fbxFile   = BACKDROP_MODELS[variant];
   const visibleRef = useRef(visible);
@@ -1521,10 +1661,10 @@ function FigureBackdrop({ variant = "workout", visible = false }) {
   return (
     <div ref={mountRef} style={{
       position: "fixed",
-      left: 224,
+      left: isMobile ? 0 : 224,
       top: 0,
       right: 0,
-      bottom: 70,
+      bottom: isMobile ? 60 : 70,
       pointerEvents: "none",
       zIndex: -1,
       opacity: fbxFile ? opacity : 0,
@@ -1536,7 +1676,7 @@ function FigureBackdrop({ variant = "workout", visible = false }) {
 
 
 // ─── AUDIO FIGURE BACKDROP ────────────────────────────────────────────────────
-function AudioFigureBackdrop({ visible = false }) {
+function AudioFigureBackdrop({ visible = false, isMobile = false }) {
   const mountRef   = useRef(null);
   const visibleRef = useRef(visible);
   const [opacity, setOpacity] = useState(0);
@@ -2054,7 +2194,7 @@ function AudioFigureBackdrop({ visible = false }) {
 
   return (
     <div style={{
-      position: "fixed", left: 224, top: 0, right: 0, bottom: 70,
+      position: "fixed", left: isMobile ? 0 : 224, top: 0, right: 0, bottom: isMobile ? 60 : 70,
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
     }}>
@@ -2066,7 +2206,7 @@ function AudioFigureBackdrop({ visible = false }) {
 
 
 // ─── WORKOUT FIGURE BACKDROP ──────────────────────────────────────────────────
-function WorkoutFigureBackdrop({ visible = false }) {
+function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
   const mountRef   = useRef(null);
   const visibleRef = useRef(visible);
   const [opacity, setOpacity] = useState(0);
@@ -2300,7 +2440,7 @@ function WorkoutFigureBackdrop({ visible = false }) {
   return (
     <div ref={mountRef} style={{
       position: "fixed",
-      left: 224, top: 0, right: 0, bottom: 70,
+      left: isMobile ? 0 : 224, top: 0, right: 0, bottom: isMobile ? 60 : 70,
       pointerEvents: "none", zIndex: -1,
       opacity, transition: "opacity 0.5s ease",
       filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)",
@@ -3854,6 +3994,7 @@ function UserProfileModal({ user, onClose, onDeleted }) {
 
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App() {
+  const isMobile = useIsMobile();
   const [user, setUser]                         = useState(null);   // { id, firstName, lastName, email, displayName }
   const [showProfile, setShowProfile]           = useState(false);
   const [showAdmin, setShowAdmin]               = useState(false);
@@ -4103,10 +4244,13 @@ export default function App() {
       <div className="grid-stars" />
       <div className="app">
         <div className={`sidebar${navExpanded ? "" : " nav-collapsed"}`}>
-          {/* Logo — two lines, shrinks when nav retracts */}
-          <div className="logo" style={{fontSize: navExpanded ? "22px" : "15px", whiteSpace:"nowrap"}}>
-            <span className="logo-l1" style={{display:"block", letterSpacing: navExpanded ? "5px" : "2.5px"}}>BROS OF ST.</span>
-            <span className="logo-l2" style={{display:"block", letterSpacing: navExpanded ? "10.5px" : "5px"}}>HYACINTH</span>
+          {/* Logo */}
+          <div className="logo" style={{
+            fontSize: isMobile ? "9px" : (navExpanded ? "22px" : "15px"),
+            whiteSpace: "nowrap",
+          }}>
+            <span className="logo-l1" style={{display:"block", letterSpacing: isMobile ? "1.5px" : (navExpanded ? "5px" : "2.5px")}}>BROS OF ST.</span>
+            <span className="logo-l2" style={{display:"block", letterSpacing: isMobile ? "2.5px" : (navExpanded ? "10.5px" : "5px")}}>HYACINTH</span>
           </div>
           {/* Orb — click to toggle nav */}
           <div className="xbox-orb-wrap" onClick={() => setNavExpanded(v => !v)}>
@@ -4142,10 +4286,10 @@ export default function App() {
           {page === "boards" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><BoardPage username={username} /></div>}
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
         </div>
-        <FigureBackdrop variant="boards"    visible={page === "boards"} />
-        <AudioFigureBackdrop               visible={page === "audio"} />
-        <FigureBackdrop variant="topcharts" visible={page === "topcharts"} />
-        <WorkoutFigureBackdrop             visible={page === "workout"} />
+        <FigureBackdrop variant="boards"    visible={page === "boards"}    isMobile={isMobile} />
+        <AudioFigureBackdrop               visible={page === "audio"}     isMobile={isMobile} />
+        <FigureBackdrop variant="topcharts" visible={page === "topcharts"} isMobile={isMobile} />
+        <WorkoutFigureBackdrop             visible={page === "workout"}   isMobile={isMobile} />
       </div>
       {currentTrack && (
         <PlayerBar track={currentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} tracks={PERMANENT_TRACKS} setTrack={setCurrentTrack} navExpanded={navExpanded} />
