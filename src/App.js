@@ -336,22 +336,176 @@ function BoardPage({ username }) {
   const openLightbox = (src, type) => { setLightboxSrc(src); setLightboxType(type); };
   const closeLightbox = () => { setLightboxSrc(null); setLightboxType(null); };
 
+  // ── Audio waveform lightbox component ───────────────────────────────────
+  const AudioLightbox = ({ src, onClose }) => {
+    const audioRef = useRef(null);
+    const canvasRef = useRef(null);
+    const animRef = useRef(null);
+    const analyserRef = useRef(null);
+    const [playing, setPlaying] = useState(false);
+    const [elapsed, setElapsed] = useState(0);
+    const [duration, setDuration] = useState(0);
+    const [ctx, setCtx] = useState(null);
+
+    useEffect(() => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      const onMeta = () => setDuration(audio.duration || 0);
+      const onTime = () => setElapsed(audio.currentTime || 0);
+      const onEnded = () => setPlaying(false);
+      audio.addEventListener("loadedmetadata", onMeta);
+      audio.addEventListener("timeupdate", onTime);
+      audio.addEventListener("ended", onEnded);
+      return () => {
+        audio.removeEventListener("loadedmetadata", onMeta);
+        audio.removeEventListener("timeupdate", onTime);
+        audio.removeEventListener("ended", onEnded);
+        audio.pause();
+      };
+    }, []);
+
+    const initAudio = () => {
+      if (analyserRef.current) return;
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      const source = audioCtx.createMediaElementSource(audioRef.current);
+      source.connect(analyser);
+      analyser.connect(audioCtx.destination);
+      analyserRef.current = analyser;
+      setCtx(audioCtx);
+      drawWaveform(analyser);
+    };
+
+    const drawWaveform = (analyser) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx2d = canvas.getContext("2d");
+      const bufLen = analyser.frequencyBinCount;
+      const data = new Uint8Array(bufLen);
+      const draw = () => {
+        animRef.current = requestAnimationFrame(draw);
+        analyser.getByteFrequencyData(data);
+        const w = canvas.width, h = canvas.height;
+        ctx2d.clearRect(0, 0, w, h);
+        const barW = (w / bufLen) * 2.5;
+        let x = 0;
+        for (let i = 0; i < bufLen; i++) {
+          const barH = (data[i] / 255) * h * 0.85;
+          const green = Math.floor(180 + (data[i] / 255) * 75);
+          ctx2d.fillStyle = `rgba(0,${green},80,0.85)`;
+          ctx2d.fillRect(x, h - barH, barW - 1, barH);
+          x += barW;
+        }
+        // Draw idle flat line when no signal
+        if (data.every(v => v === 0)) {
+          ctx2d.strokeStyle = "rgba(0,255,140,0.3)";
+          ctx2d.lineWidth = 1.5;
+          ctx2d.beginPath();
+          ctx2d.moveTo(0, h / 2);
+          ctx2d.lineTo(w, h / 2);
+          ctx2d.stroke();
+        }
+      };
+      draw();
+    };
+
+    const togglePlay = () => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      initAudio();
+      if (audio.paused) { audio.play(); setPlaying(true); }
+      else { audio.pause(); setPlaying(false); }
+    };
+
+    const seek = (e) => {
+      const audio = audioRef.current;
+      if (!audio || !duration) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      audio.currentTime = ratio * duration;
+    };
+
+    useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
+
+    const fmt = (s) => {
+      if (!s || isNaN(s)) return "0:00";
+      const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+      return `${m}:${sec.toString().padStart(2, "0")}`;
+    };
+    const pct = duration > 0 ? (elapsed / duration) * 100 : 0;
+
+    return (
+      <div onClick={onClose} style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.97)",
+        zIndex: 9999, display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center", padding: "0 24px",
+      }}>
+        <button onClick={onClose} style={{
+          position: "absolute", top: 16, right: 16,
+          background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.3)",
+          borderRadius: "50%", width: 36, height: 36, color: "#fff",
+          fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+        }}>✕</button>
+
+        <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 420, display: "flex", flexDirection: "column", alignItems: "center", gap: 24 }}>
+          {/* Waveform canvas */}
+          <canvas ref={canvasRef} width={360} height={120} style={{
+            width: "100%", height: 120, borderRadius: 8,
+            border: "1px solid rgba(0,255,140,0.2)",
+            background: "rgba(0,20,10,0.8)",
+            filter: "drop-shadow(0 0 8px rgba(0,255,140,0.3))",
+          }} />
+
+          {/* Progress bar */}
+          <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 11, color: "rgba(0,255,140,0.7)", fontFamily: "'Orbitron',sans-serif", width: 36, textAlign: "right" }}>{fmt(elapsed)}</span>
+            <div onClick={seek} style={{
+              flex: 1, height: 6, background: "rgba(0,255,140,0.12)",
+              borderRadius: 3, cursor: "pointer", position: "relative",
+            }}>
+              <div style={{ width: `${pct}%`, height: "100%", background: "#00ff99", borderRadius: 3, transition: "width 0.1s linear" }} />
+              <div style={{ position: "absolute", top: "50%", left: `${pct}%`, transform: "translate(-50%,-50%)", width: 12, height: 12, borderRadius: "50%", background: "#00ff99", boxShadow: "0 0 8px #00ff99" }} />
+            </div>
+            <span style={{ fontSize: 11, color: "rgba(0,255,140,0.7)", fontFamily: "'Orbitron',sans-serif", width: 36 }}>{fmt(duration)}</span>
+          </div>
+
+          {/* Play/pause button */}
+          <button onClick={togglePlay} style={{
+            width: 64, height: 64, borderRadius: "50%",
+            background: "none", border: "2px solid rgba(0,255,140,0.6)",
+            color: "#00ff99", fontSize: 24, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            filter: "drop-shadow(0 0 12px rgba(0,255,140,0.8)) drop-shadow(0 0 28px rgba(0,255,100,0.4))",
+            transition: "all 0.15s",
+          }}>
+            {playing ? "⏸" : "▶"}
+          </button>
+        </div>
+
+        <audio ref={audioRef} src={src} preload="metadata" />
+      </div>
+    );
+  };
+
   const lightbox = lightboxSrc && (
-    <div onClick={closeLightbox} style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,0.95)",
-      zIndex: 900, display: "flex", alignItems: "center", justifyContent: "center",
-    }}>
-      <button onClick={closeLightbox} style={{
-        position: "absolute", top: 16, right: 16,
-        background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.3)",
-        borderRadius: "50%", width: 36, height: 36, color: "#fff",
-        fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-      }}>✕</button>
-      {lightboxType === "image"
-        ? <img src={lightboxSrc} alt="fullscreen" style={{ maxWidth: "95vw", maxHeight: "90vh", borderRadius: 4, objectFit: "contain" }} onClick={e => e.stopPropagation()} />
-        : <video src={lightboxSrc} controls autoPlay style={{ maxWidth: "95vw", maxHeight: "90vh", borderRadius: 4 }} onClick={e => e.stopPropagation()} />
-      }
-    </div>
+    lightboxType === "audio"
+      ? <AudioLightbox src={lightboxSrc} onClose={closeLightbox} />
+      : <div onClick={closeLightbox} style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.97)",
+          zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <button onClick={closeLightbox} style={{
+            position: "absolute", top: 16, right: 16,
+            background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.3)",
+            borderRadius: "50%", width: 36, height: 36, color: "#fff",
+            fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+          }}>✕</button>
+          {lightboxType === "image"
+            ? <img src={lightboxSrc} alt="fullscreen" style={{ maxWidth: "95vw", maxHeight: "90svh", borderRadius: 4, objectFit: "contain" }} onClick={e => e.stopPropagation()} />
+            : <video src={lightboxSrc} controls autoPlay style={{ maxWidth: "95vw", maxHeight: "90svh", borderRadius: 4 }} onClick={e => e.stopPropagation()} />
+          }
+        </div>
   );
 
   // ── Message list ────────────────────────────────────────────────────────
@@ -416,10 +570,11 @@ function BoardPage({ username }) {
                   </div>
                 )}
                 {m.type?.startsWith("audio/") && (
-                  <div style={{ display:"flex", alignItems:"center", gap:8,
+                  <div onClick={() => openLightbox(m.dataUrl, "audio")}
+                    style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer",
                     background:"rgba(0,255,204,0.06)", border:"1px solid var(--border)", borderRadius:4, padding:"8px 12px", minWidth:180 }}>
                     <span style={{ fontSize:16 }}>🎵</span>
-                    <audio controls src={m.dataUrl} style={{ flex:1, height:28, minWidth:0, accentColor:"var(--accent)" }} />
+                    <span style={{ fontSize:12, color:"var(--accent)", fontFamily:"'Orbitron',sans-serif", letterSpacing:1 }}>TAP TO PLAY</span>
                   </div>
                 )}
               </div>
@@ -1610,12 +1765,12 @@ const css = `
     .chat-mobile-root {
       display: flex;
       flex-direction: column;
+      /* svh = small viewport height — always excludes browser chrome/search bar.
+         dvh = dynamic (can include it). 100vh = layout viewport (too tall on most mobile browsers).
+         svh is the correct unit here. Fallback chain: svh → dvh → vh. */
+      height: 100svh;
       height: 100dvh;
-      height: 100vh;
       overflow: hidden;
-      /* NO position:fixed — .main has CSS transform which breaks fixed positioning.
-         Instead we make .main itself height:100vh overflow:hidden when chat is active,
-         and the chat fills it with normal flow flex layout. */
     }
     .chat-mobile-messages {
       flex: 1;
@@ -1631,10 +1786,10 @@ const css = `
       padding: 8px 10px;
       padding-bottom: max(8px, env(safe-area-inset-bottom));
     }
-    /* When chat is active, .main must be a full-height flex container */
+    /* When chat is active, .main must match the same height */
     .main.nav-closed.chat-active,
     .main.nav-open.chat-active {
-      height: 100vh !important;
+      height: 100svh !important;
       height: 100dvh !important;
       overflow: hidden !important;
     }
