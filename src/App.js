@@ -725,7 +725,7 @@ const css = `
 
   /* ── SIDEBAR — orb + blade nav ── */
   .sidebar {
-    width: 370px; min-width: 370px;
+    width: 280px; min-width: 280px;
     background: transparent;
     display: flex; flex-direction: column;
     padding: 0; position: sticky; top: 0; height: 100vh;
@@ -964,7 +964,7 @@ const css = `
   .user-sub { font-size: 11px; color: var(--muted); letter-spacing: 0.5px; text-transform: uppercase; margin-top: 2px; }
 
   /* ── MAIN ── */
-  .main { flex: 1; overflow-y: auto; position: relative; padding-bottom: 80px; }
+  .main { flex: 1; overflow-y: auto; position: relative; padding-bottom: 80px; z-index: 20; margin-left: -90px; padding-left: 90px; }
   .page { padding: 40px 48px; max-width: 1000px; margin: 0 auto; }
   .app { display: flex; min-height: 100vh; position: relative; z-index: 1; overflow: visible; }
   .page > *:not(:first-child) { position: relative; z-index: 1; }
