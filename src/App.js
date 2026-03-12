@@ -819,7 +819,6 @@ const css = `
     border: 1px solid rgba(136,255,0,0.15);
     background: rgba(0,20,0,0.55);
     color: rgba(136,255,120,0.55);
-    backdrop-filter: blur(4px);
     display: flex; align-items: center;
     clip-path: polygon(
       0.00% 84.00%,
@@ -833,6 +832,13 @@ const css = `
       0.00%  12.29%
     );
     animation: navIdle 8s ease-in-out infinite;
+  }
+  .nav-item::after {
+    content: '';
+    position: absolute; inset: 0;
+    backdrop-filter: blur(4px);
+    pointer-events: none;
+    z-index: -1;
   }
   .nav-item:nth-child(1) { animation-delay:  0.0s; }
   .nav-item:nth-child(2) { animation-delay: -1.6s; }
@@ -1482,6 +1488,8 @@ function FigureBackdrop({ variant = "workout", visible = false }) {
         }
 
         let wasVisible = visibleRef.current;
+        let hiddenAt = wasVisible ? Infinity : 0;
+        const FADE_MS = 500;
         const FRAME_MS = 1000 / 30;
         let lastFrame = 0;
         const animate = (now) => {
@@ -1495,11 +1503,15 @@ function FigureBackdrop({ variant = "workout", visible = false }) {
             a.play();
             clock.start();
             lastFrame = now;
+            hiddenAt = Infinity;
           }
+          if (!isVisible && wasVisible) hiddenAt = now;
           wasVisible = isVisible;
+          const fadingOut = !isVisible && (now - hiddenAt < FADE_MS);
+          if (!isVisible && !fadingOut) return;
           if (now - lastFrame < FRAME_MS) return;
           lastFrame = now - ((now - lastFrame) % FRAME_MS);
-          if (mixer && isVisible) mixer.update(clock.getDelta());
+          if (mixer) mixer.update(clock.getDelta());
           renderer.render(scene, camera);
         };
         animate(0);
@@ -1812,17 +1824,22 @@ function AudioFigureBackdrop({ visible = false }) {
           };
 
           const FRAME_MS = 1000 / 30;
+          const FADE_MS = 500;
           let lastFrame = 0;
+          let hiddenAt = visibleRef.current ? Infinity : 0;
           let wasVisible = visibleRef.current;
           const animateWithBreath = (now) => {
             animId = requestAnimationFrame(animateWithBreath);
             const isVisible = visibleRef.current;
-            if (isVisible && !wasVisible) { restartAnimation(); lastFrame = now; }
+            if (isVisible && !wasVisible) { restartAnimation(); lastFrame = now; hiddenAt = Infinity; }
+            if (!isVisible && wasVisible) hiddenAt = now;
             wasVisible = isVisible;
+            const fadingOut = !isVisible && (now - hiddenAt < FADE_MS);
+            if (!isVisible && !fadingOut) return;
             if (now - lastFrame < FRAME_MS) return;
             lastFrame = now - ((now - lastFrame) % FRAME_MS);
-            if (!isVisible) { renderer.render(scene, camera); return; }
             const dt = Math.min(clock.getDelta(), 0.05);
+            if (!isVisible) { renderer.render(scene, camera); return; }
             if (mixer) mixer.update(dt);
 
             const toCamX = camera.position.x - crossGroup.position.x;
@@ -2220,7 +2237,9 @@ function WorkoutFigureBackdrop({ visible = false }) {
         });
 
         const FRAME_MS = 1000 / 30;
+        const FADE_MS = 500;
         let lastFrame = 0;
+        let hiddenAt = visibleRef.current ? Infinity : 0;
         let wasVisible = visibleRef.current;
         const animate = (now) => {
           animId = requestAnimationFrame(animate);
@@ -2254,12 +2273,16 @@ function WorkoutFigureBackdrop({ visible = false }) {
             });
             clock.start();
             lastFrame = now;
+            hiddenAt = Infinity;
           }
+          if (!isVisible && wasVisible) hiddenAt = now;
           wasVisible = isVisible;
+          const fadingOut = !isVisible && (now - hiddenAt < FADE_MS);
+          if (!isVisible && !fadingOut) return;
           if (now - lastFrame < FRAME_MS) return;
           lastFrame = now - ((now - lastFrame) % FRAME_MS);
           const dt = Math.min(clock.getDelta(), 0.05);
-          if (activeMixer && isVisible) activeMixer.update(dt);
+          if (activeMixer) activeMixer.update(dt);
           renderer.render(scene, camera);
         };
         animate(0);
