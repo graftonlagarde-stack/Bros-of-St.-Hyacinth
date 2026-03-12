@@ -237,27 +237,13 @@ function BoardPage({ username }) {
 
   useEffect(() => { fetchMessages(); }, []);
 
-  const hasScrolledToBottom = useRef(false);
-
   useEffect(() => {
     const el = scrollContainerRef.current;
-    if (!el) return;
-    // Each time messages load, reset the flag so we scroll to bottom again
-    hasScrolledToBottom.current = false;
-    el.scrollTop = el.scrollHeight;
-    // ResizeObserver catches media/images rendering in after the initial paint
-    const ro = new ResizeObserver(() => {
-      if (!hasScrolledToBottom.current) {
-        el.scrollTop = el.scrollHeight;
-        // Once we've reached the true bottom, stop forcing scroll
-        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 2) {
-          hasScrolledToBottom.current = true;
-        }
-      }
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
+
+
+
 
   const uploadToCloudinary = (file) => new Promise((resolve, reject) => {
     const isVideo = file.type.startsWith("video/");
@@ -3885,7 +3871,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (mainRef.current) mainRef.current.scrollTop = 0;
+    if (!mainRef.current) return;
+    const el = mainRef.current;
+    const frame = requestAnimationFrame(() => {
+      if (page === "boards") {
+        el.scrollTop = el.scrollHeight;
+      } else {
+        el.scrollTop = 0;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
   }, [page]);
 
   // ── GLB orb renderer ──────────────────────────────────────────────
