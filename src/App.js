@@ -220,7 +220,6 @@ function BoardPage({ username }) {
   const [mediaFiles, setMediaFiles]     = useState([]);  // up to 3 attachments
   const [attachWarning, setAttachWarning] = useState(false);
   const [uploading, setUploading]       = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [emojiPickerFor, setEmojiPickerFor] = useState(null);
   const [inputTop, setInputTop]         = useState(null);
   const bottomRef = useRef(null);
@@ -269,9 +268,6 @@ function BoardPage({ username }) {
     formData.append("upload_preset", CLOUDINARY_PRESET);
     const xhr = new XMLHttpRequest();
     xhr.open("POST", endpoint);
-    xhr.upload.onprogress = (ev) => {
-      if (ev.lengthComputable) setUploadProgress(Math.round((ev.loaded / ev.total) * 100));
-    };
     xhr.onload = () => {
       if (xhr.status === 200) {
         const r = JSON.parse(xhr.responseText);
@@ -313,7 +309,6 @@ function BoardPage({ username }) {
       setMediaFiles(prev => prev.filter(f => f.id !== id));
     } finally {
       setUploading(false);
-      setUploadProgress(0);
     }
   };
 
@@ -604,10 +599,6 @@ const css = `
     0%   { background-position: 200% 0; }
     100% { background-position: -200% 0; }
   }
-  @keyframes edgePulse {
-    0%,100% { opacity: 0.5; }
-    50%     { opacity: 1; }
-  }
   @keyframes energyBeat {
     0%,100% { box-shadow: 0 0 20px rgba(136,255,0,0.2), inset 0 0 40px rgba(0,255,180,0.03); }
     50%     { box-shadow: 0 0 40px rgba(0,255,180,0.45), inset 0 0 60px rgba(0,255,180,0.07); }
@@ -628,10 +619,6 @@ const css = `
   @keyframes depthSweep {
     0%   { background-position: 50% 0%; }
     100% { background-position: 50% 100%; }
-  }
-  @keyframes rankGlow {
-    0%,100% { box-shadow: 0 0 20px rgba(136,255,0,0.2), inset 0 0 40px rgba(136,255,0,0.03); }
-    50%     { box-shadow: 0 0 40px rgba(136,255,0,0.45), inset 0 0 60px rgba(136,255,0,0.07); }
   }
   @keyframes rankGlow {
     0%,100% { box-shadow: 0 0 20px rgba(136,255,0,0.2), inset 0 0 40px rgba(136,255,0,0.03); }
@@ -902,7 +889,6 @@ const css = `
     border-color: rgba(136,255,0,0.4);
   }
   .nav-item.active::before { display: none; }
-  .nav-icon { display: none; }
   .xbox-orb-wrap { z-index: 4 !important; }
 
   /* Logo */
@@ -955,12 +941,6 @@ const css = `
   }
   .avatar.sm { width: 30px; height: 30px; font-size: 9px; }
   .avatar.lg { width: 48px; height: 48px; font-size: 14px; }
-  .user-name {
-    font-weight: 700; font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
-    background: var(--chrome-grad);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
-  }
-  .user-sub { font-size: 11px; color: var(--muted); letter-spacing: 0.5px; text-transform: uppercase; margin-top: 2px; }
 
   /* ── MAIN ── */
   .main { flex: 1; overflow-y: auto; position: relative; padding-bottom: 10px; z-index: 20; margin-left: 80px; }
@@ -1094,7 +1074,6 @@ const css = `
     background: rgba(0,16,9,0.96);
   }
   textarea { resize: vertical; min-height: 80px; }
-  .form-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
   .form-label {
     font-size: 11px; color: var(--muted); margin-bottom: 6px;
     font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
@@ -1121,7 +1100,6 @@ const css = `
   }
 
   /* ── TABS ── */
-  .chart-wrap { height: 260px; margin-top: 8px; }
   .tab-row { display: flex; gap: 5px; margin-bottom: 20px; flex-wrap: wrap; }
   .tab {
     padding: 6px 14px; border-radius: var(--radius); font-size: 11px; font-weight: 700;
@@ -1270,12 +1248,6 @@ const css = `
     box-shadow: 0 0 8px #00ff88, 0 0 18px rgba(0,255,140,0.5);
     transition: width 0.25s linear;
   }
-  .volume-wrap {
-    display: flex; align-items: center; gap: 8px; font-size: 11px;
-    color: rgba(0,255,140,0.6);
-    position: relative; z-index: 1;
-  }
-  .vol-slider { width: 72px; height: 2px; accent-color: var(--accent); }
 
   /* ── TRACK LIST ── */
   .track-row {
@@ -1297,7 +1269,6 @@ const css = `
     text-shadow: 0 0 12px #88ff00aa !important;
   }
   .track-num { width: 22px; text-align: center; font-size: 12px; color: var(--muted); font-family: 'Orbitron', sans-serif; }
-  .track-dur { font-size: 12px; color: var(--muted); margin-left: auto; font-family: 'Orbitron', sans-serif; letter-spacing: 0.5px; }
 
   /* ── STAT TILES ── */
   .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 28px; }
@@ -1380,12 +1351,6 @@ const css = `
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     filter: drop-shadow(0 0 12px rgba(136,255,0,0.6));
     position: relative; z-index: 1;
-  }
-  .divider {
-    border: none; height: 1px; margin: 20px 0;
-    background: var(--energy-grad); background-size: 300% 300%;
-    animation: sheen 5s ease-in-out infinite;
-    opacity: 0.3;
   }
   .flex-end { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 
