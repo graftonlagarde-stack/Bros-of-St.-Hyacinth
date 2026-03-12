@@ -248,6 +248,30 @@ function BoardPage({ username }) {
     ta.style.height = Math.min(ta.scrollHeight, 140) + "px";
   }, [text]);
 
+  // ── Visual viewport resize: keeps chat above keyboard on all mobile browsers ──
+  // visualViewport.height shrinks when keyboard opens. We pin the chat root
+  // bottom to the top of the keyboard by setting an explicit height on .main.
+  const chatRootRef = useRef(null);
+  useEffect(() => {
+    if (!isMobile) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => {
+      // offsetTop accounts for any scroll the browser applied to the layout viewport
+      const visH = vv.height + vv.offsetTop;
+      if (chatRootRef.current) {
+        chatRootRef.current.style.height = visH + "px";
+      }
+    };
+    vv.addEventListener("resize", onResize);
+    vv.addEventListener("scroll", onResize);
+    onResize(); // set initial size
+    return () => {
+      vv.removeEventListener("resize", onResize);
+      vv.removeEventListener("scroll", onResize);
+    };
+  }, [isMobile]);
+
   useLayoutEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
@@ -525,7 +549,7 @@ function BoardPage({ username }) {
 
     return (
       <div key={msg.id}
-        style={{ display:"flex", flexDirection: isMe ? "row-reverse" : "row", gap:8, alignItems:"flex-end", marginTop: grouped ? 2 : 14, position:"relative" }}
+        style={{ display:"flex", flexDirection: isMe ? "row-reverse" : "row", gap:8, alignItems:"flex-end", marginTop: grouped ? 1 : 8, position:"relative" }}
         onMouseLeave={() => setEmojiPickerFor(null)}>
 
         <div style={{ width:32, flexShrink:0 }}>
@@ -696,7 +720,7 @@ function BoardPage({ username }) {
     return (
       <>
         {lightbox}
-        <div className="chat-mobile-root">
+        <div ref={chatRootRef} className="chat-mobile-root">
           <div ref={scrollContainerRef} className="chat-mobile-messages" style={{ padding: "80px 14px 20px" }}>
             <div style={{ flex: "1 0 0" }} />
             {messageList}
@@ -900,7 +924,7 @@ const css = `
       linear-gradient(90deg, rgba(136,255,0,0.38) 1px, transparent 1px);
     background-size: 80px 80px;
     background-position: 50% 0%;
-    transform: perspective(600px) rotateX(82deg) translateY(35%);
+    transform: perspective(600px) rotateX(65deg) translateY(20%);
     transform-origin: 50% 50%;
     animation: depthSweep 3.6s linear infinite;
     mask-image: linear-gradient(180deg, transparent 0%, black 15%, black 100%);
@@ -1752,6 +1776,8 @@ const css = `
     /* ── Remove ALL borders from audio control buttons (the "rounded squares") ── */
     .ctrl-btn, .play-btn {
       border: none !important;
+      font-variant-emoji: text !important;
+      -webkit-font-smoothing: antialiased !important;
     }
     .ctrl-btn {
       width: 28px !important; height: 28px !important;
@@ -1761,15 +1787,24 @@ const css = `
        Without this, tapping inputs fires nav tap events instead */
     .modal-bg { z-index: 500 !important; }
 
-    /* ── Chat page: flex column filling full viewport height ── */
+    /* ── Chat page: fixed full-screen column, keyboard-safe ── */
+    /* 
+       The fundamental problem with height-based approaches (svh/dvh/vh) is that
+       .main has a CSS transform, which creates a new stacking context and causes
+       any position:fixed children to fix relative to .main, not the viewport.
+       But we also can't use position:fixed on chat-mobile-root for the same reason.
+       
+       Solution: use position:absolute inside .main (which is already
+       positioned), and listen to window.visualViewport resize events in JS
+       to update the height dynamically when the keyboard opens/closes.
+       The visualViewport API is the only truly cross-platform reliable way.
+    */
     .chat-mobile-root {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      bottom: 0;
       display: flex;
       flex-direction: column;
-      /* svh = small viewport height — always excludes browser chrome/search bar.
-         dvh = dynamic (can include it). 100vh = layout viewport (too tall on most mobile browsers).
-         svh is the correct unit here. Fallback chain: svh → dvh → vh. */
-      height: 100svh;
-      height: 100dvh;
       overflow: hidden;
     }
     .chat-mobile-messages {
@@ -1786,17 +1821,18 @@ const css = `
       padding: 8px 10px;
       padding-bottom: max(8px, env(safe-area-inset-bottom));
     }
-    /* When chat is active, .main must match the same height */
+    /* When chat is active, .main must be a positioned full-height container */
     .main.nav-closed.chat-active,
     .main.nav-open.chat-active {
-      height: 100svh !important;
-      height: 100dvh !important;
+      position: fixed !important;
+      top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+      height: auto !important;
       overflow: hidden !important;
     }
     .main.nav-closed.chat-active > div,
     .main.nav-open.chat-active > div {
-      flex: 1;
-      min-height: 0;
+      position: absolute;
+      inset: 0;
       display: flex;
       flex-direction: column;
     }
@@ -1892,7 +1928,7 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
       // Desktop: camera offset left so figure at x=110 appears at screen-right-third
       // Mobile: camera centered, pulled back for portrait aspect
-      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1000 : 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
@@ -1927,7 +1963,7 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
         const extraH = size.y * (newScale - scale);
         // Same x position on mobile as desktop — camera centered so 110 puts figure right-of-center
         obj.position.set(110, -box2.min.y - extraH + 70, 0);
-        obj.rotation.y = isMobile ? (-Math.PI / 6 + Math.PI * 20 / 180) : -Math.PI / 6;  // mobile: -10°, desktop: -30°
+        obj.rotation.y = isMobile ? (-Math.PI * 15 / 180) : -Math.PI / 6;  // mobile: -15°, desktop: -30°
         scene.add(obj);
         if (obj.animations?.length) {
           mixer = new THREE.AnimationMixer(obj);
@@ -2024,7 +2060,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
 
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 5000);
-      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1000 : 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
@@ -2074,19 +2110,20 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
 
       const crossMat = new THREE.MeshBasicMaterial({
         map: glitterTex, transparent: true, opacity: 1.0,
-        blending: THREE.AdditiveBlending, depthWrite: false,
+        blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
       });
 
       const crossGroup = new THREE.Group();
       const crossH = 230, crossW = 125, barThick = 23;
       const vBar = new THREE.Mesh(new THREE.BoxGeometry(barThick, crossH, barThick), crossMat);
       vBar.position.y = crossH / 2;
-      const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), crossMat.clone());
+      const hBarMat = crossMat.clone(); hBarMat.depthTest = false;
+      const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), hBarMat);
       hBar.position.y = crossH * 0.70;
       crossGroup.add(vBar, hBar);
       // On desktop canvas starts at left:224 so cross needs an x-offset to appear screen-centered.
       // On mobile canvas starts at left:0, so no offset needed.
-      const crossCamDist = isMobile ? 1200 : 660;
+      const crossCamDist = isMobile ? 1000 : 660;
       const crossFovRad = (40 * Math.PI) / 180;
       const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
       const crossCenterX = isMobile ? 0 : (-160 * crossWorldPerPx);
@@ -2122,7 +2159,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         // Same x position as desktop — camera centered on mobile so 110 places figure right-of-center
         obj.position.set(110, -box2.min.y - extraH + 70, 0);
         // Same rotation as desktop adjusted 20° CCW on mobile
-        obj.rotation.y = isMobile ? -(Math.PI * 175) / 180 : -(Math.PI * 195) / 180;
+        obj.rotation.y = isMobile ? -Math.PI : -(Math.PI * 195) / 180;
         // Render figure ABOVE cross
         obj.renderOrder = 1;
         obj.traverse(c => { c.renderOrder = 1; });
@@ -2562,7 +2599,7 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
 
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
-      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1000 : 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
@@ -2580,7 +2617,7 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
 
       const clock = new THREE.Clock();
       // Desktop: -50° (30° + 20°). Mobile: +20° CCW = -30°
-      const ROTATION_Y = isMobile ? -(Math.PI / 6) : -(Math.PI / 6) - (20 * Math.PI / 180);
+      const ROTATION_Y = isMobile ? -(Math.PI * 35 / 180) : -(Math.PI / 6) - (20 * Math.PI / 180);
 
       const applyTransform = (THREE, obj) => {
         obj.traverse(c => {
@@ -3598,15 +3635,15 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack, navExpand
         {/* Controls — bounded by timestamp widths */}
         <div style={{display:"flex", alignItems:"center", paddingLeft:44, paddingRight:44}}>
           <div className="player-controls" style={{flex:1, justifyContent:"space-between"}}>
-            <button className="ctrl-btn" onClick={() => skipTrack(-1)} disabled={noSrc} title="Previous">⏮</button>
+            <button className="ctrl-btn" onClick={() => skipTrack(-1)} disabled={noSrc} title="Previous">{"⏮\uFE0E"}</button>
             <button className="ctrl-btn" onClick={() => nudge(-15)} disabled={noSrc} title="−15s"
               style={{fontSize:9, fontFamily:"'Orbitron',sans-serif", letterSpacing:0}}>−15</button>
             <button className="play-btn" onClick={() => setIsPlaying(!isPlaying)} disabled={noSrc}>
-              {isPlaying ? "⏸" : "▶"}
+              {isPlaying ? "⏸\uFE0E" : "▶\uFE0E"}
             </button>
             <button className="ctrl-btn" onClick={() => nudge(15)} disabled={noSrc} title="+15s"
               style={{fontSize:9, fontFamily:"'Orbitron',sans-serif", letterSpacing:0}}>+15</button>
-            <button className="ctrl-btn" onClick={() => skipTrack(1)} disabled={noSrc} title="Next">⏭</button>
+            <button className="ctrl-btn" onClick={() => skipTrack(1)} disabled={noSrc} title="Next">{"⏭\uFE0E"}</button>
           </div>
         </div>
 
