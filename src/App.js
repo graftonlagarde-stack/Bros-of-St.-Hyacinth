@@ -239,7 +239,13 @@ function BoardPage({ username }) {
 
   useLayoutEffect(() => {
     const el = scrollContainerRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    // Re-scroll after any images/videos finish loading (they expand the scrollHeight after paint)
+    const media = el.querySelectorAll("img, video");
+    const onLoad = () => { el.scrollTop = el.scrollHeight; };
+    media.forEach(m => m.addEventListener("load", onLoad));
+    return () => media.forEach(m => m.removeEventListener("load", onLoad));
   }, [messages]);
 
 
@@ -3871,7 +3877,7 @@ export default function App() {
   }, []);
 
   useLayoutEffect(() => {
-    if (mainRef.current) mainRef.current.scrollTop = 0;
+    window.scrollTo(0, 0);
   }, [page]);
 
   // ── GLB orb renderer ──────────────────────────────────────────────
