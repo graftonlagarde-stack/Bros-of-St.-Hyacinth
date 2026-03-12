@@ -1369,7 +1369,7 @@ const css = `
       overflow-x: hidden;
     }
 
-    /* ── Sidebar: fixed overlay strip on left, never takes layout space ── */
+    /* ── Sidebar: fixed overlay, never takes layout space ── */
     .sidebar {
       position: fixed !important;
       left: 0; top: 0; bottom: 0;
@@ -1379,30 +1379,28 @@ const css = `
       justify-content: center;
       align-items: flex-start;
       overflow: visible;
-      /* No width transition on mobile — we use scale on the orb instead */
       transition: none !important;
     }
-    /* Collapsed sidebar shrinks just enough for the small orb */
     .sidebar.nav-collapsed {
       width: 34px !important; min-width: 34px !important;
     }
 
-    /* ── Logo: slides out left + fades when nav collapses (not shrinks) ── */
+    /* ── Logo: bigger, slides off left when nav collapses ── */
     .logo {
-      font-size: 9px !important;
-      top: 10px; left: 8px;
+      font-size: 13px !important;
+      top: 14px; left: 10px;
       line-height: 1.2;
       transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.4,0,0.2,1) !important;
     }
-    .logo-l1 { letter-spacing: 1.5px !important; }
-    .logo-l2 { letter-spacing: 2.5px !important; }
+    .logo-l1 { letter-spacing: 2px !important; }
+    .logo-l2 { letter-spacing: 3px !important; }
     .sidebar.nav-collapsed .logo {
       opacity: 0 !important;
-      transform: translateX(-70px) !important;
+      transform: translateX(-80px) !important;
       pointer-events: none !important;
     }
 
-    /* ── Orb: full size when nav open, shrinks when collapsed ── */
+    /* ── Orb: full size when nav open, scales down when collapsed ── */
     .xbox-orb-wrap {
       position: absolute;
       left: -60px !important;
@@ -1412,13 +1410,11 @@ const css = `
       width: 220px !important; height: 220px !important;
       transition: transform 0.4s cubic-bezier(0.4,0,0.2,1) !important;
     }
-    /* Orb collapses smaller — bubbles, glb, shadow all scale with it */
     .sidebar.nav-collapsed .xbox-orb-wrap {
       transform: translateY(-50%) scale(0.35) !important;
-      left: -60px !important;
     }
 
-    /* ── Nav tabs: sit just to the right of the orb, full overlay ── */
+    /* ── Nav tabs: fixed overlay, retractable ── */
     .nav-wrap {
       position: fixed !important;
       left: 64px !important;
@@ -1432,13 +1428,11 @@ const css = `
       transform: translateY(-50%) translateX(-40px) !important;
       pointer-events: none !important;
     }
-
-    /* Active tab style applies instantly — no CSS transition lag */
     .nav-item-wrap .nav-item {
       transition: transform 0.1s ease, font-size 0.1s ease !important;
     }
 
-    /* ── Main: full viewport, sits behind the fixed sidebar overlay ── */
+    /* ── Main: full viewport, slides in from right when nav retracts ── */
     .main {
       display: block !important;
       width: 100vw !important;
@@ -1448,14 +1442,43 @@ const css = `
       box-sizing: border-box;
       z-index: 50;
       position: relative;
+      transform: translateX(100vw);
+      transition: transform 0.38s cubic-bezier(0.4,0,0.2,1) !important;
     }
+    .main.nav-open  { transform: translateX(100vw) !important; }
+    .main.nav-closed { transform: translateX(0)    !important; }
 
-    /* ── Page: compact padding ── */
-    .page {
-      padding: 20px 16px 20px 16px !important;
-    }
+    /* ── Page: compact padding, smaller title ── */
+    .page { padding: 20px 14px !important; }
+    .page-title { font-size: 20px !important; margin-bottom: 4px !important; }
+    .page-sub   { font-size: 11px !important; margin-bottom: 16px !important; }
 
-    /* ── Audio player: bottom bar on mobile ── */
+    /* ── Stat tiles: 3 equal columns, smaller text ── */
+    .stat-grid  { grid-template-columns: repeat(3,1fr) !important; gap: 8px !important; margin-bottom: 16px !important; }
+    .stat-num   { font-size: 22px !important; }
+    .stat-label { font-size: 9px !important; letter-spacing: 1px !important; }
+
+    /* ── Cards ── */
+    .card       { padding: 14px 12px !important; margin-bottom: 12px !important; }
+    .card-title { font-size: 11px !important; margin-bottom: 10px !important; }
+
+    /* ── Log table: smaller, contained ── */
+    .log-table              { font-size: 11px !important; width: 100% !important; }
+    .log-table th,
+    .log-table td           { padding: 6px 4px !important; }
+    .badge                  { font-size: 9px !important; padding: 2px 5px !important; }
+
+    /* ── Exercise tab pills ── */
+    .tab-row { gap: 4px !important; margin-bottom: 12px !important; flex-wrap: wrap !important; }
+    .tab     { font-size: 9px !important; padding: 5px 8px !important; }
+
+    /* ── Bible page: stack columns ── */
+    .bible-grid { grid-template-columns: 1fr !important; }
+
+    /* ── Workout: 2-col chart grid → 1 col ── */
+    .workout-chart-grid { grid-template-columns: 1fr !important; }
+
+    /* ── Audio player: full-width bottom bar ── */
     .player-bar {
       position: fixed !important;
       bottom: 0 !important;
@@ -1478,13 +1501,18 @@ const css = `
       opacity: 0 !important;
     }
 
-    /* ── Remove the rounded border squares on ctrl buttons ── */
+    /* ── Remove rounded squares from audio ctrl buttons ── */
     .ctrl-btn {
       border: none !important;
       background: none !important;
       width: 28px !important; height: 28px !important;
     }
+
+    /* ── Modal sits ABOVE sidebar (300) and nav tabs (299) ──
+       Without this, tapping inputs in "Log a Lift" fires nav tab taps instead */
+    .modal-bg { z-index: 500 !important; }
   }
+
 
   /* ── ONBOARDING ── */
   .onboard-wrap {
@@ -2870,7 +2898,7 @@ function WorkoutPage({ username }) {
             <div style={{textAlign:"center",padding:"32px 0",color:"var(--muted)",fontSize:13}}>Log some Pull-up entries to see your progress!</div>
           );
         })() : hasAnyData ? (
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+          <div className="workout-chart-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
             {REP_CATS.map(repCat => {
               const data = compareUser ? buildCompareData(repCat) : (() => {
                 const entries = logs.filter(l => l.exercise === chartEx && l.repCat === repCat);
@@ -3027,7 +3055,7 @@ function AudioPage({ currentTrack, setCurrentTrack, isPlaying, setIsPlaying }) {
       <div className="page-title">HOLY <span className="accentText">BIBLE</span></div>
       <div className="page-sub">&ldquo;Ignorance of Scripture is ignorance of Christ.&rdquo; &mdash; St. Jerome</div>
 
-      <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:20}}>
+      <div className="bible-grid" style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:20}}>
 
         <div className="card" style={{background:"linear-gradient(160deg,rgba(0,22,13,0.55) 0%,rgba(0,7,4,0.35) 50%,rgba(0,3,2,0.42) 100%)"}}>
           <div style={{marginBottom:12}}>
@@ -4246,11 +4274,11 @@ export default function App() {
         <div className={`sidebar${navExpanded ? "" : " nav-collapsed"}`}>
           {/* Logo */}
           <div className="logo" style={{
-            fontSize: isMobile ? "9px" : (navExpanded ? "22px" : "15px"),
+            fontSize: isMobile ? "13px" : (navExpanded ? "22px" : "15px"),
             whiteSpace: "nowrap",
           }}>
-            <span className="logo-l1" style={{display:"block", letterSpacing: isMobile ? "1.5px" : (navExpanded ? "5px" : "2.5px")}}>BROS OF ST.</span>
-            <span className="logo-l2" style={{display:"block", letterSpacing: isMobile ? "2.5px" : (navExpanded ? "10.5px" : "5px")}}>HYACINTH</span>
+            <span className="logo-l1" style={{display:"block", letterSpacing: isMobile ? "2px" : (navExpanded ? "5px" : "2.5px")}}>BROS OF ST.</span>
+            <span className="logo-l2" style={{display:"block", letterSpacing: isMobile ? "3px" : (navExpanded ? "10.5px" : "5px")}}>HYACINTH</span>
           </div>
           {/* Orb — click to toggle nav */}
           <div className="xbox-orb-wrap" onClick={() => setNavExpanded(v => !v)}>
@@ -4280,7 +4308,7 @@ export default function App() {
             </div>
           </div>
         </div>
-        <div ref={mainRef} className="main" style={{display:"flex", flexDirection:"column"}}>
+        <div ref={mainRef} className={`main${isMobile ? (navExpanded ? " nav-open" : " nav-closed") : ""}`} style={{display:"flex", flexDirection:"column"}}>
           {page === "workout" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><WorkoutPage username={username} /></div>}
           {page === "topcharts" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><TopChartsPage username={username} /></div>}
           {page === "boards" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><BoardPage username={username} /></div>}
