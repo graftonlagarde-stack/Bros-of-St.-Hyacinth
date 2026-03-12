@@ -1177,124 +1177,102 @@ const css = `
   .player-bar {
     position: fixed;
     bottom: calc(25vh - 145px);
-    left: 20px;
+    left: 5px;
     width: 350px;
     z-index: 1000;
-    border-radius: 999px;
-    background:
-      linear-gradient(175deg, rgba(0,40,18,0.6) 0%, transparent 40%),
-      linear-gradient(160deg, rgba(0,22,10,0.98) 0%, rgba(0,8,3,1) 100%);
-    border: 1px solid rgba(0,255,140,0.22);
+    background: none;
+    border: none;
+    border-radius: 0;
     padding: 10px 22px;
     display: flex;
     flex-direction: column;
     gap: 6px;
-    overflow: hidden;
-    box-shadow:
-      0 0 18px rgba(0,255,140,0.10),
-      0 0 55px rgba(0,255,100,0.06),
-      0 4px 24px rgba(0,0,0,0.7),
-      0 1px 0 rgba(0,255,160,0.08),
-      inset 0 1px 0 rgba(0,255,160,0.18),
-      inset 0 -1px 0 rgba(0,0,0,0.6),
-      inset 0 0 60px rgba(0,255,100,0.03),
-      inset 2px 0 12px rgba(0,255,140,0.04),
-      inset -2px 0 12px rgba(0,200,100,0.03);
+    overflow: visible;
+    box-shadow: none;
     transition: transform 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.35s ease;
   }
   .player-bar.retracted {
-    transform: translateX(calc(-100% - 20px));
+    transform: translateX(calc(-100% - 5px));
     opacity: 0;
     pointer-events: none;
   }
-  /* Top edge sheen */
-  .player-bar::before {
-    content: ''; position: absolute; top: 0; left: 12%; right: 12%; height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(0,255,160,0.5) 30%, rgba(136,255,0,0.7) 50%, rgba(0,255,160,0.5) 70%, transparent);
-    animation: sheen 3s ease-in-out infinite;
-    opacity: 0.7;
-    border-radius: 999px;
-  }
-  /* Multi-layer inner depth */
-  .player-bar::after {
-    content: ''; position: absolute; inset: 0; pointer-events: none;
-    border-radius: 999px;
-    background:
-      radial-gradient(ellipse 60% 30% at 50% 0%, rgba(0,255,140,0.07), transparent),
-      radial-gradient(ellipse 80% 50% at 50% 120%, rgba(0,255,100,0.05), transparent),
-      radial-gradient(ellipse 40% 20% at 20% 50%, rgba(0,255,160,0.04), transparent),
-      linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 30%, rgba(0,0,0,0.2) 100%);
-  }
-  .track-info { min-width: 0; position: relative; z-index: 1; overflow: hidden; text-align: center; }
+  .player-bar::before { display: none; }
+  .player-bar::after  { display: none; }
+  .track-info { min-width: 0; position: relative; z-index: 1; overflow: hidden; text-align: left; }
   .track-title {
     font-weight: 700; font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
     font-family: 'Orbitron', sans-serif;
-    background: var(--chrome-grad);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    color: #00ff99;
+    -webkit-text-fill-color: #00ff99;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    filter: drop-shadow(0 0 6px rgba(136,255,0,0.5));
+    filter: drop-shadow(0 0 6px rgba(0,255,140,0.9)) drop-shadow(0 0 14px rgba(0,255,100,0.6));
   }
-  .track-artist { font-size: 10px; color: var(--muted); letter-spacing: 1px; margin-top: 2px; text-align: center; }
+  .track-artist {
+    font-size: 10px; letter-spacing: 1px; margin-top: 2px; text-align: left;
+    color: rgba(0,255,140,0.6);
+    filter: drop-shadow(0 0 5px rgba(0,255,140,0.7));
+  }
   .player-controls { display: flex; align-items: center; justify-content: center; gap: 8px; position: relative; z-index: 1; }
   .ctrl-btn {
-    background: rgba(0,30,15,0.8);
-    border: 1px solid rgba(0,255,140,0.15);
+    background: none;
+    border: 1px solid rgba(0,255,140,0.25);
     border-radius: 50%;
     width: 30px; height: 30px;
-    color: rgba(0,255,140,0.7); cursor: pointer;
+    color: rgba(0,255,140,0.75); cursor: pointer;
     font-size: 12px;
     display: flex; align-items: center; justify-content: center;
     transition: all 0.15s;
-    box-shadow: 0 0 8px rgba(0,255,140,0.1), inset 0 1px 0 rgba(255,255,255,0.05);
+    filter: drop-shadow(0 0 4px rgba(0,255,140,0.5));
   }
   .ctrl-btn:hover {
     color: #88ff00;
-    border-color: rgba(136,255,0,0.5);
-    box-shadow: 0 0 14px rgba(136,255,0,0.4), 0 0 30px rgba(136,255,0,0.15), inset 0 1px 0 rgba(255,255,255,0.1);
+    border-color: rgba(136,255,0,0.6);
+    filter: drop-shadow(0 0 10px rgba(136,255,0,0.8)) drop-shadow(0 0 20px rgba(136,255,0,0.4));
     transform: scale(1.15);
   }
-  .ctrl-btn:disabled { opacity: 0.3; cursor: default; transform: none; box-shadow: none; }
+  .ctrl-btn:disabled { opacity: 0.25; cursor: default; transform: none; filter: none; }
   .play-btn {
-    background: linear-gradient(145deg, #00cc77 0%, #006644 45%, #002211 100%);
-    color: #ccffdd; border: 1px solid rgba(0,255,160,0.45);
+    background: none;
+    color: #00ff99; border: 1px solid rgba(0,255,140,0.5);
     border-radius: 50%; width: 44px; height: 44px; font-size: 15px; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    box-shadow:
-      0 0 18px rgba(0,255,140,0.5),
-      0 0 40px rgba(0,255,100,0.25),
-      0 0 80px rgba(0,200,80,0.1),
-      inset 0 1px 0 rgba(255,255,255,0.25),
-      inset 0 0 20px rgba(0,255,140,0.15);
+    filter:
+      drop-shadow(0 0 8px rgba(0,255,140,0.9))
+      drop-shadow(0 0 20px rgba(0,255,100,0.6))
+      drop-shadow(0 0 40px rgba(0,200,80,0.3));
     transition: all 0.2s;
     animation: energyBeat 3.5s ease-in-out infinite;
     position: relative; z-index: 1;
   }
   .play-btn:hover {
-    box-shadow: 0 0 30px #00ff88, 0 0 70px rgba(0,255,136,0.4), inset 0 0 30px rgba(0,255,140,0.2);
+    filter:
+      drop-shadow(0 0 16px #00ff88)
+      drop-shadow(0 0 40px rgba(0,255,136,0.7))
+      drop-shadow(0 0 70px rgba(0,255,100,0.4));
     transform: scale(1.1);
   }
-  .play-btn:disabled { opacity: 0.35; cursor: default; transform: none; animation: none; }
+  .play-btn:disabled { opacity: 0.25; cursor: default; transform: none; animation: none; filter: none; }
   .progress-wrap {
     display: flex; align-items: center; gap: 8px; font-size: 9px;
-    color: var(--muted); font-family: 'Orbitron', sans-serif; letter-spacing: 0.5px;
+    color: rgba(0,255,140,0.6); font-family: 'Orbitron', sans-serif; letter-spacing: 0.5px;
     position: relative; z-index: 1;
+    filter: drop-shadow(0 0 4px rgba(0,255,140,0.6));
   }
   .progress-bar {
     flex: 1; height: 3px;
-    background: rgba(0,40,20,0.9);
+    background: rgba(0,255,140,0.12);
     border-radius: 999px;
     cursor: pointer; position: relative;
-    box-shadow: inset 0 0 4px rgba(0,0,0,0.8);
   }
   .progress-fill {
     height: 100%; border-radius: 999px;
-    background: var(--energy-grad); background-size: 300% 300%;
-    animation: sheen 2s ease-in-out infinite;
-    box-shadow: 0 0 8px #88ff00, 0 0 3px #88ff00;
+    background: linear-gradient(90deg, #00ff99, #88ff00);
+    box-shadow: 0 0 8px #00ff88, 0 0 18px rgba(0,255,140,0.5);
     transition: width 0.25s linear;
   }
   .volume-wrap {
-    display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted);
+    display: flex; align-items: center; gap: 8px; font-size: 11px;
+    color: rgba(0,255,140,0.6);
     position: relative; z-index: 1;
   }
   .vol-slider { width: 72px; height: 2px; accent-color: var(--accent); }
@@ -3173,7 +3151,7 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack, navExpand
               position:"absolute", top:"50%", left:`${progress}%`,
               transform:"translate(-50%,-50%)",
               width:10, height:10, borderRadius:"50%",
-              background:"var(--accent)", boxShadow:"0 0 8px var(--accent), 0 0 16px var(--accent)",
+              background:"#00ff99", boxShadow:"0 0 8px #00ff99, 0 0 16px rgba(0,255,140,0.6)",
               pointerEvents:"none",
             }} />
           )}
@@ -3199,14 +3177,16 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack, navExpand
         {SPEEDS.map(s => (
           <button key={s} onClick={() => setSpeed(s)} disabled={noSrc}
             style={{
-              background: speed === s ? "rgba(136,255,0,0.2)" : "rgba(0,20,10,0.8)",
-              color:       speed === s ? "#88ff00"             : "rgba(0,200,100,0.4)",
-              border:      speed === s ? "1px solid rgba(136,255,0,0.6)" : "1px solid rgba(0,255,140,0.1)",
+              background: "none",
+              color:       speed === s ? "#88ff00" : "rgba(0,255,140,0.35)",
+              border:      speed === s ? "1px solid rgba(136,255,0,0.6)" : "1px solid rgba(0,255,140,0.15)",
               borderRadius: 999, padding:"3px 8px",
               fontSize:9, fontFamily:"'Orbitron',sans-serif", fontWeight:700,
               cursor: noSrc ? "default" : "pointer", letterSpacing:0.5,
               transition:"all 0.12s",
-              boxShadow: speed === s ? "0 0 10px rgba(136,255,0,0.4), inset 0 0 8px rgba(136,255,0,0.1)" : "none",
+              filter: speed === s
+                ? "drop-shadow(0 0 6px rgba(136,255,0,0.8)) drop-shadow(0 0 14px rgba(136,255,0,0.4))"
+                : "drop-shadow(0 0 3px rgba(0,255,140,0.3))",
             }}>
             {s}×
           </button>
