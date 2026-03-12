@@ -2139,8 +2139,8 @@ function WorkoutFigureBackdrop({ visible = false }) {
       ]).then(([introObj, loopObj]) => {
         if (cancelled) return;
 
-        const { savedScale, savedPos } = applyTransform(THREE, introObj);
-        applyTransform(THREE, loopObj);
+        const { savedPos } = applyTransform(THREE, introObj);
+        const { savedPos: loopSavedPos } = applyTransform(THREE, loopObj);
 
         // Keep loop hidden until needed
         loopObj.visible = false;
@@ -2181,44 +2181,9 @@ function WorkoutFigureBackdrop({ visible = false }) {
             loopMixer.update(0);
           }
 
-          // Find the root/hips bone in each skeleton
-          let introBone = null, loopBone = null;
-          const rootNames = ["hips", "pelvis", "root", "spine"];
-          introObj.traverse(c => {
-            if (!introBone && c.isBone) {
-              const n = c.name.toLowerCase();
-              if (rootNames.some(r => n.includes(r))) introBone = c;
-            }
-          });
-          loopObj.traverse(c => {
-            if (!loopBone && c.isBone) {
-              const n = c.name.toLowerCase();
-              if (rootNames.some(r => n.includes(r))) loopBone = c;
-            }
-          });
-          // Fallback: use first bone found
-          if (!introBone) introObj.traverse(c => { if (!introBone && c.isBone) introBone = c; });
-          if (!loopBone)  loopObj.traverse(c  => { if (!loopBone  && c.isBone) loopBone  = c; });
-
-          if (introBone && loopBone) {
-            // Get world positions of both root bones
-            introBone.updateWorldMatrix(true, false);
-            loopBone.updateWorldMatrix(true, false);
-            const introWorldPos = new THREE.Vector3();
-            const loopWorldPos  = new THREE.Vector3();
-            introBone.getWorldPosition(introWorldPos);
-            loopBone.getWorldPosition(loopWorldPos);
-
-            // Shift loop object so its root bone lands exactly where intro's root bone is
-            loopObj.position.x += introWorldPos.x - loopWorldPos.x;
-            loopObj.position.y += introWorldPos.y - loopWorldPos.y;
-            loopObj.position.z += introWorldPos.z - loopWorldPos.z;
-          } else {
-            // Fallback: match bounding box bottoms
-            const introBox = new THREE.Box3().setFromObject(introObj);
-            const loopBox  = new THREE.Box3().setFromObject(loopObj);
-            loopObj.position.y += introBox.min.y - loopBox.min.y;
-          }
+          // Reset loop to its original transform — no bone-matching needed since
+          // both models were positioned identically by applyTransform
+          loopObj.position.copy(loopSavedPos);
 
           // Swap visibility
           introObj.visible = false;
@@ -2257,6 +2222,7 @@ function WorkoutFigureBackdrop({ visible = false }) {
                 loopAction.play();
                 loopMixer.update(0);
               }
+              loopObj.position.copy(loopSavedPos);
               introObj.visible = false;
               loopObj.visible  = true;
               activeMixer      = loopMixer;
