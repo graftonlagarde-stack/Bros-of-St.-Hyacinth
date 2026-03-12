@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
@@ -237,13 +237,9 @@ function BoardPage({ username }) {
 
   useEffect(() => { fetchMessages(); }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = scrollContainerRef.current;
-    if (!el) return;
-    const frame = requestAnimationFrame(() =>
-      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; })
-    );
-    return () => cancelAnimationFrame(frame);
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
 
@@ -3874,14 +3870,8 @@ export default function App() {
     });
   }, []);
 
-  useEffect(() => {
-    if (!mainRef.current) return;
-    const el = mainRef.current;
-    // Double rAF ensures React has fully committed new tab content before resetting scroll
-    const frame = requestAnimationFrame(() =>
-      requestAnimationFrame(() => { el.scrollTop = 0; })
-    );
-    return () => cancelAnimationFrame(frame);
+  useLayoutEffect(() => {
+    if (mainRef.current) mainRef.current.scrollTop = 0;
   }, [page]);
 
   // ── GLB orb renderer ──────────────────────────────────────────────
