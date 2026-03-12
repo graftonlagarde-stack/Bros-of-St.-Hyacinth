@@ -4425,6 +4425,7 @@ export default function App() {
                   <span className="logo-l2" style={{display:"block", letterSpacing: navExpanded ? "10.5px" : "5px"}}>HYACINTH</span>
                 </>
             }
+          </div>
           {/* Orb — click to toggle nav */}
           <div className="xbox-orb-wrap" onClick={() => setNavExpanded(v => !v)}>
             <div className="xbox-orb" />
