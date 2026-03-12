@@ -1178,7 +1178,7 @@ const css = `
     position: fixed;
     bottom: calc(25vh - 145px);
     left: 5px;
-    width: 350px;
+    width: 365px;
     z-index: 1000;
     background: none;
     border: none;
@@ -1212,7 +1212,7 @@ const css = `
     color: rgba(0,255,140,0.6);
     filter: drop-shadow(0 0 5px rgba(0,255,140,0.7));
   }
-  .player-controls { display: flex; align-items: center; justify-content: center; gap: 8px; position: relative; z-index: 1; }
+  .player-controls { display: flex; align-items: center; gap: 8px; position: relative; z-index: 1; }
   .ctrl-btn {
     background: none;
     border: 1px solid rgba(0,255,140,0.25);
@@ -3139,58 +3139,67 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack, navExpand
         </div>
       </div>
 
-      {/* Scrubable progress bar */}
-      <div className="progress-wrap">
-        <span>{fmtTime(elapsed)}</span>
-        <div ref={barRef} className="progress-bar"
-          onMouseDown={onBarMouseDown}
-          style={{cursor: noSrc ? "default" : "pointer", userSelect:"none"}}>
-          <div className="progress-fill" style={{width:`${progress}%`, transition: scrubbing.current ? "none" : "width 0.25s linear"}} />
-          {!noSrc && (
-            <div style={{
-              position:"absolute", top:"50%", left:`${progress}%`,
-              transform:"translate(-50%,-50%)",
-              width:10, height:10, borderRadius:"50%",
-              background:"#00ff99", boxShadow:"0 0 8px #00ff99, 0 0 16px rgba(0,255,140,0.6)",
-              pointerEvents:"none",
-            }} />
-          )}
+      {/* Progress + controls + speed — all aligned to timestamp bounds */}
+      <div style={{display:"flex", flexDirection:"column", gap:6, position:"relative", zIndex:1}}>
+
+        {/* Progress row */}
+        <div className="progress-wrap">
+          <span style={{width:36, flexShrink:0, textAlign:"right"}}>{fmtTime(elapsed)}</span>
+          <div ref={barRef} className="progress-bar"
+            onMouseDown={onBarMouseDown}
+            style={{cursor: noSrc ? "default" : "pointer", userSelect:"none"}}>
+            <div className="progress-fill" style={{width:`${progress}%`, transition: scrubbing.current ? "none" : "width 0.25s linear"}} />
+            {!noSrc && (
+              <div style={{
+                position:"absolute", top:"50%", left:`${progress}%`,
+                transform:"translate(-50%,-50%)",
+                width:10, height:10, borderRadius:"50%",
+                background:"#00ff99", boxShadow:"0 0 8px #00ff99, 0 0 16px rgba(0,255,140,0.6)",
+                pointerEvents:"none",
+              }} />
+            )}
+          </div>
+          <span style={{width:36, flexShrink:0, textAlign:"left"}}>{fmtTime(duration)}</span>
         </div>
-        <span>{fmtTime(duration)}</span>
-      </div>
 
-      {/* Controls */}
-      <div className="player-controls">
-        <button className="ctrl-btn" onClick={() => skipTrack(-1)} disabled={noSrc} title="Previous">⏮</button>
-        <button className="ctrl-btn" onClick={() => nudge(-15)} disabled={noSrc} title="−15s"
-          style={{fontSize:9, fontFamily:"'Orbitron',sans-serif", letterSpacing:0}}>−15</button>
-        <button className="play-btn" onClick={() => setIsPlaying(!isPlaying)} disabled={noSrc}>
-          {isPlaying ? "⏸" : "▶"}
-        </button>
-        <button className="ctrl-btn" onClick={() => nudge(15)} disabled={noSrc} title="+15s"
-          style={{fontSize:9, fontFamily:"'Orbitron',sans-serif", letterSpacing:0}}>+15</button>
-        <button className="ctrl-btn" onClick={() => skipTrack(1)} disabled={noSrc} title="Next">⏭</button>
-      </div>
+        {/* Controls — bounded by timestamp widths */}
+        <div style={{display:"flex", alignItems:"center", paddingLeft:44, paddingRight:44}}>
+          <div className="player-controls" style={{flex:1, justifyContent:"space-between"}}>
+            <button className="ctrl-btn" onClick={() => skipTrack(-1)} disabled={noSrc} title="Previous">⏮</button>
+            <button className="ctrl-btn" onClick={() => nudge(-15)} disabled={noSrc} title="−15s"
+              style={{fontSize:9, fontFamily:"'Orbitron',sans-serif", letterSpacing:0}}>−15</button>
+            <button className="play-btn" onClick={() => setIsPlaying(!isPlaying)} disabled={noSrc}>
+              {isPlaying ? "⏸" : "▶"}
+            </button>
+            <button className="ctrl-btn" onClick={() => nudge(15)} disabled={noSrc} title="+15s"
+              style={{fontSize:9, fontFamily:"'Orbitron',sans-serif", letterSpacing:0}}>+15</button>
+            <button className="ctrl-btn" onClick={() => skipTrack(1)} disabled={noSrc} title="Next">⏭</button>
+          </div>
+        </div>
 
-      {/* Speed selector */}
-      <div style={{display:"flex", gap:3, justifyContent:"center", position:"relative", zIndex:1}}>
-        {SPEEDS.map(s => (
-          <button key={s} onClick={() => setSpeed(s)} disabled={noSrc}
-            style={{
-              background: "none",
-              color:       speed === s ? "#88ff00" : "rgba(0,255,140,0.35)",
-              border:      speed === s ? "1px solid rgba(136,255,0,0.6)" : "1px solid rgba(0,255,140,0.15)",
-              borderRadius: 999, padding:"3px 8px",
-              fontSize:9, fontFamily:"'Orbitron',sans-serif", fontWeight:700,
-              cursor: noSrc ? "default" : "pointer", letterSpacing:0.5,
-              transition:"all 0.12s",
-              filter: speed === s
-                ? "drop-shadow(0 0 6px rgba(136,255,0,0.8)) drop-shadow(0 0 14px rgba(136,255,0,0.4))"
-                : "drop-shadow(0 0 3px rgba(0,255,140,0.3))",
-            }}>
-            {s}×
-          </button>
-        ))}
+        {/* Speed selector — bounded by timestamp widths */}
+        <div style={{display:"flex", alignItems:"center", paddingLeft:44, paddingRight:44}}>
+          <div style={{flex:1, display:"flex", justifyContent:"space-between"}}>
+            {SPEEDS.map(s => (
+              <button key={s} onClick={() => setSpeed(s)} disabled={noSrc}
+                style={{
+                  background: "none",
+                  color:       speed === s ? "#88ff00" : "rgba(0,255,140,0.35)",
+                  border:      speed === s ? "1px solid rgba(136,255,0,0.6)" : "1px solid rgba(0,255,140,0.15)",
+                  borderRadius: 999, padding:"3px 8px",
+                  fontSize:9, fontFamily:"'Orbitron',sans-serif", fontWeight:700,
+                  cursor: noSrc ? "default" : "pointer", letterSpacing:0.5,
+                  transition:"all 0.12s",
+                  filter: speed === s
+                    ? "drop-shadow(0 0 6px rgba(136,255,0,0.8)) drop-shadow(0 0 14px rgba(136,255,0,0.4))"
+                    : "drop-shadow(0 0 3px rgba(0,255,140,0.3))",
+                }}>
+                {s}×
+              </button>
+            ))}
+          </div>
+        </div>
+
       </div>
     </div>
   );
