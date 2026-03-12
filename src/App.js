@@ -796,6 +796,7 @@ const css = `
     flex-direction: column;
     gap: 5px;
     z-index: 3;
+    pointer-events: all;
     transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.4,0,0.2,1);
   }
   .nav-wrap.retracted {
@@ -859,6 +860,7 @@ const css = `
     flex-shrink: 0;
     transition: width 0.15s ease;
     background: transparent;
+    pointer-events: all;
   }
   .nav-item-wrap.active-wrap {
     width: 270px;
@@ -1839,7 +1841,7 @@ function AudioFigureBackdrop({ visible = false }) {
             if (now - lastFrame < FRAME_MS) return;
             lastFrame = now - ((now - lastFrame) % FRAME_MS);
             const dt = Math.min(clock.getDelta(), 0.05);
-            if (!isVisible) { renderer.render(scene, camera); return; }
+            if (!isVisible) { if (mixer) mixer.update(dt); renderer.render(scene, camera); return; }
             if (mixer) mixer.update(dt);
 
             const toCamX = camera.position.x - crossGroup.position.x;
