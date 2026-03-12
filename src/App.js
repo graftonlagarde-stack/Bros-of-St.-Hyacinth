@@ -725,7 +725,7 @@ const css = `
 
   /* ── SIDEBAR — orb + blade nav ── */
   .sidebar {
-    width: 280px; min-width: 280px;
+    width: 370px; min-width: 370px;
     background: transparent;
     display: flex; flex-direction: column;
     padding: 0; position: sticky; top: 0; height: 100vh;
@@ -4133,13 +4133,11 @@ export default function App() {
             </div>
           </div>
         </div>
-        <div ref={mainRef} className="main" style={{display:"flex", flexDirection:"column", position:"relative", zIndex:20, pointerEvents:"none"}}>
-          <div style={{pointerEvents:"auto", display:"flex", flexDirection:"column", flex:1}}>
+        <div ref={mainRef} className="main" style={{display:"flex", flexDirection:"column"}}>
           {page === "workout" && <div style={{paddingLeft: navExpanded ? 80 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><WorkoutPage username={username} /></div>}
           {page === "topcharts" && <div style={{paddingLeft: navExpanded ? 80 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><TopChartsPage username={username} /></div>}
           {page === "boards" && <div style={{paddingLeft: navExpanded ? 80 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><BoardPage username={username} /></div>}
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
-          </div>
         </div>
         <FigureBackdrop variant="boards"    visible={page === "boards"} />
         <AudioFigureBackdrop               visible={page === "audio"} />
