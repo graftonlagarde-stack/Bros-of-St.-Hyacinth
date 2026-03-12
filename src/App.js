@@ -1274,6 +1274,8 @@ const css = `
     display: flex; align-items: center; justify-content: center;
     transition: all 0.15s;
     filter: drop-shadow(0 0 4px rgba(0,255,140,0.5));
+    -webkit-appearance: none;
+    appearance: none;
   }
   .ctrl-btn:hover {
     color: #88ff00;
@@ -1294,6 +1296,8 @@ const css = `
     transition: all 0.2s;
     animation: energyBeat 3.5s ease-in-out infinite;
     position: relative; z-index: 1;
+    -webkit-appearance: none;
+    appearance: none;
   }
   .play-btn:hover {
     filter:
@@ -1468,18 +1472,20 @@ const css = `
       user-select: none !important;
     }
 
-    /* ── Logo: bigger, slides off left when nav collapses ── */
+    /* ── Logo: single line, slides fully off left when nav collapses ── */
     .logo {
-      font-size: 13px !important;
+      font-size: 7vw !important;
       top: 14px; left: 10px;
       line-height: 1.2;
+      letter-spacing: 0.15em !important;
+      transform: translateX(0) !important;
       transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.4,0,0.2,1) !important;
     }
-    .logo-l1 { letter-spacing: 2px !important; }
-    .logo-l2 { letter-spacing: 3px !important; }
+    .logo-l1 { letter-spacing: 0.15em !important; }
+    .logo-l2 { letter-spacing: 0.15em !important; }
     .sidebar.nav-collapsed .logo {
       opacity: 0 !important;
-      transform: translateX(-80px) !important;
+      transform: translateX(-40px) !important;
       pointer-events: none !important;
     }
 
@@ -1601,15 +1607,16 @@ const css = `
     .chat-mobile-root {
       display: flex;
       flex-direction: column;
-      height: 100vh;
       height: 100dvh;
+      height: 100vh;
       overflow: hidden;
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      z-index: 50;
+      /* NO position:fixed — .main has CSS transform which breaks fixed positioning.
+         Instead we make .main itself height:100vh overflow:hidden when chat is active,
+         and the chat fills it with normal flow flex layout. */
     }
     .chat-mobile-messages {
       flex: 1;
+      min-height: 0;
       overflow-y: scroll;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
@@ -1620,6 +1627,20 @@ const css = `
       background: rgba(0,8,4,0.96);
       padding: 8px 10px;
       padding-bottom: max(8px, env(safe-area-inset-bottom));
+    }
+    /* When chat is active, .main must be a full-height flex container */
+    .main.nav-closed.chat-active,
+    .main.nav-open.chat-active {
+      height: 100vh !important;
+      height: 100dvh !important;
+      overflow: hidden !important;
+    }
+    .main.nav-closed.chat-active > div,
+    .main.nav-open.chat-active > div {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
     }
   }
 
@@ -1707,12 +1728,13 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
     ]).then(([THREE, { FBXLoader }]) => {
       if (cancelled) return;
       const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
-      const h = isMobile ? (window.innerHeight - 60) : (window.innerHeight - 70);
+      const h = isMobile ? window.innerHeight : (window.innerHeight - 70);
 
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
-      // Far enough back to see full figure; x offset shifts figure to 2/3 right of screen
-      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, 660);
+      // Desktop: camera offset left so figure at x=110 appears at screen-right-third
+      // Mobile: camera centered, use same z but pull back slightly for portrait aspect
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 900 : 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
@@ -1745,8 +1767,9 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
         obj.scale.setScalar(newScale);
         const box2   = new THREE.Box3().setFromObject(obj);
         const extraH = size.y * (newScale - scale);
-        obj.position.set(isMobile ? 30 : 110, -box2.min.y - extraH + 70, 0);
-        obj.rotation.y = -Math.PI / 6;  // 30° clockwise
+        // Same x position on mobile as desktop — camera centered so 110 puts figure right-of-center
+        obj.position.set(110, -box2.min.y - extraH + 70, 0);
+        obj.rotation.y = -Math.PI / 6;  // 30° clockwise — same as desktop
         scene.add(obj);
         if (obj.animations?.length) {
           mixer = new THREE.AnimationMixer(obj);
@@ -1802,7 +1825,7 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
       left: isMobile ? 0 : 224,
       top: 0,
       right: 0,
-      bottom: isMobile ? 60 : 70,
+      bottom: isMobile ? 0 : 70,
       pointerEvents: "none",
       zIndex: -1,
       opacity: fbxFile ? opacity : 0,
@@ -1839,11 +1862,11 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
     ]).then(([THREE, { FBXLoader }]) => {
       if (cancelled) return;
       const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
-      const h = isMobile ? (window.innerHeight - 60) : (window.innerHeight - 70);
+      const h = isMobile ? window.innerHeight : (window.innerHeight - 70);
 
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 5000);
-      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, 660);
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 900 : 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
@@ -1905,11 +1928,14 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       crossGroup.add(vBar, hBar);
       // On desktop canvas starts at left:224 so cross needs an x-offset to appear screen-centered.
       // On mobile canvas starts at left:0, so no offset needed.
-      const crossCamDist = 660;
+      const crossCamDist = isMobile ? 900 : 660;
       const crossFovRad = (40 * Math.PI) / 180;
       const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
       const crossCenterX = isMobile ? 0 : (-160 * crossWorldPerPx);
       crossGroup.position.set(crossCenterX, 0, 0);
+      // Render cross BEHIND figure (lower renderOrder)
+      crossGroup.renderOrder = 0;
+      crossGroup.traverse(c => { c.renderOrder = 0; });
       scene.add(crossGroup);
 
       const wireMat = new THREE.MeshBasicMaterial({
@@ -1935,10 +1961,13 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         obj.scale.setScalar(newScale);
         const box2   = new THREE.Box3().setFromObject(obj);
         const extraH = size.y * (newScale - scale);
-        // On mobile canvas is full-width and camera is centered, so shift figure right
-        obj.position.set(isMobile ? 30 : 110, -box2.min.y - extraH + 70, 0);
-        // On desktop camera is offset left so 195° looks correct. On mobile camera is centered so use 30°.
-        obj.rotation.y = isMobile ? -(Math.PI * 30) / 180 : -(Math.PI * 195) / 180;
+        // Same x position as desktop — camera centered on mobile so 110 places figure right-of-center
+        obj.position.set(110, -box2.min.y - extraH + 70, 0);
+        // Same rotation as desktop — 195° clockwise
+        obj.rotation.y = -(Math.PI * 195) / 180;
+        // Render figure ABOVE cross
+        obj.renderOrder = 1;
+        obj.traverse(c => { c.renderOrder = 1; });
         scene.add(obj);
 
         // Align cross base to figure's ground level (vBar.position.y = crossH/2 already lifts it)
@@ -2334,7 +2363,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
 
   return (
     <div style={{
-      position: "fixed", left: isMobile ? 0 : 224, top: 0, right: 0, bottom: isMobile ? 60 : 70,
+      position: "fixed", left: isMobile ? 0 : 224, top: 0, right: 0, bottom: isMobile ? 0 : 70,
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
     }}>
@@ -2371,11 +2400,11 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
     ]).then(([THREE, { FBXLoader }]) => {
       if (cancelled) return;
       const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
-      const h = isMobile ? (window.innerHeight - 60) : (window.innerHeight - 70);
+      const h = isMobile ? window.innerHeight : (window.innerHeight - 70);
 
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
-      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, 660);
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 900 : 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
@@ -2407,7 +2436,7 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
         obj.scale.setScalar(newScale);
         const box2   = new THREE.Box3().setFromObject(obj);
         const extraH = size.y * (newScale - scale);
-        obj.position.set(isMobile ? 30 : 110, -box2.min.y - extraH + 70, 0);
+        obj.position.set(110, -box2.min.y - extraH + 70, 0);
         obj.rotation.y = ROTATION_Y;
         return { savedScale: obj.scale.clone(), savedPos: obj.position.clone() };
       };
@@ -2580,7 +2609,7 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
   return (
     <div ref={mountRef} style={{
       position: "fixed",
-      left: isMobile ? 0 : 224, top: 0, right: 0, bottom: isMobile ? 60 : 70,
+      left: isMobile ? 0 : 224, top: 0, right: 0, bottom: isMobile ? 0 : 70,
       pointerEvents: "none", zIndex: -1,
       opacity, transition: "opacity 0.5s ease",
       filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)",
@@ -4386,12 +4415,16 @@ export default function App() {
         <div className={`sidebar${navExpanded ? "" : " nav-collapsed"}`}>
           {/* Logo */}
           <div className="logo" style={{
-            fontSize: isMobile ? "13px" : (navExpanded ? "22px" : "15px"),
+            fontSize: isMobile ? "7vw" : (navExpanded ? "22px" : "15px"),
             whiteSpace: "nowrap",
           }}>
-            <span className="logo-l1" style={{display:"block", letterSpacing: isMobile ? "2px" : (navExpanded ? "5px" : "2.5px")}}>BROS OF ST.</span>
-            <span className="logo-l2" style={{display:"block", letterSpacing: isMobile ? "3px" : (navExpanded ? "10.5px" : "5px")}}>HYACINTH</span>
-          </div>
+            {isMobile
+              ? <span style={{display:"block", letterSpacing:"1.5px"}}>BROS OF ST. HYACINTH</span>
+              : <>
+                  <span className="logo-l1" style={{display:"block", letterSpacing: navExpanded ? "5px" : "2.5px"}}>BROS OF ST.</span>
+                  <span className="logo-l2" style={{display:"block", letterSpacing: navExpanded ? "10.5px" : "5px"}}>HYACINTH</span>
+                </>
+            }
           {/* Orb — click to toggle nav */}
           <div className="xbox-orb-wrap" onClick={() => setNavExpanded(v => !v)}>
             <div className="xbox-orb" />
@@ -4420,7 +4453,7 @@ export default function App() {
             </div>
           </div>
         </div>
-        <div ref={mainRef} className={`main${isMobile ? (navExpanded ? " nav-open" : " nav-closed") : ""}`} style={{display:"flex", flexDirection:"column"}}>
+        <div ref={mainRef} className={`main${isMobile ? (navExpanded ? " nav-open" : " nav-closed") : ""}${isMobile && page === "boards" ? " chat-active" : ""}`} style={{display:"flex", flexDirection:"column"}}>
           {page === "workout" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><WorkoutPage username={username} /></div>}
           {page === "topcharts" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><TopChartsPage username={username} /></div>}
           {page === "boards" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><BoardPage username={username} /></div>}
