@@ -22,6 +22,7 @@
 
 require("dotenv").config();
 const express  = require("express");
+const compression = require("compression");
 const cors     = require("cors");
 const path     = require("path");
 const fs       = require("fs");
@@ -200,6 +201,8 @@ async function initDb() {
       username    TEXT NOT NULL,
       PRIMARY KEY (message_id, emoji, username)
     );
+    CREATE INDEX IF NOT EXISTS idx_lift_logs_user_id ON lift_logs(user_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_ts ON messages(ts ASC);
   `);
   // Add role column if it doesn't exist (safe to run on existing databases)
   await db.query(`
@@ -216,6 +219,7 @@ async function initDb() {
 }
 
 // ── Middleware ─────────────────────────────────────────────────────────────────
+app.use(compression());
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "2mb" }));
 
