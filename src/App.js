@@ -964,7 +964,7 @@ const css = `
   .user-sub { font-size: 11px; color: var(--muted); letter-spacing: 0.5px; text-transform: uppercase; margin-top: 2px; }
 
   /* ── MAIN ── */
-  .main { flex: 1; overflow-y: auto; position: relative; padding-bottom: 80px; z-index: 20; margin-left: -90px; padding-left: 90px; }
+  .main { flex: 1; overflow-y: auto; position: relative; padding-bottom: 80px; z-index: 20; margin-left: 90px; }
   .page { padding: 40px 48px; max-width: 1000px; margin: 0 auto; }
   .app { display: flex; min-height: 100vh; position: relative; z-index: 1; overflow: visible; }
   .page > *:not(:first-child) { position: relative; z-index: 1; }
@@ -4134,9 +4134,9 @@ export default function App() {
           </div>
         </div>
         <div ref={mainRef} className="main" style={{display:"flex", flexDirection:"column"}}>
-          {page === "workout" && <div style={{paddingLeft: navExpanded ? 80 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><WorkoutPage username={username} /></div>}
-          {page === "topcharts" && <div style={{paddingLeft: navExpanded ? 80 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><TopChartsPage username={username} /></div>}
-          {page === "boards" && <div style={{paddingLeft: navExpanded ? 80 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><BoardPage username={username} /></div>}
+          {page === "workout" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><WorkoutPage username={username} /></div>}
+          {page === "topcharts" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><TopChartsPage username={username} /></div>}
+          {page === "boards" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><BoardPage username={username} /></div>}
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
         </div>
         <FigureBackdrop variant="boards"    visible={page === "boards"} />
