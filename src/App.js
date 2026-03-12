@@ -1183,7 +1183,7 @@ const css = `
     background: none;
     border: none;
     border-radius: 0;
-    padding: 10px 0;
+    padding: 10px 0 10px 22px;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -2919,7 +2919,7 @@ function AudioPage({ currentTrack, setCurrentTrack, isPlaying, setIsPlaying }) {
 
   return (
     <div className="page" style={{position:"relative"}}>
-      <div className="page-title">AUDIO <span className="accentText">LIBRARY</span></div>
+      <div className="page-title">HOLY <span className="accentText">BIBLE</span></div>
       <div className="page-sub">&ldquo;Ignorance of Scripture is ignorance of Christ.&rdquo; &mdash; St. Jerome</div>
 
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:20}}>
@@ -4128,7 +4128,7 @@ export default function App() {
     { id: "workout",   label: "Workout" },
     { id: "topcharts", label: "Top Charts" },
     { id: "boards",    label: "Chat" },
-    { id: "audio",     label: "Audio" },
+    { id: "audio",     label: "Bible" },
   ];
 
   return (
