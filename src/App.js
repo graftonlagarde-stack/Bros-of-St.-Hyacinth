@@ -963,7 +963,7 @@ const css = `
   .user-sub { font-size: 11px; color: var(--muted); letter-spacing: 0.5px; text-transform: uppercase; margin-top: 2px; }
 
   /* ── MAIN ── */
-  .main { flex: 1; overflow-y: auto; position: relative; padding-bottom: 30px; z-index: 20; margin-left: 80px; }
+  .main { flex: 1; overflow-y: auto; position: relative; padding-bottom: 10px; z-index: 20; margin-left: 80px; }
   .page { padding: 40px 48px; max-width: 1000px; margin: 0 auto; }
   .app { display: flex; min-height: 100vh; position: relative; z-index: 1; overflow: visible; }
   .page > *:not(:first-child) { position: relative; z-index: 1; }
@@ -1183,7 +1183,7 @@ const css = `
     background: none;
     border: none;
     border-radius: 0;
-    padding: 10px 22px;
+    padding: 10px 0;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -3132,15 +3132,15 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack, navExpand
       <audio ref={audioRef} preload="auto" />
 
       {/* Track info */}
-      <div className="track-info">
+      <div className="track-info" style={{width:"100%"}}>
         <div className="track-title">{track?.title ?? "—"}</div>
-        <div className="track-artist" style={{color: noSrc ? "var(--danger)" : "var(--muted)"}}>
+        <div className="track-artist" style={{color: noSrc ? "var(--danger)" : undefined}}>
           {noSrc ? "No file linked" : track?.artist}
         </div>
       </div>
 
       {/* Progress + controls + speed — all aligned to timestamp bounds */}
-      <div style={{display:"flex", flexDirection:"column", gap:6, position:"relative", zIndex:1}}>
+      <div style={{display:"flex", flexDirection:"column", gap:6, position:"relative", zIndex:1, width:"100%"}}>
 
         {/* Progress row */}
         <div className="progress-wrap">
