@@ -348,7 +348,7 @@ function BoardPage({ username }) {
     <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 0px)", overflow:"hidden", position:"relative" }}>
 
       {/* Messages */}
-      <div ref={scrollContainerRef} style={{ flex:1, overflowY:"scroll", overscrollBehavior:"none", WebkitOverflowScrolling:"auto", padding:"120px 28px 150px", display:"flex", flexDirection:"column", gap:4 }}>
+      <div ref={scrollContainerRef} style={{ flex:1, overflowY:"scroll", overscrollBehavior:"none", WebkitOverflowScrolling:"auto", padding:"120px 28px 130px", display:"flex", flexDirection:"column", gap:4 }}>
         <div style={{ flex: "1 0 0" }} />
         {messages.map((msg, i) => {
           const isMe = msg.author === username;
@@ -1176,23 +1176,30 @@ const css = `
   /* ── AUDIO PLAYER ── */
   .player-bar {
     position: fixed;
-    bottom: 28px;
+    bottom: calc(25vh - 145px);
     left: 20px;
-    width: 290px;
+    width: 350px;
     z-index: 1000;
     border-radius: 999px;
-    background: linear-gradient(160deg, rgba(0,18,8,0.97) 0%, rgba(0,10,4,0.99) 100%);
-    border: 1px solid rgba(0,255,140,0.25);
-    padding: 14px 20px;
+    background:
+      linear-gradient(175deg, rgba(0,40,18,0.6) 0%, transparent 40%),
+      linear-gradient(160deg, rgba(0,22,10,0.98) 0%, rgba(0,8,3,1) 100%);
+    border: 1px solid rgba(0,255,140,0.22);
+    padding: 10px 22px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 6px;
     overflow: hidden;
     box-shadow:
-      0 0 20px rgba(0,255,140,0.12),
-      0 0 60px rgba(0,255,100,0.07),
-      inset 0 1px 0 rgba(0,255,160,0.15),
-      inset 0 0 40px rgba(0,255,100,0.04);
+      0 0 18px rgba(0,255,140,0.10),
+      0 0 55px rgba(0,255,100,0.06),
+      0 4px 24px rgba(0,0,0,0.7),
+      0 1px 0 rgba(0,255,160,0.08),
+      inset 0 1px 0 rgba(0,255,160,0.18),
+      inset 0 -1px 0 rgba(0,0,0,0.6),
+      inset 0 0 60px rgba(0,255,100,0.03),
+      inset 2px 0 12px rgba(0,255,140,0.04),
+      inset -2px 0 12px rgba(0,200,100,0.03);
     transition: transform 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.35s ease;
   }
   .player-bar.retracted {
@@ -1200,19 +1207,23 @@ const css = `
     opacity: 0;
     pointer-events: none;
   }
-  /* Animated top edge sheen */
+  /* Top edge sheen */
   .player-bar::before {
-    content: ''; position: absolute; top: 0; left: 15%; right: 15%; height: 1px;
-    background: var(--energy-grad); background-size: 300% 300%;
+    content: ''; position: absolute; top: 0; left: 12%; right: 12%; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(0,255,160,0.5) 30%, rgba(136,255,0,0.7) 50%, rgba(0,255,160,0.5) 70%, transparent);
     animation: sheen 3s ease-in-out infinite;
-    opacity: 0.6;
+    opacity: 0.7;
     border-radius: 999px;
   }
-  /* Inner glow bloom */
+  /* Multi-layer inner depth */
   .player-bar::after {
     content: ''; position: absolute; inset: 0; pointer-events: none;
     border-radius: 999px;
-    background: radial-gradient(ellipse 80% 60% at 50% 110%, rgba(0,255,140,0.06), transparent);
+    background:
+      radial-gradient(ellipse 60% 30% at 50% 0%, rgba(0,255,140,0.07), transparent),
+      radial-gradient(ellipse 80% 50% at 50% 120%, rgba(0,255,100,0.05), transparent),
+      radial-gradient(ellipse 40% 20% at 20% 50%, rgba(0,255,160,0.04), transparent),
+      linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 30%, rgba(0,0,0,0.2) 100%);
   }
   .track-info { min-width: 0; position: relative; z-index: 1; overflow: hidden; text-align: center; }
   .track-title {
