@@ -629,6 +629,7 @@ const css = `
   @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&display=swap');
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  button { -webkit-appearance: none; appearance: none; }
 
   :root {
     --bg:        #020800;
@@ -1474,15 +1475,17 @@ const css = `
 
     /* ── Logo: single line, slides fully off left when nav collapses ── */
     .logo {
-      font-size: 7vw !important;
+      font-size: 5.5vw !important;
       top: 14px; left: 10px;
       line-height: 1.2;
-      letter-spacing: 0.15em !important;
+      letter-spacing: 0.12em !important;
+      opacity: 1 !important;
       transform: translateX(0) !important;
       transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.4,0,0.2,1) !important;
+      animation: none !important;
     }
-    .logo-l1 { letter-spacing: 0.15em !important; }
-    .logo-l2 { letter-spacing: 0.15em !important; }
+    .logo-l1 { letter-spacing: 0.12em !important; }
+    .logo-l2 { letter-spacing: 0.12em !important; }
     .sidebar.nav-collapsed .logo {
       opacity: 0 !important;
       transform: translateX(-40px) !important;
@@ -1733,8 +1736,8 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
       // Desktop: camera offset left so figure at x=110 appears at screen-right-third
-      // Mobile: camera centered, use same z but pull back slightly for portrait aspect
-      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 900 : 660);
+      // Mobile: camera centered, pulled back for portrait aspect
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
@@ -1769,7 +1772,7 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
         const extraH = size.y * (newScale - scale);
         // Same x position on mobile as desktop — camera centered so 110 puts figure right-of-center
         obj.position.set(110, -box2.min.y - extraH + 70, 0);
-        obj.rotation.y = -Math.PI / 6;  // 30° clockwise — same as desktop
+        obj.rotation.y = isMobile ? (-Math.PI / 6 + Math.PI * 20 / 180) : -Math.PI / 6;  // mobile: -10°, desktop: -30°
         scene.add(obj);
         if (obj.animations?.length) {
           mixer = new THREE.AnimationMixer(obj);
@@ -1866,7 +1869,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
 
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 5000);
-      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 900 : 660);
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
@@ -1928,7 +1931,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       crossGroup.add(vBar, hBar);
       // On desktop canvas starts at left:224 so cross needs an x-offset to appear screen-centered.
       // On mobile canvas starts at left:0, so no offset needed.
-      const crossCamDist = isMobile ? 900 : 660;
+      const crossCamDist = isMobile ? 1200 : 660;
       const crossFovRad = (40 * Math.PI) / 180;
       const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
       const crossCenterX = isMobile ? 0 : (-160 * crossWorldPerPx);
@@ -1963,8 +1966,8 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         const extraH = size.y * (newScale - scale);
         // Same x position as desktop — camera centered on mobile so 110 places figure right-of-center
         obj.position.set(110, -box2.min.y - extraH + 70, 0);
-        // Same rotation as desktop — 195° clockwise
-        obj.rotation.y = -(Math.PI * 195) / 180;
+        // Same rotation as desktop adjusted 20° CCW on mobile
+        obj.rotation.y = isMobile ? -(Math.PI * 175) / 180 : -(Math.PI * 195) / 180;
         // Render figure ABOVE cross
         obj.renderOrder = 1;
         obj.traverse(c => { c.renderOrder = 1; });
@@ -2404,7 +2407,7 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
 
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
-      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 900 : 660);
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
@@ -2421,7 +2424,8 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
       });
 
       const clock = new THREE.Clock();
-      const ROTATION_Y = -(Math.PI / 6) - (20 * Math.PI / 180);
+      // Desktop: -50° (30° + 20°). Mobile: +20° CCW = -30°
+      const ROTATION_Y = isMobile ? -(Math.PI / 6) : -(Math.PI / 6) - (20 * Math.PI / 180);
 
       const applyTransform = (THREE, obj) => {
         obj.traverse(c => {
@@ -4415,7 +4419,7 @@ export default function App() {
         <div className={`sidebar${navExpanded ? "" : " nav-collapsed"}`}>
           {/* Logo */}
           <div className="logo" style={{
-            fontSize: isMobile ? "7vw" : (navExpanded ? "22px" : "15px"),
+            fontSize: isMobile ? "5.5vw" : (navExpanded ? "22px" : "15px"),
             whiteSpace: "nowrap",
           }}>
             {isMobile
@@ -4440,7 +4444,9 @@ export default function App() {
           {/* Blade nav */}
           <div className={`nav-wrap${navExpanded ? "" : " retracted"}`}>
             {navItems.map(n => (
-              <div key={n.id} className={`nav-item-wrap${page===n.id?" active-wrap":""}`} onClick={() => handleSetPage(n.id)}>
+              <div key={n.id} className={`nav-item-wrap${page===n.id?" active-wrap":""}`}
+                onClick={() => handleSetPage(n.id)}
+                onTouchStart={() => handleSetPage(n.id)}>
                 <div className={`nav-item ${page===n.id?"active":""}`}>{n.label}</div>
               </div>
             ))}
