@@ -228,39 +228,35 @@ function BoardPage({ username }) {
   const isMobile = useIsMobile();
   const { messages, fetchMessages, saveMessage, saveReaction } = useBoardMessages();
   const [text, setText]                 = useState("");
-  const [mediaFiles, setMediaFiles]     = useState([]);  // up to 3 attachments
+  const [mediaFiles, setMediaFiles]     = useState([]);
   const [attachWarning, setAttachWarning] = useState(false);
   const [uploading, setUploading]       = useState(false);
   const [emojiPickerFor, setEmojiPickerFor] = useState(null);
-  const [inputTop, setInputTop]         = useState(null);
-  const bottomRef = useRef(null);
+  const [lightboxSrc, setLightboxSrc]   = useState(null); // fullscreen media viewer
+  const [lightboxType, setLightboxType] = useState(null); // "image" | "video"
   const scrollContainerRef = useRef(null);
+  const textareaRef = useRef(null);
   const fileRef   = useRef(null);
 
-  // Measure user-badge top so input bar can align with it
-  useEffect(() => {
-    const badge = document.querySelector(".user-badge");
-    if (badge) {
-      const { top } = badge.getBoundingClientRect();
-      setInputTop(top);
-    }
-  }, []);
-
   useEffect(() => { fetchMessages(); }, []);
+
+  // Auto-grow textarea
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, 140) + "px";
+  }, [text]);
 
   useLayoutEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-    // Re-scroll after any images/videos finish loading (they expand the scrollHeight after paint)
     const media = el.querySelectorAll("img, video");
     const onLoad = () => { el.scrollTop = el.scrollHeight; };
     media.forEach(m => m.addEventListener("load", onLoad));
     return () => media.forEach(m => m.removeEventListener("load", onLoad));
   }, [messages]);
-
-
-
 
   const uploadToCloudinary = (file) => new Promise((resolve, reject) => {
     const isVideo = file.type.startsWith("video/");
@@ -289,7 +285,6 @@ function BoardPage({ username }) {
     const file = e.target.files[0];
     if (!file) return;
     e.target.value = "";
-
     if (mediaFiles.length >= 3) {
       setAttachWarning(true);
       setTimeout(() => setAttachWarning(false), 3000);
@@ -299,7 +294,6 @@ function BoardPage({ username }) {
       alert(`File too large — the maximum upload size is 100 MB.\nYour file is ${(file.size / 1024 / 1024).toFixed(1)} MB.`);
       return;
     }
-
     const id = Date.now() + Math.random();
     const blobUrl = URL.createObjectURL(file);
     setMediaFiles(prev => [...prev, { id, blobUrl, type: file.type, cloudUrl: null, uploading: true, progress: 0 }]);
@@ -325,231 +319,307 @@ function BoardPage({ username }) {
       publicId: f.publicId ?? "",
       isVideo:  f.type?.startsWith("video/"),
     }));
-    const msg = {
-      text:  text.trim(),
-      media: allMedia.length > 0 ? allMedia[0] : null,
-    };
+    const msg = { text: text.trim(), media: allMedia.length > 0 ? allMedia[0] : null };
     await saveMessage(msg);
     setText("");
     setMediaFiles([]);
   };
 
   const toggleReaction = (msgId, emoji) => {
-    // Determine if user already has this emoji (to toggle off by sending null)
     const msg = messages.find(m => m.id === msgId);
     const alreadyHas = msg?.reactions[emoji]?.includes(username);
     saveReaction(msgId, alreadyHas ? null : emoji);
     setEmojiPickerFor(null);
   };
 
-  return (
-    <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 0px)", overflow:"hidden", position:"relative" }}>
+  // ── Lightbox (fullscreen media viewer) ──────────────────────────────────
+  const openLightbox = (src, type) => { setLightboxSrc(src); setLightboxType(type); };
+  const closeLightbox = () => { setLightboxSrc(null); setLightboxType(null); };
 
-      {/* Messages */}
-      <div ref={scrollContainerRef} style={{ flex:1, overflowY:"scroll", overscrollBehavior:"none", WebkitOverflowScrolling:"auto", padding:`120px 28px ${isMobile ? "180px" : "130px"}`, display:"flex", flexDirection:"column", gap:4 }}>
-        <div style={{ flex: "1 0 0" }} />
-        {messages.map((msg, i) => {
-          const isMe = msg.author === username;
-          const prevMsg = messages[i - 1];
-          const grouped = prevMsg && prevMsg.author === msg.author && (msg.ts - prevMsg.ts) < 300000;
-          const reactionEntries = Object.entries(msg.reactions).filter(([,users]) => users.length > 0);
+  const lightbox = lightboxSrc && (
+    <div onClick={closeLightbox} style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.95)",
+      zIndex: 900, display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <button onClick={closeLightbox} style={{
+        position: "absolute", top: 16, right: 16,
+        background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.3)",
+        borderRadius: "50%", width: 36, height: 36, color: "#fff",
+        fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+      }}>✕</button>
+      {lightboxType === "image"
+        ? <img src={lightboxSrc} alt="fullscreen" style={{ maxWidth: "95vw", maxHeight: "90vh", borderRadius: 4, objectFit: "contain" }} onClick={e => e.stopPropagation()} />
+        : <video src={lightboxSrc} controls autoPlay style={{ maxWidth: "95vw", maxHeight: "90vh", borderRadius: 4 }} onClick={e => e.stopPropagation()} />
+      }
+    </div>
+  );
 
-          // ── System notices (pruning alerts) ─────────────────────────────
-          if (msg.isSystem) return (
-            <div key={msg.id} style={{ textAlign:"center", margin:"12px 0", padding:"7px 18px",
-              background:"rgba(255,51,68,0.08)", border:"1px solid rgba(255,51,68,0.25)",
-              borderRadius:4, fontSize:11, color:"var(--muted)", letterSpacing:0.3 }}>
-              {msg.text}
-            </div>
-          );
+  // ── Message list ────────────────────────────────────────────────────────
+  const messageList = messages.map((msg, i) => {
+    const isMe = msg.author === username;
+    const prevMsg = messages[i - 1];
+    const grouped = prevMsg && prevMsg.author === msg.author && (msg.ts - prevMsg.ts) < 300000;
+    const reactionEntries = Object.entries(msg.reactions).filter(([,users]) => users.length > 0);
 
-          return (
-            <div key={msg.id}
-              style={{ display:"flex", flexDirection: isMe ? "row-reverse" : "row", gap:8, alignItems:"flex-end", marginTop: grouped ? 2 : 14, position:"relative" }}
-              onMouseLeave={() => setEmojiPickerFor(null)}>
-
-              <div style={{ width:32, flexShrink:0 }}>
-                {!grouped && (
-                  <div className="avatar sm" style={{ background: isMe ? "linear-gradient(135deg,#003322,#006644)" : "linear-gradient(135deg,#001a10,#002e1a)", color: isMe ? "#88ff00" : "#88ff00" }}>
-                    {msg.author.slice(0,2).toUpperCase()}
-                  </div>
-                )}
-              </div>
-
-              <div style={{ maxWidth:"70%", display:"flex", flexDirection:"column", alignItems: isMe ? "flex-end" : "flex-start" }}>
-                {!grouped && (
-                  <div style={{ fontSize:11, color:"var(--muted)", marginBottom:3, paddingLeft: isMe ? 0 : 2, paddingRight: isMe ? 2 : 0, fontFamily:"'Orbitron',sans-serif", letterSpacing:0.5 }}>
-                    <span style={{ fontWeight:700, color: isMe ? "var(--accent)" : "var(--chrome)" }}>{msg.author}</span>
-                    <span style={{ marginLeft:8 }}>{fmtChatTime(msg.ts)}</span>
-                  </div>
-                )}
-
-                <div style={{
-                  background: isMe
-                    ? "linear-gradient(135deg,rgba(0,102,170,0.65),rgba(0,51,102,0.65))"
-                    : "linear-gradient(135deg,rgba(0,14,6,0.65),rgba(0,8,3,0.65))",
-                  border: `1px solid ${isMe ? "rgba(140,255,0,0.3)" : "var(--border)"}`,
-                  borderRadius: isMe ? "8px 2px 8px 8px" : "2px 8px 8px 8px",
-                  padding: msg.text ? "10px 14px" : "4px",
-                  fontSize:14, lineHeight:1.5, wordBreak:"break-word",
-                  boxShadow: isMe ? "0 2px 12px rgba(0,100,200,0.3)" : "0 2px 8px rgba(0,0,0,0.4)",
-                  color: "#ffffff",
-                }}>
-                  {msg.text && <div style={{whiteSpace:"pre-wrap"}}>{msg.text}</div>}
-                  {[msg.media, ...(msg.mediaExtra||[])].filter(Boolean).map((m, mi) => (
-                    <div key={mi} style={{ marginTop: (mi === 0 && msg.text) ? 8 : mi > 0 ? 6 : 0 }}>
-                      {m.type?.startsWith("image/") && (
-                        <img src={m.dataUrl} alt="attachment"
-                          style={{ maxWidth:280, maxHeight:280, borderRadius:4, display:"block", border:"1px solid var(--border)" }} />
-                      )}
-                      {m.type?.startsWith("video/") && <VideoPlayer src={m.dataUrl} mt={0} />}
-                      {m.type?.startsWith("audio/") && (
-                        <div style={{ display:"flex", alignItems:"center", gap:8,
-                          background:"rgba(0,255,204,0.06)", border:"1px solid var(--border)", borderRadius:4, padding:"8px 12px", minWidth:220 }}>
-                          <span style={{ fontSize:16 }}>🎵</span>
-                          <audio controls src={m.dataUrl} style={{ flex:1, height:28, minWidth:0, accentColor:"var(--accent)" }} />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {reactionEntries.length > 0 && (
-                  <div style={{ display:"flex", gap:4, marginTop:4, flexWrap:"wrap", justifyContent: isMe ? "flex-end" : "flex-start" }}>
-                    {reactionEntries.map(([emoji, users]) => (
-                      <div key={emoji} onClick={() => toggleReaction(msg.id, emoji)}
-                        style={{ display:"flex", alignItems:"center", gap:3,
-                          background: users.includes(username) ? "rgba(140,255,0,0.12)" : "rgba(0,20,50,0.8)",
-                          border:`1px solid ${users.includes(username) ? "var(--accent)" : "var(--border)"}`,
-                          borderRadius:2, padding:"2px 8px", cursor:"pointer", fontSize:12, fontWeight:700,
-                          color: users.includes(username) ? "var(--accent)" : "var(--muted)",
-                          fontFamily:"'Orbitron',sans-serif", letterSpacing:1,
-                          boxShadow: users.includes(username) ? "var(--glow-sm)" : "none",
-                          transition:"all 0.15s" }}>
-                        {emoji} {users.length}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div style={{ position:"relative" }}>
-                  <button onClick={() => setEmojiPickerFor(emojiPickerFor === msg.id ? null : msg.id)}
-                    style={{ background:"none", border:"none", cursor:"pointer", color:"var(--muted)", fontSize:12, padding:"3px 6px", opacity:0.5, marginTop:2 }}>
-                    😊 +
-                  </button>
-                  {emojiPickerFor === msg.id && (
-                    <div style={{ position:"absolute", bottom:"100%", [isMe?"right":"left"]:0,
-                      background:"var(--surface)", border:"1px solid var(--border)",
-                      borderTop:"1px solid rgba(140,255,0,0.3)",
-                      borderRadius:4, padding:8, display:"flex", gap:4, flexWrap:"wrap",
-                      width:196, zIndex:10, boxShadow:"0 4px 20px rgba(0,0,0,0.6), 0 0 20px rgba(140,255,0,0.1)" }}>
-                      {EMOJI_REACTIONS.map(e => (
-                        <button key={e} onClick={() => toggleReaction(msg.id, e)}
-                          style={{ background: (msg.reactions[e]||[]).includes(username) ? "rgba(140,255,0,0.15)" : "none",
-                            border:"none", cursor:"pointer", fontSize:20, borderRadius:2, padding:4, transition:"background 0.1s" }}>
-                          {e}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        <div ref={bottomRef} />
+    if (msg.isSystem) return (
+      <div key={msg.id} style={{ textAlign:"center", margin:"12px 0", padding:"7px 18px",
+        background:"rgba(255,51,68,0.08)", border:"1px solid rgba(255,51,68,0.25)",
+        borderRadius:4, fontSize:11, color:"var(--muted)", letterSpacing:0.3 }}>
+        {msg.text}
       </div>
+    );
 
-      {/* Attach warning */}
+    return (
+      <div key={msg.id}
+        style={{ display:"flex", flexDirection: isMe ? "row-reverse" : "row", gap:8, alignItems:"flex-end", marginTop: grouped ? 2 : 14, position:"relative" }}
+        onMouseLeave={() => setEmojiPickerFor(null)}>
+
+        <div style={{ width:32, flexShrink:0 }}>
+          {!grouped && (
+            <div className="avatar sm" style={{ background: isMe ? "linear-gradient(135deg,#003322,#006644)" : "linear-gradient(135deg,#001a10,#002e1a)", color:"#88ff00" }}>
+              {msg.author.slice(0,2).toUpperCase()}
+            </div>
+          )}
+        </div>
+
+        <div style={{ maxWidth:"75%", display:"flex", flexDirection:"column", alignItems: isMe ? "flex-end" : "flex-start" }}>
+          {!grouped && (
+            <div style={{ fontSize:11, color:"var(--muted)", marginBottom:3, paddingLeft: isMe ? 0 : 2, paddingRight: isMe ? 2 : 0, fontFamily:"'Orbitron',sans-serif", letterSpacing:0.5 }}>
+              <span style={{ fontWeight:700, color: isMe ? "var(--accent)" : "var(--chrome)" }}>{msg.author}</span>
+              <span style={{ marginLeft:8 }}>{fmtChatTime(msg.ts)}</span>
+            </div>
+          )}
+
+          <div style={{
+            background: isMe ? "linear-gradient(135deg,rgba(0,102,170,0.65),rgba(0,51,102,0.65))" : "linear-gradient(135deg,rgba(0,14,6,0.65),rgba(0,8,3,0.65))",
+            border: `1px solid ${isMe ? "rgba(140,255,0,0.3)" : "var(--border)"}`,
+            borderRadius: isMe ? "8px 2px 8px 8px" : "2px 8px 8px 8px",
+            padding: msg.text ? "10px 14px" : "4px",
+            fontSize:14, lineHeight:1.5, wordBreak:"break-word",
+            boxShadow: isMe ? "0 2px 12px rgba(0,100,200,0.3)" : "0 2px 8px rgba(0,0,0,0.4)",
+            color: "#ffffff",
+          }}>
+            {msg.text && <div style={{whiteSpace:"pre-wrap"}}>{msg.text}</div>}
+            {[msg.media, ...(msg.mediaExtra||[])].filter(Boolean).map((m, mi) => (
+              <div key={mi} style={{ marginTop: (mi === 0 && msg.text) ? 8 : mi > 0 ? 6 : 0 }}>
+                {m.type?.startsWith("image/") && (
+                  <img src={m.dataUrl} alt="attachment"
+                    onClick={() => openLightbox(m.dataUrl, "image")}
+                    style={{ maxWidth:240, maxHeight:240, borderRadius:4, display:"block", border:"1px solid var(--border)", cursor:"pointer" }} />
+                )}
+                {m.type?.startsWith("video/") && (
+                  <div onClick={() => openLightbox(m.dataUrl, "video")} style={{ cursor:"pointer", position:"relative" }}>
+                    <VideoPlayer src={m.dataUrl} mt={0} />
+                    <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.1)", borderRadius:4 }}>
+                      <div style={{ fontSize:28, color:"rgba(255,255,255,0.8)", pointerEvents:"none" }}>⏵</div>
+                    </div>
+                  </div>
+                )}
+                {m.type?.startsWith("audio/") && (
+                  <div style={{ display:"flex", alignItems:"center", gap:8,
+                    background:"rgba(0,255,204,0.06)", border:"1px solid var(--border)", borderRadius:4, padding:"8px 12px", minWidth:180 }}>
+                    <span style={{ fontSize:16 }}>🎵</span>
+                    <audio controls src={m.dataUrl} style={{ flex:1, height:28, minWidth:0, accentColor:"var(--accent)" }} />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {reactionEntries.length > 0 && (
+            <div style={{ display:"flex", gap:4, marginTop:4, flexWrap:"wrap", justifyContent: isMe ? "flex-end" : "flex-start" }}>
+              {reactionEntries.map(([emoji, users]) => (
+                <div key={emoji} onClick={() => toggleReaction(msg.id, emoji)}
+                  style={{ display:"flex", alignItems:"center", gap:3,
+                    background: users.includes(username) ? "rgba(140,255,0,0.12)" : "rgba(0,20,50,0.8)",
+                    border:`1px solid ${users.includes(username) ? "var(--accent)" : "var(--border)"}`,
+                    borderRadius:2, padding:"2px 8px", cursor:"pointer", fontSize:12, fontWeight:700,
+                    color: users.includes(username) ? "var(--accent)" : "var(--muted)",
+                    fontFamily:"'Orbitron',sans-serif", letterSpacing:1,
+                    boxShadow: users.includes(username) ? "var(--glow-sm)" : "none",
+                    transition:"all 0.15s" }}>
+                  {emoji} {users.length}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ position:"relative" }}>
+            <button onClick={() => setEmojiPickerFor(emojiPickerFor === msg.id ? null : msg.id)}
+              style={{ background:"none", border:"none", cursor:"pointer", color:"var(--muted)", fontSize:12, padding:"3px 6px", opacity:0.5, marginTop:2 }}>
+              😊 +
+            </button>
+            {emojiPickerFor === msg.id && (
+              <div style={{ position:"absolute", bottom:"100%", [isMe?"right":"left"]:0,
+                background:"var(--surface)", border:"1px solid var(--border)",
+                borderTop:"1px solid rgba(140,255,0,0.3)",
+                borderRadius:4, padding:8, display:"flex", gap:4, flexWrap:"wrap",
+                width:196, zIndex:10, boxShadow:"0 4px 20px rgba(0,0,0,0.6), 0 0 20px rgba(140,255,0,0.1)" }}>
+                {EMOJI_REACTIONS.map(e => (
+                  <button key={e} onClick={() => toggleReaction(msg.id, e)}
+                    style={{ background: (msg.reactions[e]||[]).includes(username) ? "rgba(140,255,0,0.15)" : "none",
+                      border:"none", cursor:"pointer", fontSize:20, borderRadius:2, padding:4, transition:"background 0.1s" }}>
+                    {e}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  });
+
+  // ── Input bar (shared desktop + mobile) ─────────────────────────────────
+  const inputBar = (
+    <>
       {attachWarning && (
         <div style={{
-          position: "fixed", left: isMobile ? 0 : 360, right: 0, zIndex: 12,
-          bottom: inputTop ? (window.innerHeight - inputTop + (mediaFiles.length > 0 ? 96 : 8)) : 150,
-          margin: "0 28px",
-          padding: "10px 16px",
-          background: "rgba(255,60,60,0.15)",
-          border: "1px solid rgba(255,60,60,0.4)",
-          borderRadius: 4,
-          color: "#ff6060",
-          fontSize: 13,
-          fontFamily: "'Orbitron',sans-serif",
-          letterSpacing: 0.5,
+          padding: "8px 12px", marginBottom: 6,
+          background: "rgba(255,60,60,0.15)", border: "1px solid rgba(255,60,60,0.4)",
+          borderRadius: 4, color: "#ff6060", fontSize: 12,
+          fontFamily: "'Orbitron',sans-serif", letterSpacing: 0.5,
         }}>
           You cannot attach more than three files to a message.
         </div>
       )}
 
-      {/* File previews — fixed above input bar */}
+      {/* File previews */}
       {mediaFiles.length > 0 && (
-        <div style={{
-          position: "fixed",
-          bottom: inputTop ? (window.innerHeight - inputTop + 8) : 78,
-          left: isMobile ? 0 : 360, right: 0,
-          padding: "8px 28px",
-          display: "flex", gap: 10, zIndex: 11,
-        }}>
+        <div style={{ display:"flex", gap:8, marginBottom:6, flexWrap:"wrap" }}>
           {mediaFiles.map(f => (
-            <div key={f.id} style={{ position:"relative", height:72, borderRadius:4, overflow:"hidden", background:"#000", minWidth:64, flexShrink:0 }}>
+            <div key={f.id} style={{ position:"relative", height:60, borderRadius:4, overflow:"hidden", background:"#000", minWidth:52, flexShrink:0 }}>
               {f.type?.startsWith("video/")
-                ? <video src={f.blobUrl} style={{ height:72, objectFit:"cover" }} muted />
+                ? <video src={f.blobUrl} style={{ height:60, objectFit:"cover" }} muted />
                 : f.type?.startsWith("audio/")
-                ? <div style={{ height:72, width:100, display:"flex", alignItems:"center", justifyContent:"center", background:"var(--surface2)", border:"1px solid var(--border)" }}>
-                    <span style={{ fontSize:24 }}>🎵</span>
+                ? <div style={{ height:60, width:80, display:"flex", alignItems:"center", justifyContent:"center", background:"var(--surface2)", border:"1px solid var(--border)" }}>
+                    <span style={{ fontSize:20 }}>🎵</span>
                   </div>
-                : <img src={f.blobUrl} alt="preview" style={{ height:72, objectFit:"cover" }} />
+                : <img src={f.blobUrl} alt="preview" style={{ height:60, objectFit:"cover" }} />
               }
               {f.uploading && (
-                <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:4 }}>
+                <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center" }}>
                   <div style={{ fontSize:10, color:"#fff", fontWeight:700, fontFamily:"'Orbitron',sans-serif" }}>{f.progress ?? 0}%</div>
                 </div>
               )}
               {!f.uploading && f.cloudUrl && (
-                <div style={{ position:"absolute", bottom:3, right:5, fontSize:10, color:"var(--accent)", fontWeight:700 }}>✓</div>
+                <div style={{ position:"absolute", bottom:2, right:4, fontSize:9, color:"var(--accent)", fontWeight:700 }}>✓</div>
               )}
               <button onClick={() => setMediaFiles(prev => prev.filter(x => x.id !== f.id))}
-                style={{ position:"absolute", top:3, right:3, background:"rgba(0,0,0,0.75)", border:"none", borderRadius:"50%", width:18, height:18, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#fff", fontSize:10, lineHeight:1, padding:0 }}>✕</button>
+                style={{ position:"absolute", top:2, right:2, background:"rgba(0,0,0,0.75)", border:"none", borderRadius:"50%", width:16, height:16, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#fff", fontSize:9, lineHeight:1, padding:0 }}>✕</button>
             </div>
           ))}
         </div>
       )}
 
-      {/* Input bar */}
-      <div style={{
-        position: "fixed",
-        bottom: isMobile ? 56 : 0,
-        left: isMobile ? 0 : 360,
-        right: 0,
-        padding: "12px 28px",
-        borderTop: "1px solid var(--border)",
-        background: "rgba(0,8,4,0.45)",
-        display: "flex",
-        gap: 10,
-        alignItems: "stretch",
-        zIndex: 10,
-      }}>
+      <div style={{ display:"flex", gap:8, alignItems:"flex-end" }}>
         <input ref={fileRef} type="file" accept="image/*,video/*,audio/*" style={{ display:"none" }} onChange={handleFile} />
         <button onClick={() => { if (mediaFiles.length >= 3) { setAttachWarning(true); setTimeout(() => setAttachWarning(false), 3000); } else fileRef.current?.click(); }}
-          style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:2, padding:"0 12px",
+          style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:2, padding:"0 10px", height:40,
             cursor:"pointer", color: uploading ? "var(--accent)" : "var(--muted)", fontSize:16, flexShrink:0, transition:"all 0.15s" }}
           title="Attach photo, video, or audio">📎</button>
         <textarea
+          ref={textareaRef}
           placeholder="Send a message..."
           value={text}
           onChange={e => setText(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
           rows={1}
-          style={{ flex:1, resize:"none", borderRadius:2, padding:"10px 14px", fontSize:14, minHeight:42, maxHeight:120, overflowY:"auto", lineHeight:1.5, opacity:1 }}
+          style={{ flex:1, resize:"none", borderRadius:2, padding:"10px 14px", fontSize:14, minHeight:40, maxHeight:140, overflowY:"auto", lineHeight:1.5, opacity:1 }}
         />
         <button onClick={sendMessage} className="btn btn-primary"
-          style={{ flexShrink:0, padding:"0 20px", borderRadius:2, opacity: uploading ? 0.5 : 1 }}
+          style={{ flexShrink:0, padding:"0 16px", height:40, borderRadius:2, opacity: uploading ? 0.5 : 1 }}
           disabled={(!text.trim() && mediaFiles.length === 0) || uploading}>
-          {uploading ? "UPLOADING…" : "SEND"}
+          {uploading ? "…" : "SEND"}
         </button>
       </div>
-    </div>
+    </>
+  );
+
+  // ── Mobile layout: fixed full-screen flex column ─────────────────────────
+  if (isMobile) {
+    return (
+      <>
+        {lightbox}
+        <div className="chat-mobile-root">
+          <div ref={scrollContainerRef} className="chat-mobile-messages" style={{ padding: "80px 14px 20px" }}>
+            <div style={{ flex: "1 0 0" }} />
+            {messageList}
+          </div>
+          <div className="chat-mobile-input">
+            {inputBar}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ── Desktop layout: same as before ──────────────────────────────────────
+  return (
+    <>
+      {lightbox}
+      <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 0px)", overflow:"hidden", position:"relative" }}>
+        <div ref={scrollContainerRef} style={{ flex:1, overflowY:"scroll", overscrollBehavior:"none", WebkitOverflowScrolling:"auto", padding:"120px 28px 130px", display:"flex", flexDirection:"column", gap:4 }}>
+          <div style={{ flex: "1 0 0" }} />
+          {messageList}
+        </div>
+
+        {/* Desktop attach warning */}
+        {attachWarning && (
+          <div style={{
+            position:"fixed", left:360, right:0, zIndex:12,
+            bottom:150, margin:"0 28px", padding:"10px 16px",
+            background:"rgba(255,60,60,0.15)", border:"1px solid rgba(255,60,60,0.4)",
+            borderRadius:4, color:"#ff6060", fontSize:13,
+            fontFamily:"'Orbitron',sans-serif", letterSpacing:0.5,
+          }}>
+            You cannot attach more than three files to a message.
+          </div>
+        )}
+
+        {/* Desktop file previews */}
+        {mediaFiles.length > 0 && (
+          <div style={{ position:"fixed", bottom:78, left:360, right:0, padding:"8px 28px", display:"flex", gap:10, zIndex:11 }}>
+            {mediaFiles.map(f => (
+              <div key={f.id} style={{ position:"relative", height:72, borderRadius:4, overflow:"hidden", background:"#000", minWidth:64, flexShrink:0 }}>
+                {f.type?.startsWith("video/") ? <video src={f.blobUrl} style={{ height:72, objectFit:"cover" }} muted />
+                  : f.type?.startsWith("audio/") ? <div style={{ height:72, width:100, display:"flex", alignItems:"center", justifyContent:"center", background:"var(--surface2)", border:"1px solid var(--border)" }}><span style={{ fontSize:24 }}>🎵</span></div>
+                  : <img src={f.blobUrl} alt="preview" style={{ height:72, objectFit:"cover" }} />
+                }
+                {f.uploading && <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:4 }}><div style={{ fontSize:10, color:"#fff", fontWeight:700, fontFamily:"'Orbitron',sans-serif" }}>{f.progress ?? 0}%</div></div>}
+                {!f.uploading && f.cloudUrl && <div style={{ position:"absolute", bottom:3, right:5, fontSize:10, color:"var(--accent)", fontWeight:700 }}>✓</div>}
+                <button onClick={() => setMediaFiles(prev => prev.filter(x => x.id !== f.id))}
+                  style={{ position:"absolute", top:3, right:3, background:"rgba(0,0,0,0.75)", border:"none", borderRadius:"50%", width:18, height:18, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#fff", fontSize:10, lineHeight:1, padding:0 }}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Desktop input bar */}
+        <div style={{ position:"fixed", bottom:0, left:360, right:0, padding:"12px 28px", borderTop:"1px solid var(--border)", background:"rgba(0,8,4,0.45)", display:"flex", gap:10, alignItems:"stretch", zIndex:10 }}>
+          <input ref={fileRef} type="file" accept="image/*,video/*,audio/*" style={{ display:"none" }} onChange={handleFile} />
+          <button onClick={() => { if (mediaFiles.length >= 3) { setAttachWarning(true); setTimeout(() => setAttachWarning(false), 3000); } else fileRef.current?.click(); }}
+            style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:2, padding:"0 12px", cursor:"pointer", color: uploading ? "var(--accent)" : "var(--muted)", fontSize:16, flexShrink:0, transition:"all 0.15s" }}
+            title="Attach photo, video, or audio">📎</button>
+          <textarea
+            ref={textareaRef}
+            placeholder="Send a message..."
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+            rows={1}
+            style={{ flex:1, resize:"none", borderRadius:2, padding:"10px 14px", fontSize:14, minHeight:42, maxHeight:120, overflowY:"auto", lineHeight:1.5, opacity:1 }}
+          />
+          <button onClick={sendMessage} className="btn btn-primary"
+            style={{ flexShrink:0, padding:"0 20px", borderRadius:2, opacity: uploading ? 0.5 : 1 }}
+            disabled={(!text.trim() && mediaFiles.length === 0) || uploading}>
+            {uploading ? "UPLOADING…" : "SEND"}
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
-
 
 
 const EXERCISE_LIST = ["Bench Press", "Squat", "Deadlift", "Hex-Bar Deadlift", "Curls", "Overhead Press", "Pull-up", "Push-up", "Row"];
@@ -1382,7 +1452,20 @@ const css = `
       transition: none !important;
     }
     .sidebar.nav-collapsed {
-      width: 34px !important; min-width: 34px !important;
+      /* Shrink sidebar to only cover the small orb footprint — prevents phantom taps */
+      width: 24px !important; min-width: 24px !important;
+      pointer-events: none;  /* sidebar shell is inert; orb-wrap re-enables itself */
+    }
+    /* Re-enable pointer events only on the orb itself when collapsed */
+    .sidebar.nav-collapsed .xbox-orb-wrap {
+      pointer-events: all !important;
+    }
+
+    /* ── Nav tabs: completely inert when retracted (fix phantom taps) ── */
+    .nav-wrap.retracted,
+    .nav-wrap.retracted * {
+      pointer-events: none !important;
+      user-select: none !important;
     }
 
     /* ── Logo: bigger, slides off left when nav collapses ── */
@@ -1400,7 +1483,7 @@ const css = `
       pointer-events: none !important;
     }
 
-    /* ── Orb: full size when nav open, scales down when collapsed ── */
+    /* ── Orb: full size when nav open, scales down + shifts right when collapsed ── */
     .xbox-orb-wrap {
       position: absolute;
       left: -60px !important;
@@ -1408,10 +1491,12 @@ const css = `
       transform: translateY(-50%) scale(1) !important;
       transform-origin: left center;
       width: 220px !important; height: 220px !important;
-      transition: transform 0.4s cubic-bezier(0.4,0,0.2,1) !important;
+      transition: transform 0.4s cubic-bezier(0.4,0,0.2,1), left 0.4s cubic-bezier(0.4,0,0.2,1) !important;
     }
+    /* Collapsed: scale down and shift right so it's easier to tap */
     .sidebar.nav-collapsed .xbox-orb-wrap {
       transform: translateY(-50%) scale(0.35) !important;
+      left: -42px !important;
     }
 
     /* ── Nav tabs: fixed overlay, retractable ── */
@@ -1438,7 +1523,7 @@ const css = `
       width: 100vw !important;
       margin-left: 0 !important;
       padding-left: 0 !important;
-      padding-bottom: 80px !important;
+      padding-bottom: 0 !important;
       box-sizing: border-box;
       z-index: 50;
       position: relative;
@@ -1478,7 +1563,7 @@ const css = `
     /* ── Workout: 2-col chart grid → 1 col ── */
     .workout-chart-grid { grid-template-columns: 1fr !important; }
 
-    /* ── Audio player: full-width bottom bar ── */
+    /* ── Audio player: transparent background, same as desktop ── */
     .player-bar {
       position: fixed !important;
       bottom: 0 !important;
@@ -1487,9 +1572,8 @@ const css = `
       width: 100% !important;
       border-radius: 0 !important;
       padding: 8px 14px !important;
-      background: rgba(0,10,4,0.97) !important;
-      border-top: 1px solid rgba(0,255,140,0.25) !important;
-      border-left: none !important; border-right: none !important; border-bottom: none !important;
+      background: none !important;
+      border: none !important;
       box-shadow: none !important;
       z-index: 400 !important;
       flex-direction: column !important;
@@ -1501,16 +1585,42 @@ const css = `
       opacity: 0 !important;
     }
 
-    /* ── Remove rounded squares from audio ctrl buttons ── */
-    .ctrl-btn {
+    /* ── Remove ALL borders from audio control buttons (the "rounded squares") ── */
+    .ctrl-btn, .play-btn {
       border: none !important;
-      background: none !important;
+    }
+    .ctrl-btn {
       width: 28px !important; height: 28px !important;
     }
 
     /* ── Modal sits ABOVE sidebar (300) and nav tabs (299) ──
-       Without this, tapping inputs in "Log a Lift" fires nav tab taps instead */
+       Without this, tapping inputs fires nav tap events instead */
     .modal-bg { z-index: 500 !important; }
+
+    /* ── Chat page: flex column filling full viewport height ── */
+    .chat-mobile-root {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      z-index: 50;
+    }
+    .chat-mobile-messages {
+      flex: 1;
+      overflow-y: scroll;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+    }
+    .chat-mobile-input {
+      flex-shrink: 0;
+      border-top: 1px solid var(--border);
+      background: rgba(0,8,4,0.96);
+      padding: 8px 10px;
+      padding-bottom: max(8px, env(safe-area-inset-bottom));
+    }
   }
 
 
@@ -1596,13 +1706,13 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
       import("three/examples/jsm/loaders/FBXLoader"),
     ]).then(([THREE, { FBXLoader }]) => {
       if (cancelled) return;
-      const w = window.innerWidth - 224;
-      const h = window.innerHeight - 70;
+      const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
+      const h = isMobile ? (window.innerHeight - 60) : (window.innerHeight - 70);
 
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
       // Far enough back to see full figure; x offset shifts figure to 2/3 right of screen
-      camera.position.set(-w * 0.32, 160, 660);
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
@@ -1635,7 +1745,7 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
         obj.scale.setScalar(newScale);
         const box2   = new THREE.Box3().setFromObject(obj);
         const extraH = size.y * (newScale - scale);
-        obj.position.set(110, -box2.min.y - extraH + 70, 0);
+        obj.position.set(isMobile ? 30 : 110, -box2.min.y - extraH + 70, 0);
         obj.rotation.y = -Math.PI / 6;  // 30° clockwise
         scene.add(obj);
         if (obj.animations?.length) {
@@ -1728,12 +1838,12 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       import("three/examples/jsm/loaders/FBXLoader"),
     ]).then(([THREE, { FBXLoader }]) => {
       if (cancelled) return;
-      const w = window.innerWidth - 224;
-      const h = window.innerHeight - 70;
+      const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
+      const h = isMobile ? (window.innerHeight - 60) : (window.innerHeight - 70);
 
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 5000);
-      camera.position.set(-w * 0.32, 160, 660);
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
@@ -1793,11 +1903,12 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), crossMat.clone());
       hBar.position.y = crossH * 0.70;
       crossGroup.add(vBar, hBar);
-      // Center cross in full browser window (canvas starts at left:224, so canvas center ≠ screen center)
+      // On desktop canvas starts at left:224 so cross needs an x-offset to appear screen-centered.
+      // On mobile canvas starts at left:0, so no offset needed.
       const crossCamDist = 660;
       const crossFovRad = (40 * Math.PI) / 180;
       const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
-      const crossCenterX = -160 * crossWorldPerPx;
+      const crossCenterX = isMobile ? 0 : (-160 * crossWorldPerPx);
       crossGroup.position.set(crossCenterX, 0, 0);
       scene.add(crossGroup);
 
@@ -1824,9 +1935,10 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         obj.scale.setScalar(newScale);
         const box2   = new THREE.Box3().setFromObject(obj);
         const extraH = size.y * (newScale - scale);
-        obj.position.set(110, -box2.min.y - extraH + 70, 0);
-        // 195° clockwise rotation (135 + 60)
-        obj.rotation.y = -(Math.PI * 195) / 180;
+        // On mobile canvas is full-width and camera is centered, so shift figure right
+        obj.position.set(isMobile ? 30 : 110, -box2.min.y - extraH + 70, 0);
+        // On desktop camera is offset left so 195° looks correct. On mobile camera is centered so use 30°.
+        obj.rotation.y = isMobile ? -(Math.PI * 30) / 180 : -(Math.PI * 195) / 180;
         scene.add(obj);
 
         // Align cross base to figure's ground level (vBar.position.y = crossH/2 already lifts it)
@@ -2258,12 +2370,12 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
       import("three/examples/jsm/loaders/FBXLoader"),
     ]).then(([THREE, { FBXLoader }]) => {
       if (cancelled) return;
-      const w = window.innerWidth - 224;
-      const h = window.innerHeight - 70;
+      const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
+      const h = isMobile ? (window.innerHeight - 60) : (window.innerHeight - 70);
 
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
-      camera.position.set(-w * 0.32, 160, 660);
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
@@ -2295,7 +2407,7 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
         obj.scale.setScalar(newScale);
         const box2   = new THREE.Box3().setFromObject(obj);
         const extraH = size.y * (newScale - scale);
-        obj.position.set(110, -box2.min.y - extraH + 70, 0);
+        obj.position.set(isMobile ? 30 : 110, -box2.min.y - extraH + 70, 0);
         obj.rotation.y = ROTATION_Y;
         return { savedScale: obj.scale.clone(), savedPos: obj.position.clone() };
       };
