@@ -465,7 +465,7 @@ function BoardPage({ username }) {
       {/* Attach warning */}
       {attachWarning && (
         <div style={{
-          position: "fixed", left: 224, right: 0, zIndex: 12,
+          position: "fixed", left: 360, right: 0, zIndex: 12,
           bottom: inputTop ? (window.innerHeight - inputTop + (mediaFiles.length > 0 ? 96 : 8)) : 150,
           margin: "0 28px",
           padding: "10px 16px",
@@ -486,7 +486,7 @@ function BoardPage({ username }) {
         <div style={{
           position: "fixed",
           bottom: inputTop ? (window.innerHeight - inputTop + 8) : 78,
-          left: 224, right: 0,
+          left: 360, right: 0,
           padding: "8px 28px",
           display: "flex", gap: 10, zIndex: 11,
         }}>
@@ -518,9 +518,8 @@ function BoardPage({ username }) {
       {/* Input bar */}
       <div style={{
         position: "fixed",
-        top: inputTop ?? "auto",
-        bottom: 70,
-        left: 224,
+        bottom: 0,
+        left: 360,
         right: 0,
         padding: "12px 28px",
         borderTop: "1px solid var(--border)",
@@ -1176,69 +1175,111 @@ const css = `
 
   /* ── AUDIO PLAYER ── */
   .player-bar {
-    position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000;
-    background: linear-gradient(180deg, rgba(0,8,4,0.98) 0%, rgba(0,4,2,1) 100%);
-    border-top: 1px solid rgba(6,51,34,0.8);
-    padding: 13px 24px; display: flex; align-items: center; gap: 14px;
+    position: fixed;
+    bottom: 28px;
+    left: 20px;
+    width: 290px;
+    z-index: 1000;
+    border-radius: 999px;
+    background: linear-gradient(160deg, rgba(0,18,8,0.97) 0%, rgba(0,10,4,0.99) 100%);
+    border: 1px solid rgba(0,255,140,0.25);
+    padding: 14px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     overflow: hidden;
+    box-shadow:
+      0 0 20px rgba(0,255,140,0.12),
+      0 0 60px rgba(0,255,100,0.07),
+      inset 0 1px 0 rgba(0,255,160,0.15),
+      inset 0 0 40px rgba(0,255,100,0.04);
+    transition: transform 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.35s ease;
   }
-  /* Cyan→lime top edge */
+  .player-bar.retracted {
+    transform: translateX(calc(-100% - 20px));
+    opacity: 0;
+    pointer-events: none;
+  }
+  /* Animated top edge sheen */
   .player-bar::before {
-    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    content: ''; position: absolute; top: 0; left: 15%; right: 15%; height: 1px;
     background: var(--energy-grad); background-size: 300% 300%;
     animation: sheen 3s ease-in-out infinite;
-    opacity: 0.8;
+    opacity: 0.6;
+    border-radius: 999px;
   }
+  /* Inner glow bloom */
   .player-bar::after {
     content: ''; position: absolute; inset: 0; pointer-events: none;
-    background: radial-gradient(ellipse 70% 120% at 50% 100%, rgba(0,255,180,0.025), transparent);
+    border-radius: 999px;
+    background: radial-gradient(ellipse 80% 60% at 50% 110%, rgba(0,255,140,0.06), transparent);
   }
-
-  .track-info { min-width: 150px; max-width: 200px; position: relative; z-index: 1; overflow: hidden; }
+  .track-info { min-width: 0; position: relative; z-index: 1; overflow: hidden; text-align: center; }
   .track-title {
-    font-weight: 700; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase;
+    font-weight: 700; font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
     font-family: 'Orbitron', sans-serif;
     background: var(--chrome-grad);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    filter: drop-shadow(0 0 6px rgba(136,255,0,0.5));
   }
-  .track-artist { font-size: 12px; color: var(--muted); letter-spacing: 0.5px; margin-top: 3px; }
-  .player-controls { display: flex; align-items: center; gap: 14px; position: relative; z-index: 1; }
+  .track-artist { font-size: 10px; color: var(--muted); letter-spacing: 1px; margin-top: 2px; text-align: center; }
+  .player-controls { display: flex; align-items: center; justify-content: center; gap: 8px; position: relative; z-index: 1; }
   .ctrl-btn {
-    background: none; border: none; color: var(--muted); cursor: pointer;
-    font-size: 15px; padding: 4px; transition: all 0.15s;
-  }
-  .ctrl-btn:hover { color: var(--accent); text-shadow: var(--glow-sm); transform: scale(1.2); }
-  .play-btn {
-    background: linear-gradient(145deg, #008866 0%, #004433 55%, #001a15 100%);
-    color: #fff; border: 1px solid rgba(0,255,180,0.3);
-    border-radius: 50%; width: 44px; height: 44px; font-size: 14px; cursor: pointer;
+    background: rgba(0,30,15,0.8);
+    border: 1px solid rgba(0,255,140,0.15);
+    border-radius: 50%;
+    width: 30px; height: 30px;
+    color: rgba(0,255,140,0.7); cursor: pointer;
+    font-size: 12px;
     display: flex; align-items: center; justify-content: center;
-    box-shadow: var(--glow),
-                inset 0 1px 0 rgba(255,255,255,0.2),
-                inset 0 0 24px rgba(136,255,0,0.12);
+    transition: all 0.15s;
+    box-shadow: 0 0 8px rgba(0,255,140,0.1), inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+  .ctrl-btn:hover {
+    color: #88ff00;
+    border-color: rgba(136,255,0,0.5);
+    box-shadow: 0 0 14px rgba(136,255,0,0.4), 0 0 30px rgba(136,255,0,0.15), inset 0 1px 0 rgba(255,255,255,0.1);
+    transform: scale(1.15);
+  }
+  .ctrl-btn:disabled { opacity: 0.3; cursor: default; transform: none; box-shadow: none; }
+  .play-btn {
+    background: linear-gradient(145deg, #00cc77 0%, #006644 45%, #002211 100%);
+    color: #ccffdd; border: 1px solid rgba(0,255,160,0.45);
+    border-radius: 50%; width: 44px; height: 44px; font-size: 15px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow:
+      0 0 18px rgba(0,255,140,0.5),
+      0 0 40px rgba(0,255,100,0.25),
+      0 0 80px rgba(0,200,80,0.1),
+      inset 0 1px 0 rgba(255,255,255,0.25),
+      inset 0 0 20px rgba(0,255,140,0.15);
     transition: all 0.2s;
     animation: energyBeat 3.5s ease-in-out infinite;
     position: relative; z-index: 1;
   }
   .play-btn:hover {
-    box-shadow: 0 0 40px #88ff00, 0 0 80px #88ff0055, inset 0 0 30px rgba(136,255,0,0.2);
+    box-shadow: 0 0 30px #00ff88, 0 0 70px rgba(0,255,136,0.4), inset 0 0 30px rgba(0,255,140,0.2);
     transform: scale(1.1);
   }
-
+  .play-btn:disabled { opacity: 0.35; cursor: default; transform: none; animation: none; }
   .progress-wrap {
-    flex: 1; display: flex; align-items: center; gap: 10px; font-size: 11px;
+    display: flex; align-items: center; gap: 8px; font-size: 9px;
     color: var(--muted); font-family: 'Orbitron', sans-serif; letter-spacing: 0.5px;
     position: relative; z-index: 1;
   }
   .progress-bar {
-    flex: 1; height: 2px; background: rgba(0,40,25,0.8);
+    flex: 1; height: 3px;
+    background: rgba(0,40,20,0.9);
+    border-radius: 999px;
     cursor: pointer; position: relative;
+    box-shadow: inset 0 0 4px rgba(0,0,0,0.8);
   }
   .progress-fill {
-    height: 100%;
+    height: 100%; border-radius: 999px;
     background: var(--energy-grad); background-size: 300% 300%;
     animation: sheen 2s ease-in-out infinite;
-    box-shadow: 0 0 12px #88ff00, 0 0 4px #88ff00;
+    box-shadow: 0 0 8px #88ff00, 0 0 3px #88ff00;
     transition: width 0.25s linear;
   }
   .volume-wrap {
@@ -2975,7 +3016,7 @@ function AudioPage({ currentTrack, setCurrentTrack, isPlaying, setIsPlaying }) {
     </div>
   );
 }
-function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack }) {
+function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack, navExpanded }) {
   const audioRef     = useRef(null);
   const scrubbing    = useRef(false);
   const [elapsed, setElapsed]   = useState(0);
@@ -3098,29 +3139,15 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack }) {
   const SPEEDS   = [1, 1.25, 1.5, 1.75, 2];
 
   return (
-    <div className="player-bar">
+    <div className={`player-bar${navExpanded ? "" : " retracted"}`}>
       <audio ref={audioRef} preload="auto" />
 
       {/* Track info */}
       <div className="track-info">
         <div className="track-title">{track?.title ?? "—"}</div>
         <div className="track-artist" style={{color: noSrc ? "var(--danger)" : "var(--muted)"}}>
-          {noSrc ? "No audio file linked" : track?.artist}
+          {noSrc ? "No file linked" : track?.artist}
         </div>
-      </div>
-
-      {/* Controls */}
-      <div className="player-controls">
-        <button className="ctrl-btn" onClick={() => skipTrack(-1)} disabled={noSrc} title="Previous track">⏮</button>
-        <button className="ctrl-btn" onClick={() => nudge(-15)}    disabled={noSrc} title="Back 15s"
-          style={{fontSize:11, fontFamily:"'Orbitron',sans-serif", letterSpacing:0, padding:"0 7px"}}>−15</button>
-        <button className="play-btn" onClick={() => setIsPlaying(!isPlaying)} disabled={noSrc}
-          style={{opacity: noSrc ? 0.4 : 1}}>
-          {isPlaying ? "⏸" : "▶"}
-        </button>
-        <button className="ctrl-btn" onClick={() => nudge(15)}     disabled={noSrc} title="Forward 15s"
-          style={{fontSize:11, fontFamily:"'Orbitron',sans-serif", letterSpacing:0, padding:"0 7px"}}>+15</button>
-        <button className="ctrl-btn" onClick={() => skipTrack(1)}  disabled={noSrc} title="Next track">⏭</button>
       </div>
 
       {/* Scrubable progress bar */}
@@ -3134,8 +3161,8 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack }) {
             <div style={{
               position:"absolute", top:"50%", left:`${progress}%`,
               transform:"translate(-50%,-50%)",
-              width:12, height:12, borderRadius:"50%",
-              background:"var(--accent)", boxShadow:"0 0 6px var(--accent)",
+              width:10, height:10, borderRadius:"50%",
+              background:"var(--accent)", boxShadow:"0 0 8px var(--accent), 0 0 16px var(--accent)",
               pointerEvents:"none",
             }} />
           )}
@@ -3143,25 +3170,36 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack }) {
         <span>{fmtTime(duration)}</span>
       </div>
 
-      {/* Speed + Volume */}
-      <div style={{display:"flex", alignItems:"center", gap:10, flexShrink:0}}>
-        {/* Speed selector */}
-        <div style={{display:"flex", gap:3, alignItems:"center"}}>
-          {SPEEDS.map(s => (
-            <button key={s} onClick={() => setSpeed(s)} disabled={noSrc}
-              style={{
-                background: speed === s ? "var(--accent)" : "var(--surface2)",
-                color:       speed === s ? "#000"         : "var(--muted)",
-                border:      speed === s ? "none"         : "1px solid var(--border)",
-                borderRadius:2, padding:"3px 6px",
-                fontSize:10, fontFamily:"'Orbitron',sans-serif", fontWeight:700,
-                cursor: noSrc ? "default" : "pointer", letterSpacing:0,
-                transition:"all 0.12s",
-              }}>
-              {s}×
-            </button>
-          ))}
-        </div>
+      {/* Controls */}
+      <div className="player-controls">
+        <button className="ctrl-btn" onClick={() => skipTrack(-1)} disabled={noSrc} title="Previous">⏮</button>
+        <button className="ctrl-btn" onClick={() => nudge(-15)} disabled={noSrc} title="−15s"
+          style={{fontSize:9, fontFamily:"'Orbitron',sans-serif", letterSpacing:0}}>−15</button>
+        <button className="play-btn" onClick={() => setIsPlaying(!isPlaying)} disabled={noSrc}>
+          {isPlaying ? "⏸" : "▶"}
+        </button>
+        <button className="ctrl-btn" onClick={() => nudge(15)} disabled={noSrc} title="+15s"
+          style={{fontSize:9, fontFamily:"'Orbitron',sans-serif", letterSpacing:0}}>+15</button>
+        <button className="ctrl-btn" onClick={() => skipTrack(1)} disabled={noSrc} title="Next">⏭</button>
+      </div>
+
+      {/* Speed selector */}
+      <div style={{display:"flex", gap:3, justifyContent:"center", position:"relative", zIndex:1}}>
+        {SPEEDS.map(s => (
+          <button key={s} onClick={() => setSpeed(s)} disabled={noSrc}
+            style={{
+              background: speed === s ? "rgba(136,255,0,0.2)" : "rgba(0,20,10,0.8)",
+              color:       speed === s ? "#88ff00"             : "rgba(0,200,100,0.4)",
+              border:      speed === s ? "1px solid rgba(136,255,0,0.6)" : "1px solid rgba(0,255,140,0.1)",
+              borderRadius: 999, padding:"3px 8px",
+              fontSize:9, fontFamily:"'Orbitron',sans-serif", fontWeight:700,
+              cursor: noSrc ? "default" : "pointer", letterSpacing:0.5,
+              transition:"all 0.12s",
+              boxShadow: speed === s ? "0 0 10px rgba(136,255,0,0.4), inset 0 0 8px rgba(136,255,0,0.1)" : "none",
+            }}>
+            {s}×
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -4145,7 +4183,7 @@ export default function App() {
         <WorkoutFigureBackdrop             visible={page === "workout"} />
       </div>
       {currentTrack && (
-        <PlayerBar track={currentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} tracks={PERMANENT_TRACKS} setTrack={setCurrentTrack} />
+        <PlayerBar track={currentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} tracks={PERMANENT_TRACKS} setTrack={setCurrentTrack} navExpanded={navExpanded} />
       )}
       {showProfile && (
         <UserProfileModal
