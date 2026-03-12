@@ -731,6 +731,7 @@ const css = `
     padding: 0; position: sticky; top: 0; height: 100vh;
     overflow: visible; justify-content: center;
     align-items: flex-start;
+    z-index: 10;
     transition: width 0.4s cubic-bezier(0.4,0,0.2,1), min-width 0.4s cubic-bezier(0.4,0,0.2,1);
   }
   .sidebar.nav-collapsed {
