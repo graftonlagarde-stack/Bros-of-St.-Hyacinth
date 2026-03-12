@@ -239,7 +239,11 @@ function BoardPage({ username }) {
 
   useEffect(() => {
     const el = scrollContainerRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    const frame = requestAnimationFrame(() =>
+      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; })
+    );
+    return () => cancelAnimationFrame(frame);
   }, [messages]);
 
 
@@ -3873,13 +3877,10 @@ export default function App() {
   useEffect(() => {
     if (!mainRef.current) return;
     const el = mainRef.current;
-    const frame = requestAnimationFrame(() => {
-      if (page === "boards") {
-        el.scrollTop = el.scrollHeight;
-      } else {
-        el.scrollTop = 0;
-      }
-    });
+    // Double rAF ensures React has fully committed new tab content before resetting scroll
+    const frame = requestAnimationFrame(() =>
+      requestAnimationFrame(() => { el.scrollTop = 0; })
+    );
     return () => cancelAnimationFrame(frame);
   }, [page]);
 
