@@ -2673,7 +2673,12 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             const camAngle = Math.atan2(toCamX, toCamZ);
             crossGroup.rotation.set(0, camAngle, 0);
             updateGlitter(clock.elapsedTime);
-            crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
+            // Mobile camera is farther (z=1200 vs 660) so cross appears smaller/dimmer — boost opacity to compensate
+            const baseOpacity = isMobile ? 1.0 : 0.88;
+            const opacityAmp  = isMobile ? 0.0  : 0.08;
+            crossMat.opacity = baseOpacity + Math.sin(clock.elapsedTime * 4.1) * opacityAmp + Math.sin(clock.elapsedTime * 11.3) * 0.04;
+            // Also apply to hBar clone
+            crossGroup.traverse(c => { if (c.isMesh && c.material !== crossMat) c.material.opacity = crossMat.opacity; });
 
             // Project crux world position → normalized screen coords for fog canvas
             const cruxWorld = new THREE.Vector3(crossGroup.position.x, crossGroup.position.y + crossH * 0.70, crossGroup.position.z);
@@ -2850,7 +2855,10 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       speed2:    3  + Math.random() * 7,
       phase1:    Math.random() * Math.PI * 2,
       phase2:    Math.random() * Math.PI * 2,
-      baseAlpha: 0.18 + Math.random() * 0.22,
+      // Mobile: boost base alpha to compensate for cross being farther from camera
+      baseAlpha: isMobile
+        ? (0.32 + Math.random() * 0.30)
+        : (0.18 + Math.random() * 0.22),
       r: 200 + Math.floor(Math.random() * 55),
       g: 215 + Math.floor(Math.random() * 40),
       b: 255,
@@ -3493,14 +3501,14 @@ function WorkoutPage({ username }) {
               ))}
             </div>
             <div className="form-label" style={{marginBottom:6}}>Weight (lbs)</div>
-            <input type="number" placeholder="e.g. 225" value={form.weight} onChange={e=>setForm({...form,weight:e.target.value})}
-              onKeyDown={e => e.key==="Enter" && addLog()} style={{marginBottom:4}} />
+            <input type="number" inputMode="numeric" pattern="[0-9]*" placeholder="e.g. 225" value={form.weight} onChange={e=>setForm({...form,weight:e.target.value})}
+              onKeyDown={e => e.key==="Enter" && addLog()} style={{marginBottom:4, fontSize:16}} />
             <div style={{fontSize:11,color:"var(--muted)",marginBottom:16}}>Enter the max weight you lifted for {form.repCat} rep{form.repCat>1?"s":""}.</div>
             </>)}
             {isBodyweight && (<>
             <div className="form-label" style={{marginBottom:6}}>Number of {form.exercise}s</div>
-            <input type="number" placeholder="e.g. 12" min="1" value={form.weight} onChange={e=>setForm({...form,weight:e.target.value})}
-              onKeyDown={e => e.key==="Enter" && addLog()} style={{marginBottom:4}} />
+            <input type="number" inputMode="numeric" pattern="[0-9]*" placeholder="e.g. 12" min="1" value={form.weight} onChange={e=>setForm({...form,weight:e.target.value})}
+              onKeyDown={e => e.key==="Enter" && addLog()} style={{marginBottom:4, fontSize:16}} />
             <div style={{fontSize:11,color:"var(--muted)",marginBottom:16}}>Enter the total number of {form.exercise.toLowerCase()}s you did.</div>
             </>)}
             {dupError && (
