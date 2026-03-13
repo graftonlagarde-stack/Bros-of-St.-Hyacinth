@@ -642,16 +642,6 @@ function BoardPage({ username }) {
     };
   }, [isMobile]);
 
-  useLayoutEffect(() => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-    const media = el.querySelectorAll("img, video");
-    const onLoad = () => { el.scrollTop = el.scrollHeight; };
-    media.forEach(m => m.addEventListener("load", onLoad));
-    return () => media.forEach(m => m.removeEventListener("load", onLoad));
-  }, [messages]);
-
   const uploadToCloudinary = async (file) => {
     const formData = new FormData();
     formData.append("file", file);
@@ -784,9 +774,12 @@ function BoardPage({ username }) {
   );
 
   // ── Message list ────────────────────────────────────────────────────────
-  const messageList = messages.map((msg, i) => {
+  // Rendered into a column-reverse container, so we reverse the array here
+  // to keep chronological order (oldest top → newest bottom) visually correct.
+  const messageList = [...messages].reverse().map((msg, i, arr) => {
     const isMe = msg.author === username;
-    const prevMsg = messages[i - 1];
+    // In the reversed array, the "previous" message is the one after in the array
+    const prevMsg = arr[i + 1];
     const grouped = prevMsg && prevMsg.author === msg.author && (msg.ts - prevMsg.ts) < 300000;
     const reactionEntries = Object.entries(msg.reactions).filter(([,users]) => users.length > 0);
 
@@ -830,10 +823,7 @@ function BoardPage({ username }) {
           }}>
             {msg.text && <div style={{whiteSpace:"pre-wrap"}}>{msg.text}</div>}
             {msg.text && extractUrls(msg.text).map(url => (
-              <LinkPreview key={url} url={url} onLoad={() => {
-                const el = scrollContainerRef.current;
-                if (el) el.scrollTop = el.scrollHeight;
-              }} />
+              <LinkPreview key={url} url={url} />
             ))}
             {[msg.media, ...(msg.mediaExtra||[])].filter(Boolean).map((m, mi) => (
               <div key={mi} style={{ marginTop: (mi === 0 && msg.text) ? 8 : mi > 0 ? 6 : 0 }}>
@@ -1020,8 +1010,7 @@ function BoardPage({ username }) {
       <>
         {lightbox}
         <div ref={chatRootRef} className="chat-mobile-root">
-          <div ref={scrollContainerRef} className="chat-mobile-messages" style={{ padding: "80px 14px 20px" }}>
-            <div style={{ flex: "1 0 0" }} />
+          <div ref={scrollContainerRef} className="chat-mobile-messages" style={{ padding: "80px 14px 20px", display: "flex", flexDirection: "column-reverse" }}>
             {messageList}
           </div>
           <div className="chat-mobile-input">
@@ -1037,8 +1026,7 @@ function BoardPage({ username }) {
     <>
       {lightbox}
       <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 0px)", overflow:"hidden", position:"relative" }}>
-        <div ref={scrollContainerRef} style={{ flex:1, overflowY:"scroll", overscrollBehavior:"none", WebkitOverflowScrolling:"auto", padding:"120px 28px 130px", display:"flex", flexDirection:"column", gap:4 }}>
-          <div style={{ flex: "1 0 0" }} />
+        <div ref={scrollContainerRef} style={{ flex:1, overflowY:"scroll", overscrollBehavior:"none", WebkitOverflowScrolling:"auto", padding:"120px 28px 130px", display:"flex", flexDirection:"column-reverse", gap:4 }}>
           {messageList}
         </div>
 
