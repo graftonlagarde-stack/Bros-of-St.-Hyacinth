@@ -143,6 +143,16 @@ const api = {
 };
 
 // ─── SEED DATA ────────────────────────────────────────────────────────────────
+const EMOJI_CATEGORIES = [
+  { label:"😊", emojis:["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","🥲","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫","🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬","🤥","😌","😔","😪","🤤","😴","😷","🤒","🤕","🤢","🤧","🥵","🥶","🥴","😵","🤯","🤠","🥳","🥸","😎","🤓","🧐","😕","😟","🙁","☹️","😮","😯","😲","😳","🥺","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😠","😡","🤬","😈","👿"] },
+  { label:"👋", emojis:["👋","🤚","🖐","✋","🖖","👌","🤌","🤏","✌️","🤞","🤟","🤘","🤙","👈","👉","👆","🖕","👇","☝️","👍","👎","✊","👊","🤛","🤜","👏","🙌","👐","🤲","🤝","🙏","✍️","💅","🤳","💪","🦾","🦵","🦶","👂","🦻","👃","🫀","🫁","🧠","🦷","🦴","👀","👁","👅","👄"] },
+  { label:"❤️", emojis:["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️","☯️","🕉","✡️","🔯","🛐","⛎","♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓","🆔","⚛️","🈴","🉑","📴","📳","🈶","🈚","🈸","🈺","🈷️","✴️","🆚","💮","🉐","㊙️","㊗️","🈴","🈵","🈹","🈲","🅰️","🅱️","🆎","🆑","🅾️","🆘"] },
+  { label:"🐶", emojis:["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧","🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🐛","🦋","🐌","🐞","🐜","🦟","🦗","🦂","🐢","🐍","🦎","🦖","🦕","🐙","🦑","🦐","🦞","🦀","🐡","🐠","🐟","🐬","🐳","🐋","🦈","🦭","🐊","🐅","🐆","🦓","🦍","🦧","🦣","🐘","🦛","🦏","🐪","🐫","🦒","🦘","🦬","🐃","🐂","🐄","🐎","🐖","🐏","🐑","🦙","🐐","🦌","🐕","🐩","🦮","🐕‍🦺","🐈","🐈‍⬛","🪶","🐓","🦃","🦤","🦚","🦜","🦢","🦩","🕊","🐇","🦝","🦨","🦡","🦫","🦦","🦥","🐁","🐀","🐿","🦔"] },
+  { label:"🍎", emojis:["🍏","🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🫐","🍈","🍒","🍑","🥭","🍍","🥥","🥝","🍅","🍆","🥑","🥦","🥬","🥒","🌶","🫑","🧄","🧅","🥔","🍠","🥐","🥯","🍞","🥖","🥨","🧀","🥚","🍳","🧈","🥞","🧇","🥓","🥩","🍗","🍖","🌭","🍔","🍟","🍕","🫓","🥙","🧆","🌮","🌯","🫔","🥗","🥘","🫕","🍝","🍜","🍛","🍣","🍱","🥟","🦪","🍤","🍙","🍘","🍥","🥮","🍢","🧁","🍰","🎂","🍮","🍭","🍬","🍫","🍿","🍩","🍪","🌰","🥜","🍯","🧃","🥤","🧋","☕","🍵","🫖","🍺","🍻","🥂","🍷","🥃","🍸","🍹","🧉","🍾","🧊"] },
+  { label:"⚽", emojis:["⚽","🏀","🏈","⚾","🥎","🎾","🏐","🏉","🥏","🎱","🪀","🏓","🏸","🏒","🏑","🥍","🏏","🪃","🥅","⛳","🪁","🎣","🤿","🎽","🎿","🛷","🥌","🎯","🪃","🎱","🎮","🕹","🎲","🧩","🧸","🪆","♟","🪅","🎭","🎨","🖼","🎰","🚂","🚃","🚄","🚅","🚆","🚇","🚈","🚉","🚊","🚝","🚞","🚋","🚌","🚍","🚎","🚐","🚑","🚒","🚓","🚔","🚕","🚖","🚗","🚘","🚙","🛻","🚚","🚛","🚜","🏎","🏍","🛵","🦽","🦼","🛺","🚲","🛴","🛹","🛼","🚏","🛣","🛤","⛽","🚨","🚥","🚦","🛑","🚧"] },
+  { label:"🌍", emojis:["🌍","🌎","🌏","🌐","🗺","🧭","🏔","⛰","🌋","🗻","🏕","🏖","🏜","🏝","🏞","🏟","🏛","🏗","🧱","🪨","🪵","🛖","🏘","🏚","🏠","🏡","🏢","🏣","🏤","🏥","🏦","🏨","🏩","🏪","🏫","🏬","🏭","🏯","🏰","💒","🗼","🗽","⛪","🕌","🛕","🕍","⛩","🕋","⛲","⛺","🌁","🌃","🏙","🌄","🌅","🌆","🌇","🌉","♨️","🌌","🌠","🎇","🎆","🌈","🌂","☂️","☔","⛱","⚡","❄️","☃️","⛄","☄️","🔥","💧","🌊"] },
+  { label:"💡", emojis:["💌","💣","🪤","🛡","⚔️","🔫","🪃","🪚","🔧","🪛","🔩","⚙️","🗜","🔗","⛓","🪝","🧲","🪜","🧰","🧲","🪜","💎","🔮","🪄","🧿","🪬","🧸","🪆","🪅","🎭","🎨","🖼","🎰","🔑","🗝","🔐","🔒","🔓","🚪","🪞","🪟","🛋","🪑","🚽","🪠","🚿","🛁","🪤","🧴","🧷","🧹","🧺","🧻","🪣","🧼","🫧","🪥","🧽","🪒","💊","💉","🩸","🩹","🩺","🩻","🩼","🏧","💰","💴","💵","💶","💷","💸","💳","🪙","💹","📈","📉","📊","💱","💲","✉️","📧","📨","📩","📪","📫","📬","📭","📮","🗳","📝","✏️","✒️","🖊","📌","📍","🗂","📁","📂","🗒","🗓","📆","📅","📇","📋","🗃","🗄","🗑","🔇","🔈","🔉","🔊","📢","📣","📡","🔔","🔕","🎵","🎶","🎙","🎚","🎛","📻","🎷","🪗","🎸","🎹","🎺","🎻","🥁","🪘","📱","☎️","📞","📟","📠","🔋","🪫","🔌","💡","🔦","🕯","🪔","🧯","🛢","💽","💾","💿","📀","🖥","🖨","⌨️","🖱","🖲","📷","📸","📹","🎥","📽","🎞","📞","📺","📻","🎙","🧭","⏱","⏰","⏲","⏳","⌚","🕰","⌛"] },
+];
 const EMOJI_REACTIONS = ["👍","💪","🔥","❤️","😂","🎯","👏","🤯"];
 
 // ─── BACKEND DATA HOOKS ───────────────────────────────────────────────────────
@@ -310,44 +320,57 @@ function AudioLightbox({ src, onClose }) {
     };
   }, []);
 
-  // Waveform — idle flat line when paused, oscilloscope line when playing
-  useEffect(() => {
+  // Keep a ref mirroring playing state so the draw loop always sees current value
+  const playingRef = useRef(false);
+  useEffect(() => { playingRef.current = playing; }, [playing]);
+
+  // Waveform — flat idle line immediately on open; live oscilloscope when playing.
+  // useLayoutEffect (not useEffect) so canvasRef.current is guaranteed attached
+  // even inside a createPortal before the browser has painted.
+  useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     let rafId;
     const ctx2d = canvas.getContext("2d");
+
+    // Draw the idle line once synchronously before the first RAF tick
+    const w = canvas.width, h = canvas.height;
+    ctx2d.clearRect(0, 0, w, h);
+    ctx2d.strokeStyle = "rgba(0,255,140,0.3)";
+    ctx2d.lineWidth = 1.5;
+    ctx2d.beginPath();
+    ctx2d.moveTo(0, h / 2);
+    ctx2d.lineTo(w, h / 2);
+    ctx2d.stroke();
+
     const draw = () => {
       rafId = requestAnimationFrame(draw);
       const w = canvas.width, h = canvas.height;
       ctx2d.clearRect(0, 0, w, h);
-      if (analyserRef.current) {
+      ctx2d.lineWidth = 1.5;
+      ctx2d.beginPath();
+      if (analyserRef.current && playingRef.current) {
+        // Live oscilloscope
         analyserRef.current.fftSize = 2048;
         const bufLen = analyserRef.current.fftSize;
         const data   = new Uint8Array(bufLen);
         analyserRef.current.getByteTimeDomainData(data);
-        // Check if audio is actually playing (data deviates from flat 128)
-        const isActive = data.some(v => v !== 128);
-        ctx2d.strokeStyle = isActive ? "rgba(0,255,140,0.85)" : "rgba(0,255,140,0.3)";
-        ctx2d.lineWidth   = 1.5;
-        ctx2d.beginPath();
-        if (isActive) {
-          // Live oscilloscope — follows actual waveform
-          const sliceW = w / bufLen;
-          let x = 0;
-          for (let i = 0; i < bufLen; i++) {
-            const v = data[i] / 128.0;
-            const y = (v * h) / 2;
-            i === 0 ? ctx2d.moveTo(x, y) : ctx2d.lineTo(x, y);
-            x += sliceW;
-          }
-        } else {
-          // Idle — flat centre line
-          ctx2d.moveTo(0, h / 2);
-          ctx2d.lineTo(w, h / 2);
+        ctx2d.strokeStyle = "rgba(0,255,140,0.85)";
+        const sliceW = w / bufLen;
+        let x = 0;
+        for (let i = 0; i < bufLen; i++) {
+          const v = data[i] / 128.0;
+          const y = (v * h) / 2;
+          i === 0 ? ctx2d.moveTo(x, y) : ctx2d.lineTo(x, y);
+          x += sliceW;
         }
-        ctx2d.stroke();
+      } else {
+        // Idle — dim flat centre line
+        ctx2d.strokeStyle = "rgba(0,255,140,0.3)";
+        ctx2d.moveTo(0, h / 2);
+        ctx2d.lineTo(w, h / 2);
       }
-      // No analyser yet — blank canvas
+      ctx2d.stroke();
     };
     draw();
     return () => cancelAnimationFrame(rafId);
@@ -471,7 +494,7 @@ function extractUrls(text) {
   return text ? [...new Set(text.match(URL_REGEX) || [])] : [];
 }
 
-function LinkPreview({ url }) {
+function LinkPreview({ url, onLoad }) {
   const [data, setData] = useState(null);
   const [failed, setFailed] = useState(false);
 
@@ -482,10 +505,18 @@ function LinkPreview({ url }) {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
       .then(r => r.json())
-      .then(d => { if (!cancelled && d.title) setData(d); else if (!cancelled) setFailed(true); })
+      .then(d => {
+        if (!cancelled && d.title) { setData(d); }
+        else if (!cancelled) setFailed(true);
+      })
       .catch(() => { if (!cancelled) setFailed(true); });
     return () => { cancelled = true; };
   }, [url]);
+
+  // Scroll to bottom whenever preview card appears (text-only, no image)
+  useEffect(() => {
+    if (data && !data.image && onLoad) onLoad();
+  }, [data]);
 
   if (failed || !data) return null;
 
@@ -498,7 +529,8 @@ function LinkPreview({ url }) {
       onClick={e => e.stopPropagation()}>
       {data.image && (
         <img src={data.image} alt="" style={{ width:"100%", maxHeight:140, objectFit:"cover", display:"block" }}
-          onError={e => { e.target.style.display = "none"; }} />
+          onLoad={() => { if (onLoad) onLoad(); }}
+          onError={e => { e.target.style.display = "none"; if (onLoad) onLoad(); }} />
       )}
       <div style={{ padding:"8px 10px" }}>
         {data.siteName && (
@@ -530,15 +562,28 @@ function BoardPage({ username }) {
   const [attachWarning, setAttachWarning] = useState(false);
   const [uploading, setUploading]       = useState(false);
   const [emojiPickerFor, setEmojiPickerFor] = useState(null);
+  const [emojiCatIdx, setEmojiCatIdx] = useState(0);
   const [lightboxSrc, setLightboxSrc]   = useState(null); // fullscreen media viewer
   const [lightboxType, setLightboxType] = useState(null); // "image" | "video"
   const scrollContainerRef = useRef(null);
   const textareaRef = useRef(null);
   const fileRef   = useRef(null);
-  const emojiInputRef = useRef(null);   // hidden input for native emoji picker
+  const emojiInputRef = useRef(null);   // unused - kept for compat
   const emojiTargetRef = useRef(null);  // message id currently being reacted to
 
   useEffect(() => { fetchMessages(); }, []);
+
+  // Close emoji picker on outside click
+  useEffect(() => {
+    if (!emojiPickerFor) return;
+    const close = () => setEmojiPickerFor(null);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("touchstart", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("touchstart", close);
+    };
+  }, [emojiPickerFor]);
 
   // Auto-grow textarea
   useEffect(() => {
@@ -779,7 +824,12 @@ function BoardPage({ username }) {
             color: "#ffffff",
           }}>
             {msg.text && <div style={{whiteSpace:"pre-wrap"}}>{msg.text}</div>}
-            {msg.text && extractUrls(msg.text).map(url => <LinkPreview key={url} url={url} />)}
+            {msg.text && extractUrls(msg.text).map(url => (
+              <LinkPreview key={url} url={url} onLoad={() => {
+                const el = scrollContainerRef.current;
+                if (el) el.scrollTop = el.scrollHeight;
+              }} />
+            ))}
             {[msg.media, ...(msg.mediaExtra||[])].filter(Boolean).map((m, mi) => (
               <div key={mi} style={{ marginTop: (mi === 0 && msg.text) ? 8 : mi > 0 ? 6 : 0 }}>
                 {m.type?.startsWith("image/") && (
@@ -837,15 +887,55 @@ function BoardPage({ username }) {
 
           <div style={{ position:"relative" }}>
             <button
-              onClick={() => {
-                emojiTargetRef.current = msg.id;
-                setEmojiPickerFor(emojiPickerFor === msg.id ? null : msg.id);
-                // Focus the hidden input after state update so keyboard appears
-                setTimeout(() => { if (emojiInputRef.current) emojiInputRef.current.focus(); }, 50);
-              }}
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => setEmojiPickerFor(emojiPickerFor === msg.id ? null : msg.id)}
               style={{ background:"none", border:"none", cursor:"pointer", color:"var(--muted)", fontSize:12, padding:"3px 6px", opacity:0.5, marginTop:2 }}>
               😊 +
             </button>
+            {emojiPickerFor === msg.id && (
+              <div
+                onMouseDown={e => e.preventDefault()}
+                style={{
+                  position:"absolute", bottom:"calc(100% + 4px)", [isMe?"right":"left"]:0,
+                  background:"#0a1a0e", border:"1px solid rgba(136,255,0,0.25)",
+                  borderRadius:8, zIndex:200,
+                  boxShadow:"0 8px 32px rgba(0,0,0,0.8), 0 0 24px rgba(136,255,0,0.08)",
+                  width:260, display:"flex", flexDirection:"column", overflow:"hidden",
+                }}>
+                {/* Category tabs */}
+                <div style={{ display:"flex", borderBottom:"1px solid rgba(136,255,0,0.15)", background:"rgba(0,0,0,0.3)" }}>
+                  {EMOJI_CATEGORIES.map((cat, ci) => (
+                    <button key={ci}
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => setEmojiCatIdx(ci)}
+                      style={{
+                        flex:1, border:"none", background:"none", cursor:"pointer",
+                        padding:"6px 0", fontSize:14,
+                        borderBottom: ci === emojiCatIdx ? "2px solid rgba(136,255,0,0.7)" : "2px solid transparent",
+                        opacity: ci === emojiCatIdx ? 1 : 0.45,
+                      }}>
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+                {/* Emoji grid */}
+                <div style={{ display:"flex", flexWrap:"wrap", gap:0, padding:4, maxHeight:180, overflowY:"auto" }}>
+                  {EMOJI_CATEGORIES[emojiCatIdx].emojis.map(e => (
+                    <button key={e}
+                      onMouseDown={ev => ev.preventDefault()}
+                      onClick={() => { toggleReaction(msg.id, e); setEmojiPickerFor(null); }}
+                      style={{
+                        background: (msg.reactions[e]||[]).includes(username) ? "rgba(136,255,0,0.15)" : "none",
+                        border:"none", cursor:"pointer", fontSize:20,
+                        borderRadius:4, padding:"5px", lineHeight:1,
+                        transition:"background 0.1s", minWidth:36,
+                      }}>
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -923,20 +1013,6 @@ function BoardPage({ username }) {
     return (
       <>
         {lightbox}
-        {/* Hidden input for native emoji picker — receives emoji, fires reaction, then clears */}
-        <input ref={emojiInputRef} type="text"
-          style={{ position:"fixed", opacity:0, pointerEvents:"none", width:1, height:1, top:-99, left:-99, fontSize:16 }}
-          onChange={e => {
-            const val = e.target.value.trim();
-            if (val && emojiTargetRef.current) {
-              toggleReaction(emojiTargetRef.current, val);
-              emojiTargetRef.current = null;
-              setEmojiPickerFor(null);
-            }
-            e.target.value = "";
-          }}
-          onBlur={() => setEmojiPickerFor(null)}
-        />
         <div ref={chatRootRef} className="chat-mobile-root">
           <div ref={scrollContainerRef} className="chat-mobile-messages" style={{ padding: "80px 14px 20px" }}>
             <div style={{ flex: "1 0 0" }} />
@@ -954,20 +1030,6 @@ function BoardPage({ username }) {
   return (
     <>
       {lightbox}
-      {/* Hidden input for native emoji picker */}
-      <input ref={emojiInputRef} type="text"
-        style={{ position:"fixed", opacity:0, pointerEvents:"none", width:1, height:1, top:-99, left:-99, fontSize:16 }}
-        onChange={e => {
-          const val = e.target.value.trim();
-          if (val && emojiTargetRef.current) {
-            toggleReaction(emojiTargetRef.current, val);
-            emojiTargetRef.current = null;
-            setEmojiPickerFor(null);
-          }
-          e.target.value = "";
-        }}
-        onBlur={() => setEmojiPickerFor(null)}
-      />
       <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 0px)", overflow:"hidden", position:"relative" }}>
         <div ref={scrollContainerRef} style={{ flex:1, overflowY:"scroll", overscrollBehavior:"none", WebkitOverflowScrolling:"auto", padding:"120px 28px 130px", display:"flex", flexDirection:"column", gap:4 }}>
           <div style={{ flex: "1 0 0" }} />
@@ -2370,6 +2432,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       const crossMat = new THREE.MeshBasicMaterial({
         map: glitterTex, transparent: true, opacity: 1.0,
         blending: THREE.AdditiveBlending, depthWrite: false,
+        depthTest: !isMobile, // mobile: disable depth test so renderOrder alone controls layering
       });
 
       const crossGroup = new THREE.Group();
@@ -2386,6 +2449,10 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
       const crossCenterX = isMobile ? 0 : (-160 * crossWorldPerPx);
       crossGroup.position.set(crossCenterX, 0, 0);
+      if (isMobile) {
+        crossGroup.renderOrder = 0;
+        crossGroup.traverse(c => { c.renderOrder = 0; });
+      }
       scene.add(crossGroup);
 
       const wireMat = new THREE.MeshBasicMaterial({
