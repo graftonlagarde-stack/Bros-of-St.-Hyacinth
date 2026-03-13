@@ -1867,16 +1867,21 @@ const css = `
       color: var(--muted) !important;
       border-color: rgba(136,255,0,0.12) !important;
     }
+    /* Active tab: hover must be identical to active state so it never visually changes */
     .nav-item-wrap.active-wrap:hover .nav-item,
     .nav-item.active:hover {
-      background: rgba(0,80,0,0.85) !important;
-      color: #88ff00 !important;
-      border-color: rgba(136,255,0,0.6) !important;
+      background: linear-gradient(90deg, #aaee00 0%, #88cc00 60%, #669900 100%) !important;
+      color: #001a00 !important;
+      border-color: #ccff00 !important;
+      box-shadow: 0 0 18px #88ff0088, 0 0 40px #44cc0044, inset 0 1px 0 rgba(255,255,255,0.3) !important;
     }
 
     /* ── Denser grid plane on mobile — double the line frequency ── */
+    /* ── Slower scroll + raised front end ── */
     .app-bg::before {
       background-size: 40px 40px !important;
+      animation-duration: 6s !important;
+      transform: perspective(600px) rotateX(85deg) translateY(35%) !important;
     }
 
     /* ── Main: full viewport, slides in from right when nav retracts ── */
