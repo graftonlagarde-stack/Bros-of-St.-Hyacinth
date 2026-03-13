@@ -490,6 +490,15 @@ function AudioLightbox({ src, onClose }) {
 // ─── LINK PREVIEW ────────────────────────────────────────────────────────────
 const URL_REGEX = /https?:\/\/[^\s<>"']+/g;
 
+// Returns up to 2 initials from a display name — first letter of first word
+// and first letter of last word (if different). e.g. "John Doe" → "JD", "John" → "JO"
+function initials(name) {
+  if (!name) return "??";
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 function extractUrls(text) {
   return text ? [...new Set(text.match(URL_REGEX) || [])] : [];
 }
@@ -799,7 +808,7 @@ function BoardPage({ username }) {
         <div style={{ width:32, flexShrink:0 }}>
           {!grouped && (
             <div className="avatar sm" style={{ background: isMe ? "linear-gradient(135deg,#003322,#006644)" : "linear-gradient(135deg,#001a10,#002e1a)", color:"#88ff00" }}>
-              {msg.author.slice(0,2).toUpperCase()}
+              {initials(msg.author)}
             </div>
           )}
         </div>
@@ -3615,7 +3624,7 @@ function WorkoutPage({ username }) {
           ) : communityUsers.map(u => (
             <div key={u.name} className={`compare-card ${compareUser===u.name?"sel":""}`} onClick={() => setCompareUser(compareUser===u.name?null:u.name)}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <div className="avatar sm">{u.name.slice(0,2).toUpperCase()}</div>
+                <div className="avatar sm">{initials(u.name)}</div>
                 <div><div className="cname">{u.name}</div><div className="csub">{Object.keys(u.logs).length} exercises tracked</div></div>
               </div>
             </div>
@@ -4141,7 +4150,7 @@ function TopChartsPage({ username }) {
                       {i < 3 ? <span style={{fontFamily:"'Orbitron',sans-serif",fontWeight:900,fontSize:13,color:medalColors[i],textShadow:`0 0 8px ${medalColors[i]}99`,letterSpacing:1}}>{medalLabels[i]}</span> : <span style={{color:"var(--muted)",fontWeight:700,fontSize:13,fontFamily:"'Orbitron',sans-serif"}}>#{i+1}</span>}
                     </div>
                     <div className="avatar sm" style={{background: entry.isMe ? "var(--accent)" : "var(--surface)"}}>
-                      {entry.name.slice(0,2).toUpperCase()}
+                      {initials(entry.name)}
                     </div>
                     <div style={{flex:1}}>
                       <div style={{fontWeight:700,fontSize:14,color: entry.isMe ? "var(--accent)" : "var(--text)"}}>
@@ -4178,7 +4187,7 @@ function TopChartsPage({ username }) {
                     {top ? (
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         <div className="avatar sm" style={{background: top.isMe ? "var(--accent)" : "var(--surface2)"}}>
-                          {top.name.slice(0,2).toUpperCase()}
+                          {initials(top.name)}
                         </div>
                         <span style={{fontWeight:600,color: top.isMe ? "var(--accent)" : "var(--text)"}}>{top.name}{top.isMe?" (You)":""}</span>
                       </div>
@@ -4345,7 +4354,7 @@ function AdminPanel({ currentUser, onClose }) {
                             : "linear-gradient(135deg,#001a10,#002e1a)",
                   color: badge.color,
                 }}>
-                  {u.displayName.slice(0,2).toUpperCase()}
+                  {initials(u.displayName)}
                 </div>
                 <div style={{flex:1, minWidth:0}}>
                   <div style={{display:"flex", alignItems:"center", gap:8}}>
@@ -4625,7 +4634,7 @@ function UserProfileModal({ user, onClose, onDeleted, onLogout }) {
         {/* Avatar + name */}
         <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:24}}>
           <div className="avatar" style={{width:52,height:52,fontSize:18}}>
-            {user.displayName.slice(0,2).toUpperCase()}
+            {initials(user.displayName)}
           </div>
           <div>
             <div style={{fontWeight:700,fontSize:16,marginBottom:2}}>{user.displayName}</div>
