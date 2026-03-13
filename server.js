@@ -637,29 +637,43 @@ app.get("/api/link-preview", requireAuth, async (req, res) => {
       signal: AbortSignal.timeout(8000),
       redirect: "follow",
     });
-    // Read up to 200KB — enough for <head> on any page
-    const buf = await response.arrayBuffer();
-    const html = new TextDecoder().decode(buf.slice(0, 204800));
+    const buf  = await response.arrayBuffer();
+    const html = new TextDecoder().decode(buf.slice(0, 300000));
 
-    // Robust meta tag extractor — handles any attribute order, single/double quotes
-    const getMeta = (...props) => {
-      for (const prop of props) {
-        // Escape for regex (colon is NOT special, but escape other regex chars just in case)
-        const esc = prop.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        // property/name before content
-        const re  = new RegExp(`<meta[^>]+(?:property|name)\\s*=\\s*["']${esc}["'][^>]+content\\s*=\\s*["']([^"'>]+)["']`, "i");
-        // content before property/name
-        const re2 = new RegExp(`<meta[^>]+content\\s*=\\s*["']([^"'>]+)["'][^>]+(?:property|name)\\s*=\\s*["']${esc}["']`, "i");
-        const m = html.match(re) || html.match(re2);
-        if (m?.[1]) return m[1].trim();
+    // Pull every <meta ...> tag out of the HTML as raw strings (handles multi-line tags)
+    const metaTags = [];
+    const metaRe = /<meta\s[^>]*?(?:\/>|>)/gis;
+    let m;
+    while ((m = metaRe.exec(html)) !== null) metaTags.push(m[0]);
+
+    // From a single <meta> tag string, extract an attribute value by name
+    const attr = (tag, name) => {
+      const r = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*?)"|'([^']*?)'|([^\\s/>]+))`, "i");
+      const x = r.exec(tag);
+      return x ? (x[1] ?? x[2] ?? x[3] ?? "").trim() : null;
+    };
+
+    // Find the content of a meta tag whose property or name matches any of the given values
+    const getMeta = (...names) => {
+      for (const name of names) {
+        const lower = name.toLowerCase();
+        for (const tag of metaTags) {
+          const prop = (attr(tag, "property") || attr(tag, "name") || "").toLowerCase();
+          if (prop === lower) {
+            const val = attr(tag, "content");
+            if (val) return val;
+          }
+        }
       }
       return null;
     };
 
-    const titleMatch = html.match(/<title[^>]*>([^<]{1,300})<\/title>/i);
-    const title       = getMeta("og:title", "twitter:title") || (titleMatch ? titleMatch[1].trim() : null);
+    const titleMatch = html.match(/<title[^>]*>([\s\S]{1,300}?)<\/title>/i);
+    const rawTitle   = titleMatch ? titleMatch[1].replace(/\s+/g, " ").trim() : null;
+
+    const title       = getMeta("og:title", "twitter:title") || rawTitle;
     const description = getMeta("og:description", "twitter:description", "description");
-    const image       = getMeta("og:image", "twitter:image", "twitter:image:src");
+    const image       = getMeta("og:image", "og:image:url", "twitter:image", "twitter:image:src");
     const siteName    = getMeta("og:site_name");
     const domain      = new URL(url).hostname.replace(/^www\./, "");
 

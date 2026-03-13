@@ -2804,6 +2804,12 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         if (!animId) {
           const animate = () => {
             animId = requestAnimationFrame(animate);
+            const toCamX = camera.position.x - crossGroup.position.x;
+            const toCamZ = camera.position.z - crossGroup.position.z;
+            crossGroup.rotation.y = Math.atan2(toCamX, toCamZ);
+            const cruxWorld = new THREE.Vector3(crossGroup.position.x, crossGroup.position.y + crossH * 0.70, crossGroup.position.z);
+            cruxWorld.project(camera);
+            cruxScreenPos.current = { x: (cruxWorld.x + 1) / 2, y: (1 - cruxWorld.y) / 2 };
             renderer.render(scene, camera);
           };
           animate();
