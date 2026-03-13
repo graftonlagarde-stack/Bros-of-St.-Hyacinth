@@ -1880,8 +1880,8 @@ const css = `
     /* ── Slower scroll + raised front end ── */
     .app-bg::before {
       background-size: 40px 40px !important;
-      animation-duration: 6s !important;
-      transform: perspective(600px) rotateX(85deg) translateY(35%) !important;
+      animation-duration: 9s !important;
+      transform: perspective(600px) rotateX(87deg) translateY(35%) !important;
     }
 
     /* ── Main: full viewport, slides in from right when nav retracts ── */
