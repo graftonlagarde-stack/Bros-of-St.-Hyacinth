@@ -9,14 +9,21 @@ self.addEventListener("push", (event) => {
   try { data = event.data.json(); } catch {}
 
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body:    data.body,
-      icon:    "/logo192.png",
-      badge:   "/logo192.png",
-      tag:     data.tag || "bsh-notification",
-      renotify: true,
-      data:    { url: data.url || "/" },
-    })
+    Promise.all([
+      self.registration.showNotification(data.title, {
+        body:    data.body,
+        icon:    "/logo192.png",
+        badge:   "/logo192.png",
+        tag:     data.tag || "bsh-notification",
+        renotify: true,
+        data:    { url: data.url || "/" },
+      }),
+      // Set the app icon badge to the unread count sent by the server.
+      // Supported on iOS 16.4+ and Android Chrome for installed PWAs.
+      typeof self.navigator !== "undefined" && self.navigator.setAppBadge
+        ? self.navigator.setAppBadge(data.badge || 1)
+        : Promise.resolve(),
+    ])
   );
 });
 
