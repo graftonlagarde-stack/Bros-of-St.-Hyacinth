@@ -1877,8 +1877,11 @@ const css = `
     }
 
     /* ── Denser grid plane on mobile — double the line frequency ── */
-    /* ── Slower scroll + raised front end ── */
+    /* ── Slower scroll + raised front end + thinner lines ── */
     .app-bg::before {
+      background-image:
+        linear-gradient(rgba(136,255,0,0.38) 0.5px, transparent 0.5px),
+        linear-gradient(90deg, rgba(136,255,0,0.38) 0.5px, transparent 0.5px) !important;
       background-size: 20px 20px !important;
       animation-duration: 14s !important;
       transform: perspective(600px) rotateX(88deg) translateY(35%) !important;
