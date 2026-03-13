@@ -1874,6 +1874,11 @@ const css = `
       border-color: rgba(136,255,0,0.6) !important;
     }
 
+    /* ── Denser grid plane on mobile — double the line frequency ── */
+    .app-bg::before {
+      background-size: 40px 40px !important;
+    }
+
     /* ── Main: full viewport, slides in from right when nav retracts ── */
     .main {
       display: block !important;
@@ -1928,7 +1933,7 @@ const css = `
       right: 0 !important;
       width: 100% !important;
       border-radius: 0 !important;
-      padding: 8px 14px !important;
+      padding: 8px 14px 18px !important;
       background: none !important;
       border: none !important;
       box-shadow: none !important;
@@ -2285,7 +2290,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       });
 
       const crossGroup = new THREE.Group();
-      const crossH = isMobile ? 279 : 230, crossW = isMobile ? 170 : 125, barThick = isMobile ? 30 : 23;
+      const crossH = isMobile ? 279 : 230, crossW = isMobile ? 153 : 125, barThick = isMobile ? 30 : 23;
       const vBar = new THREE.Mesh(new THREE.BoxGeometry(barThick, crossH, barThick), crossMat);
       vBar.position.y = crossH / 2;
       const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), crossMat.clone());
@@ -4810,8 +4815,6 @@ export default function App() {
               return (
                 <div key={n.id} className={`nav-item-wrap${isActive ? " active-wrap" : ""}`}
                   onTouchStart={() => { setPressedId(n.id); handleSetPage(n.id); }}
-                  onTouchEnd={() => setPressedId(null)}
-                  onTouchCancel={() => setPressedId(null)}
                   onClick={() => handleSetPage(n.id)}>
                   <div className={`nav-item${isActive ? " active" : ""}`}>{n.label}</div>
                 </div>
