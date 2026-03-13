@@ -626,28 +626,47 @@ async function sendPushToUser(userId, payload) {
 app.get("/api/link-preview", requireAuth, async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: "url is required" });
-  try {
-    new URL(url); // validate
-  } catch {
-    return res.status(400).json({ error: "Invalid URL" });
-  }
+  try { new URL(url); } catch { return res.status(400).json({ error: "Invalid URL" }); }
   try {
     const response = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; BrosBot/1.0)" },
-      signal: AbortSignal.timeout(5000),
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+      },
+      signal: AbortSignal.timeout(8000),
+      redirect: "follow",
     });
-    const html = await response.text();
-    const get = (prop) => {
-      const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']+)["']`, "i"))
-               || html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${prop}["']`, "i"));
-      return m ? m[1] : null;
+    // Read up to 200KB — enough for <head> on any page
+    const buf = await response.arrayBuffer();
+    const html = new TextDecoder().decode(buf.slice(0, 204800));
+
+    // Robust meta tag extractor — handles any attribute order, single/double quotes, no quotes
+    const getMeta = (...props) => {
+      for (const prop of props) {
+        // Match <meta ... property/name="prop" ... content="val" ...> in any attribute order
+        const re = new RegExp(
+          `<meta[^>]+(?:property|name)\\s*=\\s*["']?${prop.replace(/:/g,"\\:")}["']?[^>]+content\\s*=\\s*["']([^"']+)["']`,
+          "i"
+        );
+        const re2 = new RegExp(
+          `<meta[^>]+content\\s*=\\s*["']([^"']+)["'][^>]+(?:property|name)\\s*=\\s*["']?${prop.replace(/:/g,"\\:")}["']?`,
+          "i"
+        );
+        const m = html.match(re) || html.match(re2);
+        if (m?.[1]) return m[1].trim();
+      }
+      return null;
     };
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-    const title       = get("og:title")       || (titleMatch ? titleMatch[1].trim() : null);
-    const description = get("og:description") || get("description");
-    const image       = get("og:image");
-    const siteName    = get("og:site_name");
+
+    const titleMatch = html.match(/<title[^>]*>([^<]{1,300})<\/title>/i);
+    const title       = getMeta("og:title", "twitter:title") || (titleMatch ? titleMatch[1].trim() : null);
+    const description = getMeta("og:description", "twitter:description", "description");
+    const image       = getMeta("og:image", "twitter:image", "twitter:image:src");
+    const siteName    = getMeta("og:site_name");
     const domain      = new URL(url).hostname.replace(/^www\./, "");
+
+    if (!title) return res.status(422).json({ error: "No preview data found" });
     return res.json({ title, description, image, siteName, domain, url });
   } catch (err) {
     return res.status(502).json({ error: "Could not fetch preview: " + err.message });
