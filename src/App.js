@@ -2856,7 +2856,16 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       b: 255,
     }));
 
-    const draw = () => {
+    const SLOW_MS_FOG = 1000 / 50;
+    const CAP_MS_FOG  = 1000 / 30;
+    let lastFogFrame = 0;
+    let avgFogMs = 16.7;
+    const draw = (now) => {
+      rafId = requestAnimationFrame(draw);
+      const delta = now - lastFogFrame;
+      avgFogMs = avgFogMs * 0.9 + delta * 0.1;
+      if (avgFogMs > SLOW_MS_FOG && delta < CAP_MS_FOG) return;
+      lastFogFrame = now;
       const t  = (performance.now() - startTime) / 1000;
       const cw = canvas.offsetWidth;
       const ch = canvas.offsetHeight;
@@ -2890,7 +2899,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
 
       rafId = requestAnimationFrame(draw);
     };
-    draw();
+    draw(0);
     return () => cancelAnimationFrame(rafId);
   }, []);
 
@@ -4894,14 +4903,22 @@ export default function App() {
           gltf.animations.forEach(clip => mixer.clipAction(clip).play());
         }
 
-        function animate() {
+        let lastOrbFrame = 0;
+        let avgOrbMs = 16.7;
+        const SLOW_MS_ORB = 1000 / 50;
+        const CAP_MS_ORB  = 1000 / 30;
+        function animate(now) {
           animId = requestAnimationFrame(animate);
+          const delta = now - lastOrbFrame;
+          avgOrbMs = avgOrbMs * 0.9 + delta * 0.1;
+          if (avgOrbMs > SLOW_MS_ORB && delta < CAP_MS_ORB) return;
+          lastOrbFrame = now;
           const dt = clock.getDelta();
           if (mixer) mixer.update(dt);
           model.position.y = Math.sin(clock.elapsedTime * 0.9) * 0.06;
           renderer.render(scene, cam);
         }
-        animate();
+        animate(0);
       }, undefined, err => console.warn("GLB load error:", err));
     }
 
