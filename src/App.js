@@ -4573,7 +4573,7 @@ function AuthScreen({ onAuth }) {
 }
 
 // ─── USER PROFILE MODAL ───────────────────────────────────────────────────────
-function UserProfileModal({ user, onClose, onDeleted }) {
+function UserProfileModal({ user, onClose, onDeleted, onLogout }) {
   const [deleteStep, setDeleteStep] = useState(false); // show confirm form
   const [pw1, setPw1]   = useState("");
   const [pw2, setPw2]   = useState("");
@@ -4647,6 +4647,16 @@ function UserProfileModal({ user, onClose, onDeleted }) {
             <span style={{color:"var(--text)",fontWeight:600}}>{val}</span>
           </div>
         ))}
+
+        {/* Logout section */}
+        <div style={{marginTop:28}}>
+          <button className="btn" style={{
+            width:"100%",justifyContent:"center",padding:"10px 20px",
+            color:"var(--muted)",borderColor:"rgba(136,255,0,0.15)",fontSize:11,letterSpacing:2,
+          }} onClick={onLogout}>
+            LOG OUT
+          </button>
+        </div>
 
         {/* Delete section */}
         <div style={{marginTop:28}}>
@@ -5042,6 +5052,7 @@ export default function App() {
           user={user}
           onClose={() => setShowProfile(false)}
           onDeleted={handleDeleted}
+          onLogout={() => { setShowProfile(false); handleLogout(); }}
         />
       )}
       {showAdmin && (
