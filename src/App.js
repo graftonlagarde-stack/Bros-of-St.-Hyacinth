@@ -10,6 +10,63 @@ const useIsMobile = () => {
   }, []);
   return mobile;
 };
+
+// ─── PUSH NOTIFICATIONS ───────────────────────────────────────────────────────
+// Registers the service worker, fetches the VAPID key, subscribes the device,
+// and posts the subscription to the server. Call once on mobile when logged in.
+function usePushNotifications(token) {
+  useEffect(() => {
+    if (!token) return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+
+    let swReg = null;
+
+    const setup = async () => {
+      try {
+        // Register (or reuse) our service worker
+        swReg = await navigator.serviceWorker.register("/service-worker.js");
+
+        // Fetch VAPID public key from server
+        const keyRes = await fetch(`${API_BASE}/api/push/vapid-public-key`);
+        if (!keyRes.ok) return; // push not configured on server yet
+        const { key } = await keyRes.json();
+
+        // Check existing subscription
+        let sub = await swReg.pushManager.getSubscription();
+        if (!sub) {
+          // Request permission then subscribe
+          const permission = await Notification.requestPermission();
+          if (permission !== "granted") return;
+          sub = await swReg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(key),
+          });
+        }
+
+        // Send subscription to server
+        await fetch(`${API_BASE}/api/push/subscribe`, {
+          method:  "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body:    JSON.stringify(sub.toJSON()),
+        });
+      } catch (err) {
+        console.warn("Push setup failed:", err.message);
+      }
+    };
+
+    setup();
+  }, [token]);
+}
+
+// Converts a base64 VAPID key string to a Uint8Array (required by subscribe())
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64  = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw     = atob(base64);
+  const output  = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+  return output;
+}
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
@@ -1802,6 +1859,19 @@ const css = `
     }
     .nav-item-wrap .nav-item {
       transition: transform 0.1s ease, font-size 0.1s ease !important;
+    }
+    /* No hover state on mobile — only selected or unselected */
+    .nav-item-wrap:hover .nav-item,
+    .nav-item:hover {
+      background: transparent !important;
+      color: var(--muted) !important;
+      border-color: rgba(136,255,0,0.12) !important;
+    }
+    .nav-item-wrap.active-wrap:hover .nav-item,
+    .nav-item.active:hover {
+      background: rgba(0,80,0,0.85) !important;
+      color: #88ff00 !important;
+      border-color: rgba(136,255,0,0.6) !important;
     }
 
     /* ── Main: full viewport, slides in from right when nav retracts ── */
@@ -4469,6 +4539,9 @@ export default function App() {
 
   const [currentTrack, setCurrentTrack] = useState(PERMANENT_TRACKS[0] ?? null);
   const [isPlaying, setIsPlaying]       = useState(false);
+
+  // Push notifications — mobile only, only when logged in
+  usePushNotifications(isMobile ? api.getToken() : null);
 
   // On mount: try to restore session from stored JWT
   useEffect(() => {
