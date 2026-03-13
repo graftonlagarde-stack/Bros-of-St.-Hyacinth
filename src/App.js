@@ -223,6 +223,161 @@ const CLOUDINARY_PRESET = "bros-of-st-hyacinth";
 const CHAT_MAX_FILE_BYTES  = 100 * 1024 * 1024;          // 100 MB per upload
 const CHAT_STORAGE_CEILING = 20 * 1024 * 1024 * 1024;    // 20 GB — prune before hitting 25 GB free limit
 
+// ─── AUDIO LIGHTBOX ───────────────────────────────────────────────────────────
+// Must be module-level (not inside BoardPage) so React doesn't remount on each render
+function AudioLightbox({ src, onClose }) {
+  const audioRef    = useRef(null);
+  const canvasRef   = useRef(null);
+  const animRef     = useRef(null);
+  const analyserRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const [playing,  setPlaying]  = useState(false);
+  const [elapsed,  setElapsed]  = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  // Wire up audio element events
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const onMeta  = () => setDuration(audio.duration || 0);
+    const onTime  = () => setElapsed(audio.currentTime || 0);
+    const onEnded = () => setPlaying(false);
+    audio.addEventListener("loadedmetadata", onMeta);
+    audio.addEventListener("timeupdate",     onTime);
+    audio.addEventListener("ended",          onEnded);
+    return () => {
+      audio.removeEventListener("loadedmetadata", onMeta);
+      audio.removeEventListener("timeupdate",     onTime);
+      audio.removeEventListener("ended",          onEnded);
+      audio.pause();
+    };
+  }, []);
+
+  // Always-running waveform loop — shows idle line when paused, bars when playing
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let rafId;
+    const ctx2d = canvas.getContext("2d");
+    let t = 0;
+    const draw = () => {
+      rafId = requestAnimationFrame(draw);
+      t += 0.05;
+      const w = canvas.width, h = canvas.height;
+      ctx2d.clearRect(0, 0, w, h);
+
+      if (analyserRef.current) {
+        // Live frequency bars
+        const bufLen = analyserRef.current.frequencyBinCount;
+        const data   = new Uint8Array(bufLen);
+        analyserRef.current.getByteFrequencyData(data);
+        const barW = w / bufLen;
+        for (let i = 0; i < bufLen; i++) {
+          const barH = (data[i] / 255) * h * 0.85;
+          const v    = data[i] / 255;
+          ctx2d.fillStyle = `rgba(${Math.floor(v * 80)},${Math.floor(180 + v * 75)},${Math.floor(v * 60)},0.9)`;
+          ctx2d.fillRect(i * barW, h - barH, barW - 1, barH);
+        }
+      } else {
+        // Idle animated sine wave
+        ctx2d.strokeStyle = "rgba(0,255,140,0.45)";
+        ctx2d.lineWidth   = 1.5;
+        ctx2d.beginPath();
+        for (let x = 0; x < w; x++) {
+          const y = h / 2 + Math.sin((x / w) * Math.PI * 8 + t) * (h * 0.08)
+                           + Math.sin((x / w) * Math.PI * 3 - t * 0.7) * (h * 0.05);
+          x === 0 ? ctx2d.moveTo(x, y) : ctx2d.lineTo(x, y);
+        }
+        ctx2d.stroke();
+      }
+    };
+    draw();
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
+  const initAudioContext = () => {
+    if (analyserRef.current) return; // already set up
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioCtxRef.current = audioCtx;
+    const analyser  = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    const source = audioCtx.createMediaElementSource(audioRef.current);
+    source.connect(analyser);
+    analyser.connect(audioCtx.destination);
+    analyserRef.current = analyser;
+  };
+
+  const togglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    initAudioContext();
+    // AudioContext starts suspended on mobile — must resume inside user gesture
+    if (audioCtxRef.current?.state === "suspended") audioCtxRef.current.resume();
+    if (audio.paused) { audio.play().catch(() => {}); setPlaying(true); }
+    else              { audio.pause();                setPlaying(false); }
+  };
+
+  const seek = (e) => {
+    const audio = audioRef.current;
+    if (!audio || !duration) return;
+    const rect  = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    audio.currentTime = ratio * duration;
+  };
+
+  const fmt = (s) => {
+    if (!s || isNaN(s)) return "0:00";
+    return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
+  };
+  const pct = duration > 0 ? (elapsed / duration) * 100 : 0;
+
+  return (
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.97)",
+      zIndex: 9999, display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center", padding: "0 24px",
+    }}>
+      <button onClick={e => { e.stopPropagation(); onClose(); }} style={{
+        position: "absolute", top: 16, right: 16,
+        background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.3)",
+        borderRadius: "50%", width: 36, height: 36, color: "#fff",
+        fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+      }}>✕</button>
+
+      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 420, display: "flex", flexDirection: "column", alignItems: "center", gap: 28 }}>
+        {/* Waveform — no background, no border */}
+        <canvas ref={canvasRef} width={360} height={100} style={{
+          width: "100%", height: 100,
+        }} />
+
+        {/* Scrub bar */}
+        <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 11, color: "rgba(0,255,140,0.7)", fontFamily: "'Orbitron',sans-serif", width: 34, textAlign: "right" }}>{fmt(elapsed)}</span>
+          <div onClick={seek} style={{ flex: 1, height: 5, background: "rgba(0,255,140,0.1)", borderRadius: 3, cursor: "pointer", position: "relative" }}>
+            <div style={{ width: `${pct}%`, height: "100%", background: "linear-gradient(90deg,#00cc77,#00ff99)", borderRadius: 3, transition: "width 0.1s linear" }} />
+            <div style={{ position: "absolute", top: "50%", left: `${pct}%`, transform: "translate(-50%,-50%)", width: 11, height: 11, borderRadius: "50%", background: "#00ff99", boxShadow: "0 0 8px #00ff99" }} />
+          </div>
+          <span style={{ fontSize: 11, color: "rgba(0,255,140,0.7)", fontFamily: "'Orbitron',sans-serif", width: 34 }}>{fmt(duration)}</span>
+        </div>
+
+        {/* Play/pause */}
+        <button onClick={togglePlay} style={{
+          width: 62, height: 62, borderRadius: "50%",
+          background: "none", border: "2px solid rgba(0,255,140,0.55)",
+          color: "#00ff99", fontSize: 22, cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          filter: "drop-shadow(0 0 10px rgba(0,255,140,0.7))",
+          transition: "all 0.15s",
+        }}>
+          {playing ? "⏸" : "▶"}
+        </button>
+      </div>
+
+      <audio ref={audioRef} src={src} preload="metadata" />
+    </div>
+  );
+}
+
 // ─── BOARD PAGE ───────────────────────────────────────────────────────────────
 function BoardPage({ username }) {
   const isMobile = useIsMobile();
@@ -360,158 +515,6 @@ function BoardPage({ username }) {
   const openLightbox = (src, type) => { setLightboxSrc(src); setLightboxType(type); };
   const closeLightbox = () => { setLightboxSrc(null); setLightboxType(null); };
 
-  // ── Audio waveform lightbox component ───────────────────────────────────
-  const AudioLightbox = ({ src, onClose }) => {
-    const audioRef = useRef(null);
-    const canvasRef = useRef(null);
-    const animRef = useRef(null);
-    const analyserRef = useRef(null);
-    const [playing, setPlaying] = useState(false);
-    const [elapsed, setElapsed] = useState(0);
-    const [duration, setDuration] = useState(0);
-    const [ctx, setCtx] = useState(null);
-
-    useEffect(() => {
-      const audio = audioRef.current;
-      if (!audio) return;
-      const onMeta = () => setDuration(audio.duration || 0);
-      const onTime = () => setElapsed(audio.currentTime || 0);
-      const onEnded = () => setPlaying(false);
-      audio.addEventListener("loadedmetadata", onMeta);
-      audio.addEventListener("timeupdate", onTime);
-      audio.addEventListener("ended", onEnded);
-      return () => {
-        audio.removeEventListener("loadedmetadata", onMeta);
-        audio.removeEventListener("timeupdate", onTime);
-        audio.removeEventListener("ended", onEnded);
-        audio.pause();
-      };
-    }, []);
-
-    const initAudio = () => {
-      if (analyserRef.current) return;
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 256;
-      const source = audioCtx.createMediaElementSource(audioRef.current);
-      source.connect(analyser);
-      analyser.connect(audioCtx.destination);
-      analyserRef.current = analyser;
-      setCtx(audioCtx);
-      drawWaveform(analyser);
-    };
-
-    const drawWaveform = (analyser) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx2d = canvas.getContext("2d");
-      const bufLen = analyser.frequencyBinCount;
-      const data = new Uint8Array(bufLen);
-      const draw = () => {
-        animRef.current = requestAnimationFrame(draw);
-        analyser.getByteFrequencyData(data);
-        const w = canvas.width, h = canvas.height;
-        ctx2d.clearRect(0, 0, w, h);
-        const barW = (w / bufLen) * 2.5;
-        let x = 0;
-        for (let i = 0; i < bufLen; i++) {
-          const barH = (data[i] / 255) * h * 0.85;
-          const green = Math.floor(180 + (data[i] / 255) * 75);
-          ctx2d.fillStyle = `rgba(0,${green},80,0.85)`;
-          ctx2d.fillRect(x, h - barH, barW - 1, barH);
-          x += barW;
-        }
-        // Draw idle flat line when no signal
-        if (data.every(v => v === 0)) {
-          ctx2d.strokeStyle = "rgba(0,255,140,0.3)";
-          ctx2d.lineWidth = 1.5;
-          ctx2d.beginPath();
-          ctx2d.moveTo(0, h / 2);
-          ctx2d.lineTo(w, h / 2);
-          ctx2d.stroke();
-        }
-      };
-      draw();
-    };
-
-    const togglePlay = () => {
-      const audio = audioRef.current;
-      if (!audio) return;
-      initAudio();
-      if (audio.paused) { audio.play(); setPlaying(true); }
-      else { audio.pause(); setPlaying(false); }
-    };
-
-    const seek = (e) => {
-      const audio = audioRef.current;
-      if (!audio || !duration) return;
-      const rect = e.currentTarget.getBoundingClientRect();
-      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      audio.currentTime = ratio * duration;
-    };
-
-    useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
-
-    const fmt = (s) => {
-      if (!s || isNaN(s)) return "0:00";
-      const m = Math.floor(s / 60), sec = Math.floor(s % 60);
-      return `${m}:${sec.toString().padStart(2, "0")}`;
-    };
-    const pct = duration > 0 ? (elapsed / duration) * 100 : 0;
-
-    return (
-      <div onClick={onClose} style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,0.97)",
-        zIndex: 9999, display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center", padding: "0 24px",
-      }}>
-        <button onClick={onClose} style={{
-          position: "absolute", top: 16, right: 16,
-          background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.3)",
-          borderRadius: "50%", width: 36, height: 36, color: "#fff",
-          fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-        }}>✕</button>
-
-        <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 420, display: "flex", flexDirection: "column", alignItems: "center", gap: 24 }}>
-          {/* Waveform canvas */}
-          <canvas ref={canvasRef} width={360} height={120} style={{
-            width: "100%", height: 120, borderRadius: 8,
-            border: "1px solid rgba(0,255,140,0.2)",
-            background: "rgba(0,20,10,0.8)",
-            filter: "drop-shadow(0 0 8px rgba(0,255,140,0.3))",
-          }} />
-
-          {/* Progress bar */}
-          <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 11, color: "rgba(0,255,140,0.7)", fontFamily: "'Orbitron',sans-serif", width: 36, textAlign: "right" }}>{fmt(elapsed)}</span>
-            <div onClick={seek} style={{
-              flex: 1, height: 6, background: "rgba(0,255,140,0.12)",
-              borderRadius: 3, cursor: "pointer", position: "relative",
-            }}>
-              <div style={{ width: `${pct}%`, height: "100%", background: "#00ff99", borderRadius: 3, transition: "width 0.1s linear" }} />
-              <div style={{ position: "absolute", top: "50%", left: `${pct}%`, transform: "translate(-50%,-50%)", width: 12, height: 12, borderRadius: "50%", background: "#00ff99", boxShadow: "0 0 8px #00ff99" }} />
-            </div>
-            <span style={{ fontSize: 11, color: "rgba(0,255,140,0.7)", fontFamily: "'Orbitron',sans-serif", width: 36 }}>{fmt(duration)}</span>
-          </div>
-
-          {/* Play/pause button */}
-          <button onClick={togglePlay} style={{
-            width: 64, height: 64, borderRadius: "50%",
-            background: "none", border: "2px solid rgba(0,255,140,0.6)",
-            color: "#00ff99", fontSize: 24, cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            filter: "drop-shadow(0 0 12px rgba(0,255,140,0.8)) drop-shadow(0 0 28px rgba(0,255,100,0.4))",
-            transition: "all 0.15s",
-          }}>
-            {playing ? "⏸" : "▶"}
-          </button>
-        </div>
-
-        <audio ref={audioRef} src={src} preload="metadata" />
-      </div>
-    );
-  };
-
   const lightbox = lightboxSrc && (
     lightboxType === "audio"
       ? <AudioLightbox src={lightboxSrc} onClose={closeLightbox} />
@@ -597,7 +600,17 @@ function BoardPage({ username }) {
                   <div onClick={() => openLightbox(m.dataUrl, "audio")}
                     style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer",
                     background:"rgba(0,255,204,0.06)", border:"1px solid var(--border)", borderRadius:4, padding:"8px 12px", minWidth:180 }}>
-                    <span style={{ fontSize:16 }}>🎵</span>
+                    {/* Waveform SVG icon */}
+                    <svg width="22" height="16" viewBox="0 0 22 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{flexShrink:0}}>
+                      <rect x="0"  y="6" width="2" height="4"  rx="1" fill="rgba(0,255,140,0.7)"/>
+                      <rect x="3"  y="3" width="2" height="10" rx="1" fill="rgba(0,255,140,0.85)"/>
+                      <rect x="6"  y="0" width="2" height="16" rx="1" fill="#00ff99"/>
+                      <rect x="9"  y="4" width="2" height="8"  rx="1" fill="rgba(0,255,140,0.85)"/>
+                      <rect x="12" y="1" width="2" height="14" rx="1" fill="#00ff99"/>
+                      <rect x="15" y="5" width="2" height="6"  rx="1" fill="rgba(0,255,140,0.85)"/>
+                      <rect x="18" y="7" width="2" height="2"  rx="1" fill="rgba(0,255,140,0.6)"/>
+                      <rect x="20" y="6" width="2" height="4"  rx="1" fill="rgba(0,255,140,0.4)"/>
+                    </svg>
                     <span style={{ fontSize:12, color:"var(--accent)", fontFamily:"'Orbitron',sans-serif", letterSpacing:1 }}>TAP TO PLAY</span>
                   </div>
                 )}
@@ -704,7 +717,7 @@ function BoardPage({ username }) {
           onChange={e => setText(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
           rows={1}
-          style={{ flex:1, resize:"none", borderRadius:2, padding:"10px 14px", fontSize:14, minHeight:40, maxHeight:140, overflowY:"auto", lineHeight:1.5, opacity:1 }}
+          style={{ flex:1, resize:"none", borderRadius:2, padding:"10px 14px", fontSize:16, minHeight:40, maxHeight:140, overflowY:"auto", lineHeight:1.5, opacity:1 }}
         />
         <button onClick={sendMessage} className="btn btn-primary"
           style={{ flexShrink:0, padding:"0 16px", height:40, borderRadius:2, opacity: uploading ? 0.5 : 1 }}
@@ -918,16 +931,16 @@ const css = `
   .app-bg::before {
     content: ''; position: absolute;
     left: -50%; right: -50%;
-    top: 0%; bottom: -5%;
+    top: 50%; bottom: -5%;
     background-image:
       linear-gradient(rgba(136,255,0,0.38) 1px, transparent 1px),
       linear-gradient(90deg, rgba(136,255,0,0.38) 1px, transparent 1px);
     background-size: 80px 80px;
     background-position: 50% 0%;
-    transform: perspective(600px) rotateX(65deg) translateY(20%);
-    transform-origin: 50% 50%;
+    transform: perspective(600px) rotateX(75deg);
+    transform-origin: 50% 0%;
     animation: depthSweep 3.6s linear infinite;
-    mask-image: linear-gradient(180deg, transparent 0%, black 15%, black 100%);
+    mask-image: linear-gradient(180deg, transparent 0%, black 8%, black 100%);
   }
 
   /* Depth fog */
@@ -1928,7 +1941,7 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
       // Desktop: camera offset left so figure at x=110 appears at screen-right-third
       // Mobile: camera centered, pulled back for portrait aspect
-      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1000 : 660);
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
@@ -1963,7 +1976,7 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
         const extraH = size.y * (newScale - scale);
         // Same x position on mobile as desktop — camera centered so 110 puts figure right-of-center
         obj.position.set(110, -box2.min.y - extraH + 70, 0);
-        obj.rotation.y = isMobile ? (-Math.PI * 15 / 180) : -Math.PI / 6;  // mobile: -15°, desktop: -30°
+        obj.rotation.y = isMobile ? (-Math.PI * 5 / 180) : -Math.PI / 6;  // mobile: -5°, desktop: -30°
         scene.add(obj);
         if (obj.animations?.length) {
           mixer = new THREE.AnimationMixer(obj);
@@ -2060,7 +2073,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
 
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 5000);
-      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1000 : 660);
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
@@ -2114,7 +2127,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       });
 
       const crossGroup = new THREE.Group();
-      const crossH = 230, crossW = 125, barThick = 23;
+      const crossH = 310, crossW = 170, barThick = 30;
       const vBar = new THREE.Mesh(new THREE.BoxGeometry(barThick, crossH, barThick), crossMat);
       vBar.position.y = crossH / 2;
       const hBarMat = crossMat.clone(); hBarMat.depthTest = false;
@@ -2123,7 +2136,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       crossGroup.add(vBar, hBar);
       // On desktop canvas starts at left:224 so cross needs an x-offset to appear screen-centered.
       // On mobile canvas starts at left:0, so no offset needed.
-      const crossCamDist = isMobile ? 1000 : 660;
+      const crossCamDist = isMobile ? 1200 : 660;
       const crossFovRad = (40 * Math.PI) / 180;
       const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
       const crossCenterX = isMobile ? 0 : (-160 * crossWorldPerPx);
@@ -2159,7 +2172,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         // Same x position as desktop — camera centered on mobile so 110 places figure right-of-center
         obj.position.set(110, -box2.min.y - extraH + 70, 0);
         // Same rotation as desktop adjusted 20° CCW on mobile
-        obj.rotation.y = isMobile ? -Math.PI : -(Math.PI * 195) / 180;
+        obj.rotation.y = isMobile ? -(Math.PI * 170) / 180 : -(Math.PI * 195) / 180;
         // Render figure ABOVE cross
         obj.renderOrder = 1;
         obj.traverse(c => { c.renderOrder = 1; });
@@ -2599,7 +2612,7 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
 
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
-      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1000 : 660);
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
       camera.lookAt(0, 160, 0);
 
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
@@ -2617,8 +2630,9 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
 
       const clock = new THREE.Clock();
       // Desktop: -50° (30° + 20°). Mobile: +20° CCW = -30°
-      const ROTATION_Y = isMobile ? -(Math.PI * 35 / 180) : -(Math.PI / 6) - (20 * Math.PI / 180);
+      const ROTATION_Y = isMobile ? -(Math.PI * 25 / 180) : -(Math.PI / 6) - (20 * Math.PI / 180);
 
+      const camZ = isMobile ? 1200 : 660;
       const applyTransform = (THREE, obj) => {
         obj.traverse(c => {
           if (c.isMesh) { c.material = wireMat; c.castShadow = c.receiveShadow = false; }
@@ -2626,7 +2640,7 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
         const box    = new THREE.Box3().setFromObject(obj);
         const size   = box.getSize(new THREE.Vector3());
         const fovRad = (40 * Math.PI) / 180;
-        const worldH = 2 * Math.tan(fovRad / 2) * 600;
+        const worldH = 2 * Math.tan(fovRad / 2) * camZ;
         const scale  = (worldH * 0.65) / size.y;
         const newScale = scale * 1.495;
         obj.scale.setScalar(newScale);
