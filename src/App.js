@@ -447,12 +447,16 @@ function BoardPage({ username }) {
     const apply = () => {
       if (!chatRootRef.current) return;
       const el = chatRootRef.current;
-      // Set height to the visible viewport height only.
-      // Do NOT touch el.style.top — the parent (.main.chat-active) is already
-      // position:fixed; top:0, so the chat root is always anchored correctly.
-      // Setting top from vv.offsetTop causes the jump when the keyboard closes.
       el.style.height = vv.height + "px";
-      // Scroll messages to bottom so input stays visible
+      // When keyboard closes, vv.height returns to full screen height.
+      // iOS may have scrolled the layout viewport while the keyboard was open.
+      // Reset that scroll so the next keyboard open doesn't cause a zoom/jump.
+      if (vv.height > window.innerHeight * 0.7) {
+        // Keyboard is likely closed — reset any layout viewport scroll
+        window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+      }
       if (scrollContainerRef.current) {
         scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
       }
@@ -2170,15 +2174,14 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
 
       const crossMat = new THREE.MeshBasicMaterial({
         map: glitterTex, transparent: true, opacity: 1.0,
-        blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
+        blending: THREE.AdditiveBlending, depthWrite: false,
       });
 
       const crossGroup = new THREE.Group();
-      const crossH = 310, crossW = 170, barThick = 30;
+      const crossH = isMobile ? 310 : 230, crossW = isMobile ? 170 : 125, barThick = isMobile ? 30 : 23;
       const vBar = new THREE.Mesh(new THREE.BoxGeometry(barThick, crossH, barThick), crossMat);
       vBar.position.y = crossH / 2;
-      const hBarMat = crossMat.clone(); hBarMat.depthTest = false;
-      const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), hBarMat);
+      const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), crossMat.clone());
       hBar.position.y = crossH * 0.70;
       crossGroup.add(vBar, hBar);
       // On desktop canvas starts at left:224 so cross needs an x-offset to appear screen-centered.
@@ -2188,15 +2191,12 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
       const crossCenterX = isMobile ? 0 : (-160 * crossWorldPerPx);
       crossGroup.position.set(crossCenterX, 0, 0);
-      // Render cross BEHIND figure (lower renderOrder)
-      crossGroup.renderOrder = 0;
-      crossGroup.traverse(c => { c.renderOrder = 0; });
       scene.add(crossGroup);
 
       const wireMat = new THREE.MeshBasicMaterial({
         color: 0x00ffcc, wireframe: true,
         transparent: true, opacity: 0.32,
-        blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
+        blending: THREE.AdditiveBlending, depthWrite: false,
       });
 
       let mixer = null;
@@ -2220,9 +2220,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         obj.position.set(110, -box2.min.y - extraH + 70, 0);
         // Same rotation as desktop adjusted 20° CCW on mobile
         obj.rotation.y = isMobile ? -(Math.PI * 170) / 180 : -(Math.PI * 195) / 180;
-        // Render figure ABOVE cross
-        obj.renderOrder = 1;
-        obj.traverse(c => { c.renderOrder = 1; });
         scene.add(obj);
 
         // Align cross base to figure's ground level (vBar.position.y = crossH/2 already lifts it)
@@ -2676,8 +2673,8 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
       });
 
       const clock = new THREE.Clock();
-      // Match FigureBackdrop rotation exactly: desktop -30°, mobile -25°
-      const ROTATION_Y = isMobile ? -(Math.PI * 25 / 180) : -Math.PI / 6;
+      // Desktop: -(30° + 20°) = -50°, matching reference. Mobile: -25°
+      const ROTATION_Y = isMobile ? -(Math.PI * 25 / 180) : -(Math.PI / 6) - (20 * Math.PI / 180);
 
       const applyTransform = (THREE, obj) => {
         obj.traverse(c => {
@@ -4425,6 +4422,7 @@ export default function App() {
   const [showProfile, setShowProfile]           = useState(false);
   const [showAdmin, setShowAdmin]               = useState(false);
   const [page, setPage]                         = useState("workout");
+  const [pressedId, setPressedId]               = useState(null); // mobile: instant active highlight on touch
   // Backdrops are always mounted (keep-alive). Visibility driven by page state.
   const [navExpanded, setNavExpanded]           = useState(true);
   const [loaded, setLoaded]                     = useState(false);
@@ -4696,13 +4694,18 @@ export default function App() {
           </div>
           {/* Blade nav */}
           <div className={`nav-wrap${navExpanded ? "" : " retracted"}`}>
-            {navItems.map(n => (
-              <div key={n.id} className={`nav-item-wrap${page===n.id?" active-wrap":""}`}
-                onClick={() => handleSetPage(n.id)}
-                onTouchStart={() => handleSetPage(n.id)}>
-                <div className={`nav-item ${page===n.id?"active":""}`}>{n.label}</div>
-              </div>
-            ))}
+            {navItems.map(n => {
+              const isActive = (pressedId ?? page) === n.id;
+              return (
+                <div key={n.id} className={`nav-item-wrap${isActive ? " active-wrap" : ""}`}
+                  onTouchStart={() => { setPressedId(n.id); handleSetPage(n.id); }}
+                  onTouchEnd={() => setPressedId(null)}
+                  onTouchCancel={() => setPressedId(null)}
+                  onClick={() => handleSetPage(n.id)}>
+                  <div className={`nav-item${isActive ? " active" : ""}`}>{n.label}</div>
+                </div>
+              );
+            })}
             {(user.role === "arch_admin" || user.role === "admin") && (
               <div className="nav-item-wrap" onClick={() => setShowAdmin(true)}>
                 <div className="nav-item">{user.role === "arch_admin" ? "Arch-Admin" : "Admin"}</div>
