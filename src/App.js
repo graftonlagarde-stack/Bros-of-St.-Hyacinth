@@ -310,48 +310,36 @@ function AudioLightbox({ src, onClose }) {
     };
   }, []);
 
-  // Always-running waveform — idle sine when paused, frequency bars when playing
+  // Waveform — oscilloscope line when playing, blank when paused
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     let rafId;
     const ctx2d = canvas.getContext("2d");
-    let t = 0;
     const draw = () => {
       rafId = requestAnimationFrame(draw);
-      t += 0.05;
       const w = canvas.width, h = canvas.height;
       ctx2d.clearRect(0, 0, w, h);
       if (analyserRef.current) {
-        // Centered frequency bars — mirror both halves from the center outward
-        const bufLen = analyserRef.current.frequencyBinCount;
+        // Time-domain oscilloscope line
+        analyserRef.current.fftSize = 2048;
+        const bufLen = analyserRef.current.fftSize;
         const data   = new Uint8Array(bufLen);
-        analyserRef.current.getByteFrequencyData(data);
-        const half  = Math.floor(w / 2);
-        const barW  = half / bufLen;
-        for (let i = 0; i < bufLen; i++) {
-          const v     = data[i] / 255;
-          const barH  = v * h * 0.85;
-          const y     = (h - barH) / 2;           // vertically centered
-          const color = `rgba(${Math.floor(v*80)},${Math.floor(180+v*75)},${Math.floor(v*60)},0.9)`;
-          ctx2d.fillStyle = color;
-          // Right half
-          ctx2d.fillRect(half + i * barW, y, Math.max(barW - 1, 1), barH);
-          // Left half (mirrored)
-          ctx2d.fillRect(half - (i + 1) * barW, y, Math.max(barW - 1, 1), barH);
-        }
-      } else {
-        // Idle centered sine wave
-        ctx2d.strokeStyle = "rgba(0,255,140,0.45)";
+        analyserRef.current.getByteTimeDomainData(data);
+        ctx2d.strokeStyle = "rgba(0,255,140,0.85)";
         ctx2d.lineWidth   = 1.5;
         ctx2d.beginPath();
-        for (let x = 0; x < w; x++) {
-          const y = h/2 + Math.sin((x/w)*Math.PI*8+t)*(h*0.12)
-                       + Math.sin((x/w)*Math.PI*3-t*0.7)*(h*0.06);
-          x === 0 ? ctx2d.moveTo(x,y) : ctx2d.lineTo(x,y);
+        const sliceW = w / bufLen;
+        let x = 0;
+        for (let i = 0; i < bufLen; i++) {
+          const v = data[i] / 128.0;
+          const y = (v * h) / 2;
+          i === 0 ? ctx2d.moveTo(x, y) : ctx2d.lineTo(x, y);
+          x += sliceW;
         }
         ctx2d.stroke();
       }
+      // When not playing, draw nothing — blank canvas
     };
     draw();
     return () => cancelAnimationFrame(rafId);
@@ -2340,6 +2328,12 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         obj.position.set(110, -box2.min.y - extraH + 70, 0);
         // Same rotation as desktop adjusted 20° CCW on mobile
         obj.rotation.y = isMobile ? -(Math.PI * 170) / 180 : -(Math.PI * 195) / 180;
+        if (isMobile) {
+          crossGroup.renderOrder = 0;
+          crossGroup.traverse(c => { c.renderOrder = 0; });
+          obj.renderOrder = 1;
+          obj.traverse(c => { c.renderOrder = 1; });
+        }
         scene.add(obj);
 
         // Align cross base to figure's ground level.
