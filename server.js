@@ -22,7 +22,6 @@
 
 require("dotenv").config();
 const express  = require("express");
-const compression = require("compression");
 const cors     = require("cors");
 const path     = require("path");
 const fs       = require("fs");
@@ -30,6 +29,8 @@ const bcrypt   = require("bcryptjs");
 const jwt      = require("jsonwebtoken");
 const { Pool } = require("pg");
 const cloudinary = require("cloudinary").v2;
+const multer     = require("multer");
+const streamifier = require("streamifier");
 
 const app        = express();
 const PORT       = process.env.PORT || 4000;
@@ -42,7 +43,11 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Storage limits
+// Multer — memory storage (no disk writes; we stream directly to Cloudinary)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 100 * 1024 * 1024 }, // 100 MB max
+});
 const POSTGRES_LIMIT_BYTES    = 1 * 1024 * 1024 * 1024; // 1 GB (Railway free tier)
 const CLOUDINARY_LIMIT_BYTES  = 25 * 1024 * 1024 * 1024; // 25 GB (Cloudinary free tier)
 const CLEANUP_THRESHOLD       = 0.90; // trigger at 90%
@@ -60,6 +65,41 @@ const db = {
 };
 
 // ── Storage cleanup ───────────────────────────────────────────────────────────
+
+// ── Stream a buffer directly to Cloudinary (no temp files) ───────────────────
+function streamUploadToCloudinary(buffer, options) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(options, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+    streamifier.createReadStream(buffer).pipe(stream);
+  });
+}
+
+// ── Delete stale pending uploads (abandoned before send) ──────────────────────
+async function purgeStaleUploads() {
+  try {
+    const STALE_MS = 30 * 60 * 1000; // 30 minutes
+    const cutoff   = Date.now() - STALE_MS;
+    const { rows } = await db.query(
+      "SELECT public_id, resource_type FROM pending_uploads WHERE uploaded_at < $1",
+      [cutoff]
+    );
+    if (rows.length === 0) return;
+    for (const row of rows) {
+      try {
+        await cloudinary.uploader.destroy(row.public_id, { resource_type: row.resource_type });
+      } catch (e) {
+        console.warn(`⚠ Could not delete stale Cloudinary asset ${row.public_id}:`, e.message);
+      }
+      await db.query("DELETE FROM pending_uploads WHERE public_id = $1", [row.public_id]);
+    }
+    console.log(`🧹 Purged ${rows.length} stale upload(s).`);
+  } catch (err) {
+    console.error("purgeStaleUploads error:", err.message);
+  }
+}
 
 async function deleteCloudinaryAsset(publicId) {
   if (!publicId) return;
@@ -201,10 +241,15 @@ async function initDb() {
       username    TEXT NOT NULL,
       PRIMARY KEY (message_id, emoji, username)
     );
-    CREATE INDEX IF NOT EXISTS idx_lift_logs_user_id ON lift_logs(user_id);
-    CREATE INDEX IF NOT EXISTS idx_messages_ts ON messages(ts ASC);
+
+    CREATE TABLE IF NOT EXISTS pending_uploads (
+      id            SERIAL PRIMARY KEY,
+      public_id     TEXT NOT NULL UNIQUE,
+      resource_type TEXT NOT NULL DEFAULT 'image',
+      user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      uploaded_at   BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
+    );
   `);
-  // Add role column if it doesn't exist (safe to run on existing databases)
   await db.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
   `);
@@ -219,7 +264,6 @@ async function initDb() {
 }
 
 // ── Middleware ─────────────────────────────────────────────────────────────────
-app.use(compression());
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "2mb" }));
 
@@ -488,6 +532,40 @@ app.get("/api/community/users", requireAuth, async (req, res) => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
+// UPLOAD ROUTE — proxies file to Cloudinary, tracks public_id in pending_uploads
+// ═════════════════════════════════════════════════════════════════════════════
+
+app.post("/api/upload", requireAuth, upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file provided." });
+
+    const mime          = req.file.mimetype;
+    const isVideoOrAudio = mime.startsWith("video/") || mime.startsWith("audio/");
+    const resourceType  = isVideoOrAudio ? "video" : "image"; // Cloudinary uses "video" for audio too
+
+    const result = await streamUploadToCloudinary(req.file.buffer, {
+      resource_type: resourceType,
+      folder:        "bros-of-st-hyacinth",
+    });
+
+    // Record as pending — will be removed when the message is actually sent
+    await db.query(
+      "INSERT INTO pending_uploads (public_id, resource_type, user_id) VALUES ($1,$2,$3) ON CONFLICT (public_id) DO NOTHING",
+      [result.public_id, resourceType, req.userId]
+    );
+
+    return res.json({
+      url:      result.secure_url,
+      publicId: result.public_id,
+      bytes:    result.bytes ?? 0,
+    });
+  } catch (err) {
+    console.error("upload:", err);
+    return res.status(500).json({ error: "Upload failed: " + err.message });
+  }
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
 // BOARD ROUTES
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -522,6 +600,12 @@ app.post("/api/board/messages", requireAuth, async (req, res) => {
        media?.dataUrl || null, media?.type || null,
        media?.bytes || 0, media?.publicId || null]
     );
+
+    // Remove from pending — it's now a real message
+    if (media?.publicId) {
+      await db.query("DELETE FROM pending_uploads WHERE public_id = $1", [media.publicId]);
+    }
+
     return res.status(201).json(shapeMessage(rows[0], {}));
   } catch (err) {
     console.error("postMessage:", err);
@@ -649,6 +733,10 @@ initDb()
     setInterval(() => {
       purgeOrphanCloudinaryAssets().then(() => runStorageCleanup());
     }, 6 * 60 * 60 * 1000);
+
+    // Purge abandoned uploads every 15 minutes
+    purgeStaleUploads();
+    setInterval(purgeStaleUploads, 15 * 60 * 1000);
   })
   .catch(err => {
     console.error("❌ Failed to initialise database:", err);
