@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 
 const useIsMobile = () => {
   const [mobile, setMobile] = useState(() => window.innerWidth <= 768);
@@ -228,14 +229,13 @@ const CHAT_STORAGE_CEILING = 20 * 1024 * 1024 * 1024;    // 20 GB — prune befo
 function AudioLightbox({ src, onClose }) {
   const audioRef    = useRef(null);
   const canvasRef   = useRef(null);
-  const animRef     = useRef(null);
   const analyserRef = useRef(null);
   const audioCtxRef = useRef(null);
+  const sourceRef   = useRef(null);
   const [playing,  setPlaying]  = useState(false);
   const [elapsed,  setElapsed]  = useState(0);
   const [duration, setDuration] = useState(0);
 
-  // Wire up audio element events
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -250,10 +250,11 @@ function AudioLightbox({ src, onClose }) {
       audio.removeEventListener("timeupdate",     onTime);
       audio.removeEventListener("ended",          onEnded);
       audio.pause();
+      if (audioCtxRef.current) audioCtxRef.current.close().catch(() => {});
     };
   }, []);
 
-  // Always-running waveform loop — shows idle line when paused, bars when playing
+  // Always-running waveform — idle sine when paused, frequency bars when playing
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -265,28 +266,24 @@ function AudioLightbox({ src, onClose }) {
       t += 0.05;
       const w = canvas.width, h = canvas.height;
       ctx2d.clearRect(0, 0, w, h);
-
       if (analyserRef.current) {
-        // Live frequency bars
         const bufLen = analyserRef.current.frequencyBinCount;
         const data   = new Uint8Array(bufLen);
         analyserRef.current.getByteFrequencyData(data);
         const barW = w / bufLen;
         for (let i = 0; i < bufLen; i++) {
-          const barH = (data[i] / 255) * h * 0.85;
-          const v    = data[i] / 255;
-          ctx2d.fillStyle = `rgba(${Math.floor(v * 80)},${Math.floor(180 + v * 75)},${Math.floor(v * 60)},0.9)`;
-          ctx2d.fillRect(i * barW, h - barH, barW - 1, barH);
+          const v = data[i] / 255;
+          ctx2d.fillStyle = `rgba(${Math.floor(v*80)},${Math.floor(180+v*75)},${Math.floor(v*60)},0.9)`;
+          ctx2d.fillRect(i * barW, h - v*h*0.85, barW - 1, v*h*0.85);
         }
       } else {
-        // Idle animated sine wave
         ctx2d.strokeStyle = "rgba(0,255,140,0.45)";
         ctx2d.lineWidth   = 1.5;
         ctx2d.beginPath();
         for (let x = 0; x < w; x++) {
-          const y = h / 2 + Math.sin((x / w) * Math.PI * 8 + t) * (h * 0.08)
-                           + Math.sin((x / w) * Math.PI * 3 - t * 0.7) * (h * 0.05);
-          x === 0 ? ctx2d.moveTo(x, y) : ctx2d.lineTo(x, y);
+          const y = h/2 + Math.sin((x/w)*Math.PI*8+t)*(h*0.08)
+                       + Math.sin((x/w)*Math.PI*3-t*0.7)*(h*0.05);
+          x === 0 ? ctx2d.moveTo(x,y) : ctx2d.lineTo(x,y);
         }
         ctx2d.stroke();
       }
@@ -296,85 +293,85 @@ function AudioLightbox({ src, onClose }) {
   }, []);
 
   const initAudioContext = () => {
-    if (analyserRef.current) return; // already set up
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    audioCtxRef.current = audioCtx;
-    const analyser  = audioCtx.createAnalyser();
-    analyser.fftSize = 256;
-    const source = audioCtx.createMediaElementSource(audioRef.current);
-    source.connect(analyser);
-    analyser.connect(audioCtx.destination);
-    analyserRef.current = analyser;
+    if (!audioCtxRef.current) {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioCtxRef.current = audioCtx;
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      // createMediaElementSource must only be called once per element
+      if (!sourceRef.current) {
+        sourceRef.current = audioCtx.createMediaElementSource(audioRef.current);
+      }
+      sourceRef.current.connect(analyser);
+      analyser.connect(audioCtx.destination);
+      analyserRef.current = analyser;
+    }
+    // Must resume inside user gesture on iOS
+    if (audioCtxRef.current.state === "suspended") audioCtxRef.current.resume();
   };
 
   const togglePlay = () => {
     const audio = audioRef.current;
     if (!audio) return;
-    initAudioContext();
-    // AudioContext starts suspended on mobile — must resume inside user gesture
-    if (audioCtxRef.current?.state === "suspended") audioCtxRef.current.resume();
-    if (audio.paused) { audio.play().catch(() => {}); setPlaying(true); }
-    else              { audio.pause();                setPlaying(false); }
+    try { initAudioContext(); } catch(e) { /* play without analyser if CORS blocked */ }
+    if (audio.paused) { audio.play().catch(e => console.warn("play():", e)); setPlaying(true); }
+    else              { audio.pause(); setPlaying(false); }
   };
 
   const seek = (e) => {
     const audio = audioRef.current;
     if (!audio || !duration) return;
-    const rect  = e.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    audio.currentTime = ratio * duration;
+    const rect   = e.currentTarget.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    audio.currentTime = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration;
   };
 
-  const fmt = (s) => {
-    if (!s || isNaN(s)) return "0:00";
-    return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
-  };
+  const fmt = (s) => !s || isNaN(s) ? "0:00"
+    : `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,"0")}`;
   const pct = duration > 0 ? (elapsed / duration) * 100 : 0;
 
-  return (
+  const PlayIcon  = () => <svg width="20" height="20" viewBox="0 0 20 20" fill="#00ff99"><polygon points="5,3 17,10 5,17"/></svg>;
+  const PauseIcon = () => <svg width="20" height="20" viewBox="0 0 20 20" fill="#00ff99"><rect x="4" y="3" width="4" height="14" rx="1"/><rect x="12" y="3" width="4" height="14" rx="1"/></svg>;
+
+  return createPortal(
     <div onClick={onClose} style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,0.97)",
-      zIndex: 9999, display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "center", padding: "0 24px",
+      position:"fixed", inset:0, background:"rgba(0,0,0,0.97)",
+      zIndex:9999, display:"flex", flexDirection:"column",
+      alignItems:"center", justifyContent:"center", padding:"0 24px",
     }}>
       <button onClick={e => { e.stopPropagation(); onClose(); }} style={{
-        position: "absolute", top: 16, right: 16,
-        background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.3)",
-        borderRadius: "50%", width: 36, height: 36, color: "#fff",
-        fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+        position:"absolute", top:16, right:16,
+        background:"rgba(0,0,0,0.7)", border:"1px solid rgba(255,255,255,0.3)",
+        borderRadius:"50%", width:36, height:36, color:"#fff",
+        fontSize:20, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
       }}>✕</button>
 
-      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 420, display: "flex", flexDirection: "column", alignItems: "center", gap: 28 }}>
-        {/* Waveform — no background, no border */}
-        <canvas ref={canvasRef} width={360} height={100} style={{
-          width: "100%", height: 100,
-        }} />
+      <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:420, display:"flex", flexDirection:"column", alignItems:"center", gap:28 }}>
+        <canvas ref={canvasRef} width={360} height={100} style={{ width:"100%", height:100 }} />
 
-        {/* Scrub bar */}
-        <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 11, color: "rgba(0,255,140,0.7)", fontFamily: "'Orbitron',sans-serif", width: 34, textAlign: "right" }}>{fmt(elapsed)}</span>
-          <div onClick={seek} style={{ flex: 1, height: 5, background: "rgba(0,255,140,0.1)", borderRadius: 3, cursor: "pointer", position: "relative" }}>
-            <div style={{ width: `${pct}%`, height: "100%", background: "linear-gradient(90deg,#00cc77,#00ff99)", borderRadius: 3, transition: "width 0.1s linear" }} />
-            <div style={{ position: "absolute", top: "50%", left: `${pct}%`, transform: "translate(-50%,-50%)", width: 11, height: 11, borderRadius: "50%", background: "#00ff99", boxShadow: "0 0 8px #00ff99" }} />
+        <div style={{ width:"100%", display:"flex", alignItems:"center", gap:10 }}>
+          <span style={{ fontSize:11, color:"rgba(0,255,140,0.7)", fontFamily:"'Orbitron',sans-serif", width:34, textAlign:"right" }}>{fmt(elapsed)}</span>
+          <div onMouseDown={seek} onTouchStart={seek} style={{ flex:1, height:5, background:"rgba(0,255,140,0.1)", borderRadius:3, cursor:"pointer", position:"relative" }}>
+            <div style={{ width:`${pct}%`, height:"100%", background:"linear-gradient(90deg,#00cc77,#00ff99)", borderRadius:3, transition:"width 0.1s linear" }}/>
+            <div style={{ position:"absolute", top:"50%", left:`${pct}%`, transform:"translate(-50%,-50%)", width:11, height:11, borderRadius:"50%", background:"#00ff99", boxShadow:"0 0 8px #00ff99" }}/>
           </div>
-          <span style={{ fontSize: 11, color: "rgba(0,255,140,0.7)", fontFamily: "'Orbitron',sans-serif", width: 34 }}>{fmt(duration)}</span>
+          <span style={{ fontSize:11, color:"rgba(0,255,140,0.7)", fontFamily:"'Orbitron',sans-serif", width:34 }}>{fmt(duration)}</span>
         </div>
 
-        {/* Play/pause */}
         <button onClick={togglePlay} style={{
-          width: 62, height: 62, borderRadius: "50%",
-          background: "none", border: "2px solid rgba(0,255,140,0.55)",
-          color: "#00ff99", fontSize: 22, cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          filter: "drop-shadow(0 0 10px rgba(0,255,140,0.7))",
-          transition: "all 0.15s",
+          width:62, height:62, borderRadius:"50%",
+          background:"none", border:"2px solid rgba(0,255,140,0.55)",
+          cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+          filter:"drop-shadow(0 0 10px rgba(0,255,140,0.7))", transition:"all 0.15s",
         }}>
-          {playing ? "⏸" : "▶"}
+          {playing ? <PauseIcon/> : <PlayIcon/>}
         </button>
       </div>
 
-      <audio ref={audioRef} src={src} preload="metadata" />
-    </div>
+      {/* crossOrigin="anonymous" required for Web Audio API with Cloudinary CORS */}
+      <audio ref={audioRef} src={src} preload="metadata" crossOrigin="anonymous" />
+    </div>,
+    document.body
   );
 }
 
@@ -404,26 +401,42 @@ function BoardPage({ username }) {
   }, [text]);
 
   // ── Visual viewport resize: keeps chat above keyboard on all mobile browsers ──
-  // visualViewport.height shrinks when keyboard opens. We pin the chat root
-  // bottom to the top of the keyboard by setting an explicit height on .main.
   const chatRootRef = useRef(null);
   useEffect(() => {
     if (!isMobile) return;
     const vv = window.visualViewport;
     if (!vv) return;
-    const onResize = () => {
-      // offsetTop accounts for any scroll the browser applied to the layout viewport
-      const visH = vv.height + vv.offsetTop;
-      if (chatRootRef.current) {
-        chatRootRef.current.style.height = visH + "px";
+
+    let rafId = null;
+    const apply = () => {
+      // vv.height = visible height above keyboard.
+      // vv.offsetTop = how much the layout viewport has scrolled down (usually 0).
+      // We want the chat root to fill exactly the visible area, offset from the top.
+      if (!chatRootRef.current) return;
+      const el = chatRootRef.current;
+      el.style.height  = vv.height + "px";
+      el.style.top     = vv.offsetTop + "px";
+      // Also scroll messages to bottom after resize so input stays visible
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
       }
     };
+
+    const onResize = () => {
+      // Cancel any pending frame to avoid stacking
+      if (rafId) cancelAnimationFrame(rafId);
+      // Apply immediately for responsiveness, then again next frame for accuracy
+      apply();
+      rafId = requestAnimationFrame(apply);
+    };
+
     vv.addEventListener("resize", onResize);
     vv.addEventListener("scroll", onResize);
-    onResize(); // set initial size
+    onResize();
     return () => {
       vv.removeEventListener("resize", onResize);
       vv.removeEventListener("scroll", onResize);
+      if (rafId) cancelAnimationFrame(rafId);
     };
   }, [isMobile]);
 
@@ -515,14 +528,14 @@ function BoardPage({ username }) {
   const openLightbox = (src, type) => { setLightboxSrc(src); setLightboxType(type); };
   const closeLightbox = () => { setLightboxSrc(null); setLightboxType(null); };
 
-  const lightbox = lightboxSrc && (
+  const lightbox = lightboxSrc && createPortal(
     lightboxType === "audio"
       ? <AudioLightbox src={lightboxSrc} onClose={closeLightbox} />
       : <div onClick={closeLightbox} style={{
           position: "fixed", inset: 0, background: "rgba(0,0,0,0.97)",
           zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center",
         }}>
-          <button onClick={closeLightbox} style={{
+          <button onClick={e => { e.stopPropagation(); closeLightbox(); }} style={{
             position: "absolute", top: 16, right: 16,
             background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.3)",
             borderRadius: "50%", width: 36, height: 36, color: "#fff",
@@ -532,7 +545,8 @@ function BoardPage({ username }) {
             ? <img src={lightboxSrc} alt="fullscreen" style={{ maxWidth: "95vw", maxHeight: "90svh", borderRadius: 4, objectFit: "contain" }} onClick={e => e.stopPropagation()} />
             : <video src={lightboxSrc} controls autoPlay style={{ maxWidth: "95vw", maxHeight: "90svh", borderRadius: 4 }} onClick={e => e.stopPropagation()} />
           }
-        </div>
+        </div>,
+    document.body
   );
 
   // ── Message list ────────────────────────────────────────────────────────
@@ -931,16 +945,16 @@ const css = `
   .app-bg::before {
     content: ''; position: absolute;
     left: -50%; right: -50%;
-    top: 50%; bottom: -5%;
+    top: 0%; bottom: -5%;
     background-image:
       linear-gradient(rgba(136,255,0,0.38) 1px, transparent 1px),
       linear-gradient(90deg, rgba(136,255,0,0.38) 1px, transparent 1px);
     background-size: 80px 80px;
     background-position: 50% 0%;
-    transform: perspective(600px) rotateX(75deg);
-    transform-origin: 50% 0%;
+    transform: perspective(600px) rotateX(65deg) translateY(20%);
+    transform-origin: 50% 50%;
     animation: depthSweep 3.6s linear infinite;
-    mask-image: linear-gradient(180deg, transparent 0%, black 8%, black 100%);
+    mask-image: linear-gradient(180deg, transparent 0%, black 15%, black 100%);
   }
 
   /* Depth fog */
@@ -1819,6 +1833,8 @@ const css = `
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      /* top and height are overridden by visualViewport JS — this is just the initial state */
+      will-change: height, top;
     }
     .chat-mobile-messages {
       flex: 1;
@@ -2640,6 +2656,7 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
         const box    = new THREE.Box3().setFromObject(obj);
         const size   = box.getSize(new THREE.Vector3());
         const fovRad = (40 * Math.PI) / 180;
+        // Use camZ for scale so the figure appears the same screen-size regardless of camera distance
         const worldH = 2 * Math.tan(fovRad / 2) * camZ;
         const scale  = (worldH * 0.65) / size.y;
         const newScale = scale * 1.495;
@@ -2659,7 +2676,18 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
         if (cancelled) return;
 
         const { savedScale, savedPos } = applyTransform(THREE, introObj);
-        applyTransform(THREE, loopObj);
+
+        // Apply ONLY scale + material + rotation to loopObj — NOT position.
+        // Position will be set solely by bone-matching at swap time, using introObj's
+        // final bone world-position as reference. This eliminates the T-pose bbox
+        // discrepancy that caused the jump.
+        loopObj.traverse(c => {
+          if (c.isMesh) { c.material = wireMat; c.castShadow = c.receiveShadow = false; }
+        });
+        loopObj.scale.copy(savedScale);
+        loopObj.rotation.y = ROTATION_Y;
+        // Start hidden at same position as introObj so it's in scene but invisible
+        loopObj.position.copy(savedPos);
 
         // Keep loop hidden until needed
         loopObj.visible = false;
