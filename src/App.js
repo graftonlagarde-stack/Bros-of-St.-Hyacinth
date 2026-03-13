@@ -266,22 +266,31 @@ function AudioLightbox({ src, onClose }) {
       const w = canvas.width, h = canvas.height;
       ctx2d.clearRect(0, 0, w, h);
       if (analyserRef.current) {
+        // Centered frequency bars — mirror both halves from the center outward
         const bufLen = analyserRef.current.frequencyBinCount;
         const data   = new Uint8Array(bufLen);
         analyserRef.current.getByteFrequencyData(data);
-        const barW = w / bufLen;
+        const half  = Math.floor(w / 2);
+        const barW  = half / bufLen;
         for (let i = 0; i < bufLen; i++) {
-          const v = data[i] / 255;
-          ctx2d.fillStyle = `rgba(${Math.floor(v*80)},${Math.floor(180+v*75)},${Math.floor(v*60)},0.9)`;
-          ctx2d.fillRect(i * barW, h - v*h*0.85, barW - 1, v*h*0.85);
+          const v     = data[i] / 255;
+          const barH  = v * h * 0.85;
+          const y     = (h - barH) / 2;           // vertically centered
+          const color = `rgba(${Math.floor(v*80)},${Math.floor(180+v*75)},${Math.floor(v*60)},0.9)`;
+          ctx2d.fillStyle = color;
+          // Right half
+          ctx2d.fillRect(half + i * barW, y, Math.max(barW - 1, 1), barH);
+          // Left half (mirrored)
+          ctx2d.fillRect(half - (i + 1) * barW, y, Math.max(barW - 1, 1), barH);
         }
       } else {
+        // Idle centered sine wave
         ctx2d.strokeStyle = "rgba(0,255,140,0.45)";
         ctx2d.lineWidth   = 1.5;
         ctx2d.beginPath();
         for (let x = 0; x < w; x++) {
-          const y = h/2 + Math.sin((x/w)*Math.PI*8+t)*(h*0.08)
-                       + Math.sin((x/w)*Math.PI*3-t*0.7)*(h*0.05);
+          const y = h/2 + Math.sin((x/w)*Math.PI*8+t)*(h*0.12)
+                       + Math.sin((x/w)*Math.PI*3-t*0.7)*(h*0.06);
           x === 0 ? ctx2d.moveTo(x,y) : ctx2d.lineTo(x,y);
         }
         ctx2d.stroke();
@@ -325,6 +334,27 @@ function AudioLightbox({ src, onClose }) {
     audio.currentTime = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration;
   };
 
+  // Drag-to-scrub: track pointer down state and seek on move
+  const scrubBarRef = useRef(null);
+  const isDragging  = useRef(false);
+  const seekFromEvent = (e, rect) => {
+    const audio = audioRef.current;
+    if (!audio || !duration) return;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    audio.currentTime = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration;
+  };
+  const onScrubStart = (e) => {
+    isDragging.current = true;
+    const rect = e.currentTarget.getBoundingClientRect();
+    seekFromEvent(e, rect);
+  };
+  const onScrubMove = (e) => {
+    if (!isDragging.current || !scrubBarRef.current) return;
+    const rect = scrubBarRef.current.getBoundingClientRect();
+    seekFromEvent(e, rect);
+  };
+  const onScrubEnd = () => { isDragging.current = false; };
+
   const fmt = (s) => !s || isNaN(s) ? "0:00"
     : `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,"0")}`;
   const pct = duration > 0 ? (elapsed / duration) * 100 : 0;
@@ -345,14 +375,21 @@ function AudioLightbox({ src, onClose }) {
         fontSize:20, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
       }}>✕</button>
 
-      <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:420, display:"flex", flexDirection:"column", alignItems:"center", gap:28 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:420, display:"flex", flexDirection:"column", alignItems:"center", gap:28 }}
+           onMouseMove={onScrubMove} onMouseUp={onScrubEnd} onTouchMove={onScrubMove} onTouchEnd={onScrubEnd}>
         <canvas ref={canvasRef} width={360} height={100} style={{ width:"100%", height:100 }} />
 
         <div style={{ width:"100%", display:"flex", alignItems:"center", gap:10 }}>
           <span style={{ fontSize:11, color:"rgba(0,255,140,0.7)", fontFamily:"'Orbitron',sans-serif", width:34, textAlign:"right" }}>{fmt(elapsed)}</span>
-          <div onMouseDown={seek} onTouchStart={seek} style={{ flex:1, height:5, background:"rgba(0,255,140,0.1)", borderRadius:3, cursor:"pointer", position:"relative" }}>
-            <div style={{ width:`${pct}%`, height:"100%", background:"linear-gradient(90deg,#00cc77,#00ff99)", borderRadius:3, transition:"width 0.1s linear" }}/>
-            <div style={{ position:"absolute", top:"50%", left:`${pct}%`, transform:"translate(-50%,-50%)", width:11, height:11, borderRadius:"50%", background:"#00ff99", boxShadow:"0 0 8px #00ff99" }}/>
+          <div ref={scrubBarRef}
+               onMouseDown={onScrubStart} onTouchStart={onScrubStart}
+               style={{ flex:1, height:14, display:"flex", alignItems:"center", cursor:"pointer", position:"relative" }}>
+            {/* Track */}
+            <div style={{ position:"absolute", left:0, right:0, height:5, background:"rgba(0,255,140,0.1)", borderRadius:3 }}>
+              <div style={{ width:`${pct}%`, height:"100%", background:"linear-gradient(90deg,#00cc77,#00ff99)", borderRadius:3, transition:"width 0.1s linear" }}/>
+            </div>
+            {/* Thumb */}
+            <div style={{ position:"absolute", top:"50%", left:`${pct}%`, transform:"translate(-50%,-50%)", width:13, height:13, borderRadius:"50%", background:"#00ff99", boxShadow:"0 0 8px #00ff99", zIndex:1 }}/>
           </div>
           <span style={{ fontSize:11, color:"rgba(0,255,140,0.7)", fontFamily:"'Orbitron',sans-serif", width:34 }}>{fmt(duration)}</span>
         </div>
@@ -408,14 +445,14 @@ function BoardPage({ username }) {
 
     let rafId = null;
     const apply = () => {
-      // vv.height = visible height above keyboard.
-      // vv.offsetTop = how much the layout viewport has scrolled down (usually 0).
-      // We want the chat root to fill exactly the visible area, offset from the top.
       if (!chatRootRef.current) return;
       const el = chatRootRef.current;
-      el.style.height  = vv.height + "px";
-      el.style.top     = vv.offsetTop + "px";
-      // Also scroll messages to bottom after resize so input stays visible
+      // Set height to the visible viewport height only.
+      // Do NOT touch el.style.top — the parent (.main.chat-active) is already
+      // position:fixed; top:0, so the chat root is always anchored correctly.
+      // Setting top from vv.offsetTop causes the jump when the keyboard closes.
+      el.style.height = vv.height + "px";
+      // Scroll messages to bottom so input stays visible
       if (scrollContainerRef.current) {
         scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
       }
@@ -945,7 +982,7 @@ const css = `
       linear-gradient(90deg, rgba(136,255,0,0.38) 1px, transparent 1px);
     background-size: 80px 80px;
     background-position: 50% 0%;
-    transform: perspective(600px) rotateX(65deg) translateY(20%);
+    transform: perspective(600px) rotateX(82deg) translateY(35%);
     transform-origin: 50% 50%;
     animation: depthSweep 3.6s linear infinite;
     mask-image: linear-gradient(180deg, transparent 0%, black 15%, black 100%);
@@ -2159,7 +2196,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       const wireMat = new THREE.MeshBasicMaterial({
         color: 0x00ffcc, wireframe: true,
         transparent: true, opacity: 0.32,
-        blending: THREE.AdditiveBlending, depthWrite: false,
+        blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
       });
 
       let mixer = null;
@@ -2639,10 +2676,9 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
       });
 
       const clock = new THREE.Clock();
-      // Desktop: -50° (30° + 20°). Mobile: +20° CCW = -30°
-      const ROTATION_Y = isMobile ? -(Math.PI * 25 / 180) : -(Math.PI / 6) - (20 * Math.PI / 180);
+      // Match FigureBackdrop rotation exactly: desktop -30°, mobile -25°
+      const ROTATION_Y = isMobile ? -(Math.PI * 25 / 180) : -Math.PI / 6;
 
-      const camZ = isMobile ? 1200 : 660;
       const applyTransform = (THREE, obj) => {
         obj.traverse(c => {
           if (c.isMesh) { c.material = wireMat; c.castShadow = c.receiveShadow = false; }
@@ -2650,9 +2686,9 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
         const box    = new THREE.Box3().setFromObject(obj);
         const size   = box.getSize(new THREE.Vector3());
         const fovRad = (40 * Math.PI) / 180;
-        // Use camZ for scale so the figure appears the same screen-size regardless of camera distance
-        const worldH = 2 * Math.tan(fovRad / 2) * camZ;
-        const scale  = (worldH * 0.65) / size.y;
+        // Use hardcoded 600 (desktop camera Z) so scale matches the other two backdrops
+        const worldH   = 2 * Math.tan(fovRad / 2) * 600;
+        const scale    = (worldH * 0.65) / size.y;
         const newScale = scale * 1.495;
         obj.scale.setScalar(newScale);
         const box2   = new THREE.Box3().setFromObject(obj);
@@ -2670,18 +2706,7 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
         if (cancelled) return;
 
         const { savedScale, savedPos } = applyTransform(THREE, introObj);
-
-        // Apply ONLY scale + material + rotation to loopObj — NOT position.
-        // Position will be set solely by bone-matching at swap time, using introObj's
-        // final bone world-position as reference. This eliminates the T-pose bbox
-        // discrepancy that caused the jump.
-        loopObj.traverse(c => {
-          if (c.isMesh) { c.material = wireMat; c.castShadow = c.receiveShadow = false; }
-        });
-        loopObj.scale.copy(savedScale);
-        loopObj.rotation.y = ROTATION_Y;
-        // Start hidden at same position as introObj so it's in scene but invisible
-        loopObj.position.copy(savedPos);
+        applyTransform(THREE, loopObj);
 
         // Keep loop hidden until needed
         loopObj.visible = false;
