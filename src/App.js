@@ -217,8 +217,7 @@ function VideoPlayer({ src, mt }) {
 }
 
 // ─── CLOUDINARY CONFIG ────────────────────────────────────────────────────────
-const CLOUDINARY_CLOUD = "djoqczzyj";
-const CLOUDINARY_PRESET = "bros-of-st-hyacinth";
+// Cloudinary uploads now go through the server (/api/upload) — no client-side keys needed
 
 // ─── CLOUDINARY QUOTA MANAGEMENT ─────────────────────────────────────────────
 const CHAT_MAX_FILE_BYTES  = 100 * 1024 * 1024;          // 100 MB per upload
@@ -450,28 +449,23 @@ function BoardPage({ username }) {
     return () => media.forEach(m => m.removeEventListener("load", onLoad));
   }, [messages]);
 
-  const uploadToCloudinary = (file) => new Promise((resolve, reject) => {
-    const isVideo = file.type.startsWith("video/");
-    const isAudio = file.type.startsWith("audio/");
-    const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/${(isVideo || isAudio) ? "video" : "image"}/upload`;
+  const uploadToCloudinary = async (file) => {
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("upload_preset", CLOUDINARY_PRESET);
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", endpoint);
-    xhr.onload = () => {
-      if (xhr.status === 200) {
-        const r = JSON.parse(xhr.responseText);
-        resolve({ url: r.secure_url, bytes: r.bytes ?? 0, publicId: r.public_id ?? "" });
-      } else {
-        let errDetail = xhr.responseText;
-        try { errDetail = JSON.parse(xhr.responseText)?.error?.message || xhr.responseText; } catch {}
-        reject(new Error(`HTTP ${xhr.status}: ${errDetail}`));
-      }
-    };
-    xhr.onerror = () => reject(new Error("Network error — request blocked by sandbox"));
-    xhr.send(formData);
-  });
+    const token = localStorage.getItem("auth_token");
+    const res = await fetch(`${API_BASE}/api/upload`, {
+      method:  "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body:    formData,
+    });
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try { msg = (await res.json()).error || msg; } catch {}
+      throw new Error(msg);
+    }
+    const { url, publicId, bytes } = await res.json();
+    return { url, publicId, bytes };
+  };
 
   const handleFile = async (e) => {
     const file = e.target.files[0];
