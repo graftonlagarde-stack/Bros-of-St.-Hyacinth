@@ -2673,12 +2673,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             const camAngle = Math.atan2(toCamX, toCamZ);
             crossGroup.rotation.set(0, camAngle, 0);
             updateGlitter(clock.elapsedTime);
-            // Mobile camera is farther (z=1200 vs 660) so cross appears smaller/dimmer — boost opacity to compensate
-            const baseOpacity = isMobile ? 1.0 : 0.88;
-            const opacityAmp  = isMobile ? 0.0  : 0.08;
-            crossMat.opacity = baseOpacity + Math.sin(clock.elapsedTime * 4.1) * opacityAmp + Math.sin(clock.elapsedTime * 11.3) * 0.04;
-            // Also apply to hBar clone
-            crossGroup.traverse(c => { if (c.isMesh && c.material !== crossMat) c.material.opacity = crossMat.opacity; });
+            crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
 
             // Project crux world position → normalized screen coords for fog canvas
             const cruxWorld = new THREE.Vector3(crossGroup.position.x, crossGroup.position.y + crossH * 0.70, crossGroup.position.z);
