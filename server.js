@@ -626,59 +626,29 @@ async function sendPushToUser(userId, payload) {
 app.get("/api/link-preview", requireAuth, async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: "url is required" });
-  try { new URL(url); } catch { return res.status(400).json({ error: "Invalid URL" }); }
+  try {
+    new URL(url); // validate
+  } catch {
+    return res.status(400).json({ error: "Invalid URL" });
+  }
   try {
     const response = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-      },
-      signal: AbortSignal.timeout(8000),
-      redirect: "follow",
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; BrosBot/1.0)" },
+      signal: AbortSignal.timeout(5000),
     });
-    const buf  = await response.arrayBuffer();
-    const html = new TextDecoder().decode(buf.slice(0, 300000));
-
-    // Pull every <meta ...> tag out of the HTML as raw strings (handles multi-line tags)
-    const metaTags = [];
-    const metaRe = /<meta\s[^>]*?(?:\/>|>)/gis;
-    let m;
-    while ((m = metaRe.exec(html)) !== null) metaTags.push(m[0]);
-
-    // From a single <meta> tag string, extract an attribute value by name
-    const attr = (tag, name) => {
-      const r = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*?)"|'([^']*?)'|([^\\s/>]+))`, "i");
-      const x = r.exec(tag);
-      return x ? (x[1] ?? x[2] ?? x[3] ?? "").trim() : null;
+    const html = await response.text();
+    const get = (prop) => {
+      const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']+)["']`, "i"))
+               || html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${prop}["']`, "i"));
+      return m ? m[1] : null;
     };
-
-    // Find the content of a meta tag whose property or name matches any of the given values
-    const getMeta = (...names) => {
-      for (const name of names) {
-        const lower = name.toLowerCase();
-        for (const tag of metaTags) {
-          const prop = (attr(tag, "property") || attr(tag, "name") || "").toLowerCase();
-          if (prop === lower) {
-            const val = attr(tag, "content");
-            if (val) return val;
-          }
-        }
-      }
-      return null;
-    };
-
-    const titleMatch = html.match(/<title[^>]*>([\s\S]{1,300}?)<\/title>/i);
-    const rawTitle   = titleMatch ? titleMatch[1].replace(/\s+/g, " ").trim() : null;
-
-    const title       = getMeta("og:title", "twitter:title") || rawTitle;
-    const description = getMeta("og:description", "twitter:description", "description");
-    const image       = getMeta("og:image", "og:image:url", "twitter:image", "twitter:image:src");
-    const siteName    = getMeta("og:site_name");
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    const title       = get("og:title")       || (titleMatch ? titleMatch[1].trim() : null);
+    const description = get("og:description") || get("description");
+    const image       = get("og:image");
+    const siteName    = get("og:site_name");
     const domain      = new URL(url).hostname.replace(/^www\./, "");
-
-    if (!title && !description && !image) return res.status(422).json({ error: "No preview data found" });
-    return res.json({ title: title || domain, description, image, siteName, domain, url });
+    return res.json({ title, description, image, siteName, domain, url });
   } catch (err) {
     return res.status(502).json({ error: "Could not fetch preview: " + err.message });
   }
