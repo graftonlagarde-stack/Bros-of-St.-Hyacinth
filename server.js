@@ -14,6 +14,9 @@
 //   GET    /api/board/messages        — all board messages
 //   POST   /api/board/messages        — post a new message
 //   POST   /api/board/reactions       — toggle a reaction on a message
+//   GET    /api/push/vapid-public-key   — get VAPID public key
+//   POST   /api/push/subscribe          — save push subscription
+//   DELETE /api/push/subscribe          — remove push subscription
 //
 // BACKGROUND JOBS:
 //   On boot + every 6h: purge orphan Cloudinary assets, then delete oldest
@@ -28,9 +31,10 @@ const fs       = require("fs");
 const bcrypt   = require("bcryptjs");
 const jwt      = require("jsonwebtoken");
 const { Pool } = require("pg");
-const cloudinary = require("cloudinary").v2;
-const multer     = require("multer");
+const cloudinary  = require("cloudinary").v2;
+const multer      = require("multer");
 const streamifier = require("streamifier");
+const webpush     = require("web-push");
 
 const app        = express();
 const PORT       = process.env.PORT || 4000;
@@ -48,6 +52,17 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits:  { fileSize: 100 * 1024 * 1024 }, // 100 MB max
 });
+
+// ── Web Push (VAPID) ──────────────────────────────────────────────────────────
+// Generate keys once with: node -e "const wp=require('web-push');console.log(wp.generateVAPIDKeys())"
+// Then set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in Railway environment variables.
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    "mailto:graftonlagarde@protonmail.com",
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
+}
 const POSTGRES_LIMIT_BYTES    = 1 * 1024 * 1024 * 1024; // 1 GB (Railway free tier)
 const CLOUDINARY_LIMIT_BYTES  = 25 * 1024 * 1024 * 1024; // 25 GB (Cloudinary free tier)
 const CLEANUP_THRESHOLD       = 0.90; // trigger at 90%
@@ -248,6 +263,15 @@ async function initDb() {
       resource_type TEXT NOT NULL DEFAULT 'image',
       user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       uploaded_at   BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
+    );
+
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id         SERIAL PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      endpoint   TEXT NOT NULL UNIQUE,
+      p256dh     TEXT NOT NULL,
+      auth       TEXT NOT NULL,
+      created_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
     );
   `);
   await db.query(`
@@ -565,6 +589,80 @@ app.post("/api/upload", requireAuth, upload.single("file"), async (req, res) => 
   }
 });
 
+// ── Push notification helper ───────────────────────────────────────────────────
+async function sendPushToUser(userId, payload) {
+  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
+  try {
+    const { rows } = await db.query(
+      "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1",
+      [userId]
+    );
+    for (const sub of rows) {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          JSON.stringify(payload)
+        );
+      } catch (err) {
+        // 410 Gone = subscription expired/revoked — remove it
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          await db.query("DELETE FROM push_subscriptions WHERE endpoint = $1", [sub.endpoint]);
+        } else {
+          console.warn(`Push failed for user ${userId}:`, err.message);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("sendPushToUser error:", err.message);
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PUSH SUBSCRIPTION ROUTES
+// ═════════════════════════════════════════════════════════════════════════════
+
+// GET /api/push/vapid-public-key — returns the public VAPID key for the client
+app.get("/api/push/vapid-public-key", (req, res) => {
+  if (!process.env.VAPID_PUBLIC_KEY)
+    return res.status(503).json({ error: "Push notifications not configured." });
+  res.json({ key: process.env.VAPID_PUBLIC_KEY });
+});
+
+// POST /api/push/subscribe — save a push subscription for the authenticated user
+app.post("/api/push/subscribe", requireAuth, async (req, res) => {
+  try {
+    const { endpoint, keys } = req.body;
+    if (!endpoint || !keys?.p256dh || !keys?.auth)
+      return res.status(400).json({ error: "Invalid subscription object." });
+    await db.query(`
+      INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (endpoint) DO UPDATE SET user_id=$1, p256dh=$3, auth=$4
+    `, [req.userId, endpoint, keys.p256dh, keys.auth]);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("push/subscribe:", err);
+    return res.status(500).json({ error: "Server error." });
+  }
+});
+
+// DELETE /api/push/subscribe — remove push subscription for the authenticated user
+app.delete("/api/push/subscribe", requireAuth, async (req, res) => {
+  try {
+    const { endpoint } = req.body;
+    if (endpoint) {
+      await db.query("DELETE FROM push_subscriptions WHERE user_id=$1 AND endpoint=$2",
+        [req.userId, endpoint]);
+    } else {
+      await db.query("DELETE FROM push_subscriptions WHERE user_id=$1", [req.userId]);
+    }
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("push/unsubscribe:", err);
+    return res.status(500).json({ error: "Server error." });
+  }
+});
+
 // ═════════════════════════════════════════════════════════════════════════════
 // BOARD ROUTES
 // ═════════════════════════════════════════════════════════════════════════════
@@ -606,7 +704,26 @@ app.post("/api/board/messages", requireAuth, async (req, res) => {
       await db.query("DELETE FROM pending_uploads WHERE public_id = $1", [media.publicId]);
     }
 
-    return res.status(201).json(shapeMessage(rows[0], {}));
+    // Push notification — notify all OTHER users that a new message arrived
+    const newMsg = shapeMessage(rows[0], {});
+    const { rows: allUsers } = await db.query(
+      "SELECT DISTINCT user_id FROM push_subscriptions WHERE user_id != $1",
+      [req.userId]
+    );
+    const senderName = displayName(user);
+    const pushBody = text?.trim()
+      ? `${senderName}: ${text.trim().slice(0, 80)}`
+      : `${senderName} sent a file`;
+    for (const u of allUsers) {
+      sendPushToUser(u.user_id, {
+        title: "Bros of St. Hyacinth",
+        body:  pushBody,
+        tag:   "bsh-message",
+        url:   "/",
+      });
+    }
+
+    return res.status(201).json(newMsg);
   } catch (err) {
     console.error("postMessage:", err);
     return res.status(500).json({ error: "Server error." });
@@ -634,6 +751,23 @@ app.post("/api/board/reactions", requireAuth, async (req, res) => {
       );
     }
     const reactionsMap = await loadReactions([Number(messageId)]);
+
+    // Push notification — notify the message author if someone else reacted
+    if (emoji !== null && emoji !== undefined) {
+      const { rows: msgRows } = await db.query(
+        "SELECT user_id FROM messages WHERE id = $1", [messageId]
+      );
+      const authorUserId = msgRows[0]?.user_id;
+      if (authorUserId && authorUserId !== req.userId) {
+        sendPushToUser(authorUserId, {
+          title: "Bros of St. Hyacinth",
+          body:  `${name} reacted ${emoji} to your message`,
+          tag:   "bsh-reaction",
+          url:   "/",
+        });
+      }
+    }
+
     return res.json({ reactions: reactionsMap[Number(messageId)] || {} });
   } catch (err) {
     console.error("postReaction:", err);
