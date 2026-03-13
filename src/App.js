@@ -1879,9 +1879,9 @@ const css = `
     /* ── Denser grid plane on mobile — double the line frequency ── */
     /* ── Slower scroll + raised front end ── */
     .app-bg::before {
-      background-size: 40px 40px !important;
-      animation-duration: 9s !important;
-      transform: perspective(600px) rotateX(87deg) translateY(35%) !important;
+      background-size: 20px 20px !important;
+      animation-duration: 14s !important;
+      transform: perspective(600px) rotateX(88deg) translateY(35%) !important;
     }
 
     /* ── Main: full viewport, slides in from right when nav retracts ── */
@@ -2341,7 +2341,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
 
         // Align cross base to figure's ground level.
         // On mobile, crossH was reduced by 31 (310→279), so shift y up by 31 to keep top at same position.
-        crossGroup.position.y = -box2.min.y - extraH + 70 + 180 + (isMobile ? 31 : 0);
+        crossGroup.position.y = -box2.min.y - extraH + 70 + 180 + (isMobile ? 0 : 0);
 
         if (obj.animations?.length) {
           const clip = obj.animations[0];
