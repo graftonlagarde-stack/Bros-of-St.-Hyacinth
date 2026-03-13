@@ -563,25 +563,62 @@ function BoardPage({ username }) {
   const openLightbox = (src, type) => { setLightboxSrc(src); setLightboxType(type); };
   const closeLightbox = () => { setLightboxSrc(null); setLightboxType(null); };
 
-  const lightbox = lightboxSrc && createPortal(
+  // VideoLightbox: closes itself when the browser's native fullscreen/pip player exits
+  const VideoLightbox = ({ src, onClose }) => {
+    const videoRef = useRef(null);
+    useEffect(() => {
+      const vid = videoRef.current;
+      if (!vid) return;
+      // iOS Safari fires webkitendfullscreen when the native player is dismissed
+      const onWebkitEnd = () => onClose();
+      // Standard browsers fire fullscreenchange on document when exiting fullscreen
+      const onFsChange = () => { if (!document.fullscreenElement) onClose(); };
+      vid.addEventListener("webkitendfullscreen", onWebkitEnd);
+      document.addEventListener("fullscreenchange", onFsChange);
+      return () => {
+        vid.removeEventListener("webkitendfullscreen", onWebkitEnd);
+        document.removeEventListener("fullscreenchange", onFsChange);
+      };
+    }, [onClose]);
+    return createPortal(
+      <div onClick={onClose} style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.97)",
+        zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <button onClick={e => { e.stopPropagation(); onClose(); }} style={{
+          position: "absolute", top: 16, right: 16,
+          background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.3)",
+          borderRadius: "50%", width: 36, height: 36, color: "#fff",
+          fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+        }}>✕</button>
+        <video ref={videoRef} src={src} controls autoPlay
+          style={{ maxWidth: "95vw", maxHeight: "90svh", borderRadius: 4 }}
+          onClick={e => e.stopPropagation()} />
+      </div>,
+      document.body
+    );
+  };
+
+  const lightbox = lightboxSrc && (
     lightboxType === "audio"
       ? <AudioLightbox src={lightboxSrc} onClose={closeLightbox} />
-      : <div onClick={closeLightbox} style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.97)",
-          zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center",
-        }}>
-          <button onClick={e => { e.stopPropagation(); closeLightbox(); }} style={{
-            position: "absolute", top: 16, right: 16,
-            background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.3)",
-            borderRadius: "50%", width: 36, height: 36, color: "#fff",
-            fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-          }}>✕</button>
-          {lightboxType === "image"
-            ? <img src={lightboxSrc} alt="fullscreen" style={{ maxWidth: "95vw", maxHeight: "90svh", borderRadius: 4, objectFit: "contain" }} onClick={e => e.stopPropagation()} />
-            : <video src={lightboxSrc} controls autoPlay style={{ maxWidth: "95vw", maxHeight: "90svh", borderRadius: 4 }} onClick={e => e.stopPropagation()} />
-          }
-        </div>,
-    document.body
+      : lightboxType === "video"
+      ? <VideoLightbox src={lightboxSrc} onClose={closeLightbox} />
+      : createPortal(
+          <div onClick={closeLightbox} style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.97)",
+            zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <button onClick={e => { e.stopPropagation(); closeLightbox(); }} style={{
+              position: "absolute", top: 16, right: 16,
+              background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.3)",
+              borderRadius: "50%", width: 36, height: 36, color: "#fff",
+              fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+            }}>✕</button>
+            <img src={lightboxSrc} alt="fullscreen" style={{ maxWidth: "95vw", maxHeight: "90svh", borderRadius: 4, objectFit: "contain" }} onClick={e => e.stopPropagation()} />
+          </div>,
+          document.body
+        )
   );
 
   // ── Message list ────────────────────────────────────────────────────────
@@ -2178,7 +2215,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       });
 
       const crossGroup = new THREE.Group();
-      const crossH = isMobile ? 310 : 230, crossW = isMobile ? 170 : 125, barThick = isMobile ? 30 : 23;
+      const crossH = isMobile ? 279 : 230, crossW = isMobile ? 170 : 125, barThick = isMobile ? 30 : 23;
       const vBar = new THREE.Mesh(new THREE.BoxGeometry(barThick, crossH, barThick), crossMat);
       vBar.position.y = crossH / 2;
       const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), crossMat.clone());
@@ -2222,8 +2259,9 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         obj.rotation.y = isMobile ? -(Math.PI * 170) / 180 : -(Math.PI * 195) / 180;
         scene.add(obj);
 
-        // Align cross base to figure's ground level (vBar.position.y = crossH/2 already lifts it)
-        crossGroup.position.y = -box2.min.y - extraH + 70 + 180;
+        // Align cross base to figure's ground level.
+        // On mobile, crossH was reduced by 31 (310→279), so shift y up by 31 to keep top at same position.
+        crossGroup.position.y = -box2.min.y - extraH + 70 + 180 + (isMobile ? 31 : 0);
 
         if (obj.animations?.length) {
           const clip = obj.animations[0];
@@ -2652,7 +2690,7 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
     ]).then(([THREE, { FBXLoader }]) => {
       if (cancelled) return;
       const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
-      const h = isMobile ? window.innerHeight : (window.innerHeight - 70);
+      const h = isMobile ? window.innerHeight : window.innerHeight; // full height — prevents figure clipping at bottom
 
       const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
@@ -2863,7 +2901,7 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
   return (
     <div ref={mountRef} style={{
       position: "fixed",
-      left: isMobile ? 0 : 224, top: 0, right: 0, bottom: isMobile ? 0 : 70,
+      left: isMobile ? 0 : 224, top: 0, right: 0, bottom: 0,
       pointerEvents: "none", zIndex: -1,
       opacity, transition: "opacity 0.5s ease",
       filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)",
