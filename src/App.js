@@ -1831,7 +1831,7 @@ const css = `
     .xbox-orb-wrap {
       position: absolute;
       left: -60px !important;
-      top: 52px;
+      top: 62px;
       transform: scale(1) !important;
       transform-origin: left center;
       width: 220px !important; height: 220px !important;
@@ -1847,7 +1847,7 @@ const css = `
     .nav-wrap {
       position: fixed !important;
       left: 64px !important;
-      top: 52px !important;
+      top: 62px !important;
       transform: none !important;
       z-index: 299 !important;
       pointer-events: all;
@@ -4549,12 +4549,32 @@ export default function App() {
   const [loaded, setLoaded]                     = useState(false);
   const mainRef = useRef(null);
   const glbCanvasRef = useRef(null);
+  const navWrapRef = useRef(null);
+  const orbWrapRef = useRef(null);
 
   const [currentTrack, setCurrentTrack] = useState(PERMANENT_TRACKS[0] ?? null);
   const [isPlaying, setIsPlaying]       = useState(false);
 
   // Push notifications — mobile only, only when logged in
   usePushNotifications(isMobile ? api.getToken() : null);
+
+  // Mobile: center orb vertically relative to the full nav-wrap (all tabs including user/admin)
+  useEffect(() => {
+    if (!isMobile) return;
+    const centerOrb = () => {
+      const nav = navWrapRef.current;
+      const orb = orbWrapRef.current;
+      if (!nav || !orb) return;
+      const navTop  = parseInt(getComputedStyle(nav).top, 10) || 62;
+      const navH    = nav.offsetHeight;
+      const orbH    = orb.offsetHeight;
+      orb.style.top = (navTop + navH / 2 - orbH / 2) + "px";
+    };
+    centerOrb();
+    // Re-center whenever the window resizes (orientation change etc.)
+    window.addEventListener("resize", centerOrb);
+    return () => window.removeEventListener("resize", centerOrb);
+  }, [isMobile, user]); // re-run when user changes (admin tab appears/disappears)
 
   // On mount: try to restore session from stored JWT
   useEffect(() => {
@@ -4806,7 +4826,7 @@ export default function App() {
             }
           </div>
           {/* Orb — click to toggle nav */}
-          <div className="xbox-orb-wrap" onClick={() => setNavExpanded(v => !v)}>
+          <div ref={orbWrapRef} className="xbox-orb-wrap" onClick={() => setNavExpanded(v => !v)}>
             <div className="xbox-orb" />
             <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(circle at 50% 55%, transparent 30%, rgba(0,5,0,0.5) 62%, rgba(0,0,0,0.80) 100%)",zIndex:1,pointerEvents:"none"}} />
             <canvas ref={glbCanvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",borderRadius:"50%",pointerEvents:"none",zIndex:2,filter:"blur(0.5px) drop-shadow(0 0 10px #aaff00cc) drop-shadow(0 0 25px #88ff0099) drop-shadow(0 0 55px #55dd0066) drop-shadow(0 0 90px #33aa0033)"}} />
@@ -4817,7 +4837,7 @@ export default function App() {
             <div className="xbox-bubble" />
           </div>
           {/* Blade nav */}
-          <div className={`nav-wrap${navExpanded ? "" : " retracted"}`}>
+          <div ref={navWrapRef} className={`nav-wrap${navExpanded ? "" : " retracted"}`}>
             {navItems.map(n => {
               const isActive = (pressedId ?? page) === n.id;
               return (
