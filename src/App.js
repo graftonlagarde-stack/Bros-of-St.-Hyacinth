@@ -336,7 +336,7 @@ function AudioLightbox({ src, onClose }) {
     // Draw the idle line once synchronously before the first RAF tick
     const w = canvas.width, h = canvas.height;
     ctx2d.clearRect(0, 0, w, h);
-    ctx2d.strokeStyle = "rgba(0,255,140,0.3)";
+    ctx2d.strokeStyle = "rgba(0,255,140,0.85)";
     ctx2d.lineWidth = 1.5;
     ctx2d.beginPath();
     ctx2d.moveTo(0, h / 2);
@@ -365,8 +365,8 @@ function AudioLightbox({ src, onClose }) {
           x += sliceW;
         }
       } else {
-        // Idle — dim flat centre line
-        ctx2d.strokeStyle = "rgba(0,255,140,0.3)";
+        // Idle — flat centre line, same color as active
+        ctx2d.strokeStyle = "rgba(0,255,140,0.85)";
         ctx2d.moveTo(0, h / 2);
         ctx2d.lineTo(w, h / 2);
       }
@@ -563,6 +563,22 @@ function BoardPage({ username }) {
   const [uploading, setUploading]       = useState(false);
   const [emojiPickerFor, setEmojiPickerFor] = useState(null);
   const [emojiCatIdx, setEmojiCatIdx] = useState(0);
+
+  // Most-used emojis — persisted in localStorage, shown in single-row picker
+  const DEFAULT_EMOJIS = ["👍","💪","🔥","❤️","😂","🎯","👏"];
+  const [mostUsedEmojis, setMostUsedEmojis] = useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("emoji_most_used") || "null");
+      return Array.isArray(stored) && stored.length ? stored.slice(0, 7) : DEFAULT_EMOJIS;
+    } catch { return DEFAULT_EMOJIS; }
+  });
+  const recordEmojiUse = (emoji) => {
+    setMostUsedEmojis(prev => {
+      const next = [emoji, ...prev.filter(e => e !== emoji)].slice(0, 7);
+      try { localStorage.setItem("emoji_most_used", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
   const [lightboxSrc, setLightboxSrc]   = useState(null); // fullscreen media viewer
   const [lightboxType, setLightboxType] = useState(null); // "image" | "video"
   const scrollContainerRef = useRef(null);
@@ -899,41 +915,64 @@ function BoardPage({ username }) {
                   position:"absolute", bottom:"calc(100% + 4px)", [isMe?"right":"left"]:0,
                   background:"#0a1a0e", border:"1px solid rgba(136,255,0,0.25)",
                   borderRadius:8, zIndex:200,
-                  boxShadow:"0 8px 32px rgba(0,0,0,0.8), 0 0 24px rgba(136,255,0,0.08)",
-                  width:260, display:"flex", flexDirection:"column", overflow:"hidden",
+                  boxShadow:"0 8px 32px rgba(0,0,0,0.8), 0 0 16px rgba(136,255,0,0.08)",
+                  display:"flex", alignItems:"center", padding:"4px 6px", gap:2,
+                  whiteSpace:"nowrap",
                 }}>
-                {/* Category tabs */}
-                <div style={{ display:"flex", borderBottom:"1px solid rgba(136,255,0,0.15)", background:"rgba(0,0,0,0.3)" }}>
-                  {EMOJI_CATEGORIES.map((cat, ci) => (
-                    <button key={ci}
-                      onMouseDown={e => e.preventDefault()}
-                      onClick={() => setEmojiCatIdx(ci)}
-                      style={{
-                        flex:1, border:"none", background:"none", cursor:"pointer",
-                        padding:"6px 0", fontSize:14,
-                        borderBottom: ci === emojiCatIdx ? "2px solid rgba(136,255,0,0.7)" : "2px solid transparent",
-                        opacity: ci === emojiCatIdx ? 1 : 0.45,
-                      }}>
-                      {cat.label}
-                    </button>
-                  ))}
-                </div>
-                {/* Emoji grid */}
-                <div style={{ display:"flex", flexWrap:"wrap", gap:0, padding:4, maxHeight:180, overflowY:"auto" }}>
-                  {EMOJI_CATEGORIES[emojiCatIdx].emojis.map(e => (
-                    <button key={e}
-                      onMouseDown={ev => ev.preventDefault()}
-                      onClick={() => { toggleReaction(msg.id, e); setEmojiPickerFor(null); }}
-                      style={{
-                        background: (msg.reactions[e]||[]).includes(username) ? "rgba(136,255,0,0.15)" : "none",
-                        border:"none", cursor:"pointer", fontSize:20,
-                        borderRadius:4, padding:"5px", lineHeight:1,
-                        transition:"background 0.1s", minWidth:36,
-                      }}>
-                      {e}
-                    </button>
-                  ))}
-                </div>
+                {mostUsedEmojis.map(e => (
+                  <button key={e}
+                    onMouseDown={ev => ev.preventDefault()}
+                    onClick={() => { recordEmojiUse(e); toggleReaction(msg.id, e); setEmojiPickerFor(null); }}
+                    style={{
+                      background: (msg.reactions[e]||[]).includes(username) ? "rgba(136,255,0,0.15)" : "none",
+                      border:"none", cursor:"pointer", fontSize:22,
+                      borderRadius:4, padding:"4px 3px", lineHeight:1,
+                      transition:"background 0.1s",
+                    }}>
+                    {e}
+                  </button>
+                ))}
+                {/* + button: spawns a tiny native-text input to capture any emoji */}
+                <button
+                  style={{
+                    background:"rgba(136,255,0,0.08)", border:"1px solid rgba(136,255,0,0.3)",
+                    borderRadius:4, cursor:"pointer", fontSize:14, fontWeight:700,
+                    color:"rgba(136,255,0,0.9)", padding:"4px 7px", lineHeight:1,
+                    fontFamily:"'Orbitron',sans-serif", flexShrink:0,
+                  }}
+                  onClick={() => {
+                    const targetId = msg.id;
+                    // Create a tiny off-screen input that iOS will open emoji keyboard for
+                    const inp = document.createElement("input");
+                    inp.type = "text";
+                    inp.inputMode = "text";
+                    // Must be visible (non-zero size, not display:none) for iOS keyboard
+                    Object.assign(inp.style, {
+                      position:"fixed", bottom:"80px", left:"50%",
+                      transform:"translateX(-50%)",
+                      width:"60px", height:"36px", fontSize:"24px",
+                      opacity:"0.01", zIndex:"9999",
+                      background:"transparent", border:"none", outline:"none",
+                      textAlign:"center",
+                    });
+                    document.body.appendChild(inp);
+                    inp.focus();
+                    const cleanup = () => {
+                      if (document.body.contains(inp)) document.body.removeChild(inp);
+                    };
+                    inp.addEventListener("input", () => {
+                      const val = inp.value.trim();
+                      if (val) {
+                        recordEmojiUse(val);
+                        toggleReaction(targetId, val);
+                        setEmojiPickerFor(null);
+                        cleanup();
+                      }
+                    });
+                    inp.addEventListener("blur", () => setTimeout(cleanup, 300));
+                  }}>
+                  +
+                </button>
               </div>
             )}
           </div>
@@ -1165,6 +1204,11 @@ const css = `
   @keyframes depthSweep {
     0%   { background-position: 50% 0%; }
     100% { background-position: 50% 100%; }
+  }
+  @keyframes crossGlitter {
+    0%   { opacity: 0.82; filter: brightness(1.0) drop-shadow(0 0 8px rgba(220,235,255,0.7)); }
+    50%  { opacity: 1.0;  filter: brightness(1.3) drop-shadow(0 0 20px rgba(255,255,255,0.9)); }
+    100% { opacity: 0.88; filter: brightness(1.1) drop-shadow(0 0 12px rgba(200,220,255,0.75)); }
   }
   @keyframes rankGlow {
     0%,100% { box-shadow: 0 0 20px rgba(136,255,0,0.2), inset 0 0 40px rgba(136,255,0,0.03); }
@@ -2356,6 +2400,8 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
   const mountRef   = useRef(null);
   const visibleRef = useRef(visible);
   const [opacity, setOpacity] = useState(0);
+  // Mobile: cross rendered as DOM overlay to avoid WebGL blending z-fight
+  const domCrossRef = useRef(null);
 
   useEffect(() => {
     visibleRef.current = visible;
@@ -2388,6 +2434,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       renderer.setPixelRatio(1);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
+      renderer.sortObjects = true; // ensures renderOrder is honoured for transparent objects
       el.appendChild(renderer.domElement);
       rendererInst = renderer;
 
@@ -2429,37 +2476,31 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         glitterTex.needsUpdate = true;
       };
 
-      const crossMat = new THREE.MeshBasicMaterial({
-        map: glitterTex, transparent: true, opacity: 1.0,
-        blending: THREE.AdditiveBlending, depthWrite: false,
-        depthTest: !isMobile, // mobile: disable depth test so renderOrder alone controls layering
-      });
-
-      const crossGroup = new THREE.Group();
-      const crossH = isMobile ? 279 : 230, crossW = isMobile ? 153 : 125, barThick = isMobile ? 30 : 23;
-      const vBar = new THREE.Mesh(new THREE.BoxGeometry(barThick, crossH, barThick), crossMat);
-      vBar.position.y = crossH / 2;
-      const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), crossMat.clone());
-      hBar.position.y = crossH * 0.70;
-      crossGroup.add(vBar, hBar);
-      // On desktop canvas starts at left:224 so cross needs an x-offset to appear screen-centered.
-      // On mobile canvas starts at left:0, so no offset needed.
-      const crossCamDist = isMobile ? 1200 : 660;
-      const crossFovRad = (40 * Math.PI) / 180;
-      const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
-      const crossCenterX = isMobile ? 0 : (-160 * crossWorldPerPx);
-      crossGroup.position.set(crossCenterX, 0, 0);
-      if (isMobile) {
-        crossGroup.renderOrder = 0;
-        crossGroup.traverse(c => { c.renderOrder = 0; });
+      // Desktop: WebGL cross in scene. Mobile: cross is a DOM div overlay (domCrossRef),
+      // so it is guaranteed above the WebGL canvas regardless of blending.
+      let crossGroup = null;
+      if (!isMobile) {
+        const crossMat = new THREE.MeshBasicMaterial({
+          map: glitterTex, transparent: true, opacity: 1.0,
+          blending: THREE.AdditiveBlending, depthWrite: false,
+        });
+        const crossH = 230, crossW = 125, barThick = 23;
+        const vBar = new THREE.Mesh(new THREE.BoxGeometry(barThick, crossH, barThick), crossMat);
+        vBar.position.y = crossH / 2;
+        const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), crossMat.clone());
+        hBar.position.y = crossH * 0.70;
+        crossGroup = new THREE.Group();
+        crossGroup.add(vBar, hBar);
+        const crossFovRad = (40 * Math.PI) / 180;
+        const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * 660 / w;
+        crossGroup.position.set(-160 * crossWorldPerPx, 0, 0);
+        scene.add(crossGroup);
       }
-      scene.add(crossGroup);
 
       const wireMat = new THREE.MeshBasicMaterial({
         color: 0x00ffcc, wireframe: true,
         transparent: true, opacity: 0.32,
         blending: THREE.AdditiveBlending, depthWrite: false,
-        depthTest: !isMobile, // mobile: ignore depth so figure always renders visually above cross
       });
 
       let mixer = null;
@@ -2485,9 +2526,11 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         obj.rotation.y = isMobile ? -(Math.PI * 170) / 180 : -(Math.PI * 195) / 180;
         scene.add(obj);
 
-        // Align cross base to figure's ground level.
-        // On mobile, crossH was reduced by 31 (310→279), so shift y up by 31 to keep top at same position.
-        crossGroup.position.y = -box2.min.y - extraH + 70 + 180 + (isMobile ? 0 : 0);
+        // Align desktop WebGL cross base to figure's ground level.
+        if (crossGroup) {
+          crossGroup.position.y = -box2.min.y - extraH + 70 + 180;
+        }
+        // Mobile DOM cross: positioned via CSS — see domCrossRef in JSX
 
         if (obj.animations?.length) {
           const clip = obj.animations[0];
@@ -2884,6 +2927,41 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       transition: "opacity 0.5s ease",
     }}>
       <div ref={mountRef} style={{ position: "absolute", inset: 0, filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)" }} />
+      {/* Mobile DOM cross — sits above the WebGL canvas, below fog layer */}
+      {isMobile && (
+        <div ref={domCrossRef} style={{
+          position: "absolute",
+          // horizontally centred; vertically: bottom ~38% of screen feels right given figure position
+          left: "50%", bottom: "32%",
+          transform: "translateX(-50%)",
+          width: 153, height: 279,
+          pointerEvents: "none",
+        }}>
+          {/* Vertical bar */}
+          <div style={{
+            position: "absolute",
+            left: "50%", top: 0,
+            transform: "translateX(-50%)",
+            width: 30, height: 279,
+            borderRadius: 6,
+            background: "linear-gradient(160deg,#e8eef2 0%,#ffffff 40%,#d4e4f0 70%,#f0f4f8 100%)",
+            boxShadow: "0 0 18px 4px rgba(220,235,255,0.55), 0 0 40px 8px rgba(200,220,255,0.25)",
+            animation: "crossGlitter 2.4s ease-in-out infinite alternate",
+          }} />
+          {/* Horizontal bar — 70% from top */}
+          <div style={{
+            position: "absolute",
+            top: "calc(70% - 15px)",
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: 153, height: 30,
+            borderRadius: 6,
+            background: "linear-gradient(90deg,#e8eef2 0%,#ffffff 40%,#d4e4f0 70%,#f0f4f8 100%)",
+            boxShadow: "0 0 18px 4px rgba(220,235,255,0.55), 0 0 40px 8px rgba(200,220,255,0.25)",
+            animation: "crossGlitter 2.4s ease-in-out infinite alternate",
+          }} />
+        </div>
+      )}
       <canvas ref={fogCanvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
     </div>
   );
@@ -3727,7 +3805,11 @@ function AudioPage({ currentTrack, setCurrentTrack, isPlaying, setIsPlaying }) {
                 style={{display:"flex", alignItems:"center", cursor:"pointer"}}
                 onClick={() => play(t)}>
                 <div className="track-num" style={{color: active && isPlaying ? "var(--accent)" : "var(--muted)"}}>
-                  {active && isPlaying ? "▶" : i + 1}
+                  {active && isPlaying
+                    ? <svg width="13" height="13" viewBox="0 0 13 13" style={{display:"block",filter:"drop-shadow(0 0 4px #00ff99)"}}>
+                        <polygon points="2,1 12,6.5 2,12" fill="#00ff99"/>
+                      </svg>
+                    : i + 1}
                 </div>
                 <div style={{flex:1}}>
                   <div className="track-title" style={{fontSize:14, fontWeight:600}}>{t.title}</div>
@@ -3753,7 +3835,11 @@ function AudioPage({ currentTrack, setCurrentTrack, isPlaying, setIsPlaying }) {
                 style={{display:"flex", alignItems:"center", cursor:"pointer"}}
                 onClick={() => play(t)}>
                 <div className="track-num" style={{color: active && isPlaying ? "var(--accent)" : "var(--muted)"}}>
-                  {active && isPlaying ? "▶" : i + 47}
+                  {active && isPlaying
+                    ? <svg width="13" height="13" viewBox="0 0 13 13" style={{display:"block",filter:"drop-shadow(0 0 4px #00ff99)"}}>
+                        <polygon points="2,1 12,6.5 2,12" fill="#00ff99"/>
+                      </svg>
+                    : i + 47}
                 </div>
                 <div style={{flex:1}}>
                   <div className="track-title" style={{fontSize:14, fontWeight:600}}>{t.title}</div>
@@ -3961,7 +4047,15 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack, navExpand
             <button className="ctrl-btn" onClick={() => nudge(-15)} disabled={noSrc} title="−15s"
               style={{fontSize:9, fontFamily:"'Orbitron',sans-serif", letterSpacing:0}}>−15</button>
             <button className="play-btn" onClick={() => setIsPlaying(!isPlaying)} disabled={noSrc}>
-              {isPlaying ? "⏸\uFE0E" : "▶\uFE0E"}
+              {isPlaying
+                ? <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="3" y="2" width="4" height="14" rx="1.5" fill="#00ff99"/>
+                    <rect x="11" y="2" width="4" height="14" rx="1.5" fill="#00ff99"/>
+                  </svg>
+                : <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <polygon points="4,2 16,9 4,16" fill="#00ff99"/>
+                  </svg>
+              }
             </button>
             <button className="ctrl-btn" onClick={() => nudge(15)} disabled={noSrc} title="+15s"
               style={{fontSize:9, fontFamily:"'Orbitron',sans-serif", letterSpacing:0}}>+15</button>
