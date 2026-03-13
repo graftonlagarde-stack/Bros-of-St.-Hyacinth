@@ -4922,7 +4922,30 @@ export default function App() {
 
   const handleSetPage = (id) => {
     setPage(id);
+    if (id === "boards") clearBadge();
   };
+
+  // Clear the app icon badge and reset server unread count when user views chat
+  const clearBadge = () => {
+    if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+    const token = api.getToken();
+    if (token) {
+      fetch(`${API_BASE}/api/badge/clear`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
+  };
+
+  // Also clear badge if user is already on boards and the app comes back into focus
+  useEffect(() => {
+    if (page !== "boards") return;
+    const onFocus = () => clearBadge();
+    window.addEventListener("focus", onFocus);
+    // Clear immediately in case we're already focused
+    clearBadge();
+    return () => window.removeEventListener("focus", onFocus);
+  }, [page]);
 
   if (!loaded) return null;
 

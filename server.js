@@ -275,6 +275,12 @@ async function initDb() {
     );
   `);
   await db.query(`
+    CREATE TABLE IF NOT EXISTS unread_counts (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      count   INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  await db.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
   `);
 
@@ -590,9 +596,23 @@ app.post("/api/upload", requireAuth, upload.single("file"), async (req, res) => 
 });
 
 // ── Push notification helper ───────────────────────────────────────────────────
+// Increment unread count for a user and return the new total
+async function incrementUnread(userId) {
+  const { rows } = await db.query(`
+    INSERT INTO unread_counts (user_id, count) VALUES ($1, 1)
+    ON CONFLICT (user_id) DO UPDATE SET count = unread_counts.count + 1
+    RETURNING count
+  `, [userId]);
+  return rows[0]?.count ?? 1;
+}
+
 async function sendPushToUser(userId, payload) {
   if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
   try {
+    // Increment unread count and attach to payload so service worker can set badge
+    const badge = await incrementUnread(userId);
+    const fullPayload = { ...payload, badge };
+
     const { rows } = await db.query(
       "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1",
       [userId]
@@ -601,7 +621,7 @@ async function sendPushToUser(userId, payload) {
       try {
         await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          JSON.stringify(payload)
+          JSON.stringify(fullPayload)
         );
       } catch (err) {
         // 410 Gone = subscription expired/revoked — remove it
@@ -769,6 +789,20 @@ app.delete("/api/push/subscribe", requireAuth, async (req, res) => {
     return res.json({ ok: true });
   } catch (err) {
     console.error("push/unsubscribe:", err);
+    return res.status(500).json({ error: "Server error." });
+  }
+});
+
+// POST /api/badge/clear — user has viewed the chat; reset their unread count to 0
+app.post("/api/badge/clear", requireAuth, async (req, res) => {
+  try {
+    await db.query(
+      "INSERT INTO unread_counts (user_id, count) VALUES ($1, 0) ON CONFLICT (user_id) DO UPDATE SET count = 0",
+      [req.userId]
+    );
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("badge/clear:", err);
     return res.status(500).json({ error: "Server error." });
   }
 });
