@@ -563,22 +563,6 @@ function BoardPage({ username }) {
   const [uploading, setUploading]       = useState(false);
   const [emojiPickerFor, setEmojiPickerFor] = useState(null);
   const [emojiCatIdx, setEmojiCatIdx] = useState(0);
-
-  // Most-used emojis — persisted in localStorage, shown in single-row picker
-  const DEFAULT_EMOJIS = ["👍","💪","🔥","❤️","😂","🎯","👏"];
-  const [mostUsedEmojis, setMostUsedEmojis] = useState(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem("emoji_most_used") || "null");
-      return Array.isArray(stored) && stored.length ? stored.slice(0, 7) : DEFAULT_EMOJIS;
-    } catch { return DEFAULT_EMOJIS; }
-  });
-  const recordEmojiUse = (emoji) => {
-    setMostUsedEmojis(prev => {
-      const next = [emoji, ...prev.filter(e => e !== emoji)].slice(0, 7);
-      try { localStorage.setItem("emoji_most_used", JSON.stringify(next)); } catch {}
-      return next;
-    });
-  };
   const [lightboxSrc, setLightboxSrc]   = useState(null); // fullscreen media viewer
   const [lightboxType, setLightboxType] = useState(null); // "image" | "video"
   const scrollContainerRef = useRef(null);
@@ -592,7 +576,12 @@ function BoardPage({ username }) {
   // Close emoji picker on outside click
   useEffect(() => {
     if (!emojiPickerFor) return;
-    const close = () => setEmojiPickerFor(null);
+    const close = (e) => {
+      // Don't close if the click is inside a picker (stopPropagation on picker divs handles this,
+      // but we also check the target isn't inside any open picker as a belt-and-suspenders guard)
+      setEmojiPickerFor(null);
+    };
+    // Use capture:false so stopPropagation on picker children can cancel this
     document.addEventListener("mousedown", close);
     document.addEventListener("touchstart", close);
     return () => {
@@ -916,65 +905,41 @@ function BoardPage({ username }) {
                   position:"absolute", bottom:"calc(100% + 4px)", [isMe?"right":"left"]:0,
                   background:"#0a1a0e", border:"1px solid rgba(136,255,0,0.25)",
                   borderRadius:8, zIndex:200,
-                  boxShadow:"0 8px 32px rgba(0,0,0,0.8), 0 0 16px rgba(136,255,0,0.08)",
-                  display:"flex", alignItems:"center", padding:"4px 6px", gap:2,
-                  whiteSpace:"nowrap",
+                  boxShadow:"0 8px 32px rgba(0,0,0,0.8), 0 0 24px rgba(136,255,0,0.08)",
+                  width:260, display:"flex", flexDirection:"column", overflow:"hidden",
                 }}>
-                {mostUsedEmojis.map(e => (
-                  <button key={e}
-                    onMouseDown={ev => { ev.preventDefault(); ev.stopPropagation(); }}
-                    onClick={ev => { ev.stopPropagation(); recordEmojiUse(e); toggleReaction(msg.id, e); setEmojiPickerFor(null); }}
-                    style={{
-                      background: (msg.reactions[e]||[]).includes(username) ? "rgba(136,255,0,0.15)" : "none",
-                      border:"none", cursor:"pointer", fontSize:22,
-                      borderRadius:4, padding:"4px 3px", lineHeight:1,
-                      transition:"background 0.1s",
-                    }}>
-                    {e}
-                  </button>
-                ))}
-                {/* + button: spawns a tiny native-text input to capture any emoji */}
-                <button
-                  style={{
-                    background:"rgba(136,255,0,0.08)", border:"1px solid rgba(136,255,0,0.3)",
-                    borderRadius:4, cursor:"pointer", fontSize:14, fontWeight:700,
-                    color:"rgba(136,255,0,0.9)", padding:"4px 7px", lineHeight:1,
-                    fontFamily:"'Orbitron',sans-serif", flexShrink:0,
-                  }}
-                  onClick={ev => {
-                    ev.stopPropagation();
-                    const targetId = msg.id;
-                    // Create a tiny off-screen input that iOS will open emoji keyboard for
-                    const inp = document.createElement("input");
-                    inp.type = "text";
-                    inp.inputMode = "text";
-                    // Must be visible (non-zero size, not display:none) for iOS keyboard
-                    Object.assign(inp.style, {
-                      position:"fixed", bottom:"80px", left:"50%",
-                      transform:"translateX(-50%)",
-                      width:"60px", height:"36px", fontSize:"24px",
-                      opacity:"0.01", zIndex:"9999",
-                      background:"transparent", border:"none", outline:"none",
-                      textAlign:"center",
-                    });
-                    document.body.appendChild(inp);
-                    inp.focus();
-                    const cleanup = () => {
-                      if (document.body.contains(inp)) document.body.removeChild(inp);
-                    };
-                    inp.addEventListener("input", () => {
-                      const val = inp.value.trim();
-                      if (val) {
-                        recordEmojiUse(val);
-                        toggleReaction(targetId, val);
-                        setEmojiPickerFor(null);
-                        cleanup();
-                      }
-                    });
-                    inp.addEventListener("blur", () => setTimeout(cleanup, 300));
-                  }}>
-                  +
-                </button>
+                {/* Category tabs */}
+                <div style={{ display:"flex", borderBottom:"1px solid rgba(136,255,0,0.15)", background:"rgba(0,0,0,0.3)" }}>
+                  {EMOJI_CATEGORIES.map((cat, ci) => (
+                    <button key={ci}
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => setEmojiCatIdx(ci)}
+                      style={{
+                        flex:1, border:"none", background:"none", cursor:"pointer",
+                        padding:"6px 0", fontSize:14,
+                        borderBottom: ci === emojiCatIdx ? "2px solid rgba(136,255,0,0.7)" : "2px solid transparent",
+                        opacity: ci === emojiCatIdx ? 1 : 0.45,
+                      }}>
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+                {/* Emoji grid */}
+                <div style={{ display:"flex", flexWrap:"wrap", gap:0, padding:4, maxHeight:180, overflowY:"auto" }}>
+                  {EMOJI_CATEGORIES[emojiCatIdx].emojis.map(e => (
+                    <button key={e}
+                      onMouseDown={ev => ev.preventDefault()}
+                      onClick={() => { toggleReaction(msg.id, e); setEmojiPickerFor(null); }}
+                      style={{
+                        background: (msg.reactions[e]||[]).includes(username) ? "rgba(136,255,0,0.15)" : "none",
+                        border:"none", cursor:"pointer", fontSize:20,
+                        borderRadius:4, padding:"5px", lineHeight:1,
+                        transition:"background 0.1s", minWidth:36,
+                      }}>
+                      {e}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -2425,12 +2390,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
       const h = isMobile ? window.innerHeight : (window.innerHeight - 70);
 
-      // Two separate scenes: cross renders first, depth cleared, figure renders on top.
-      // This is the only reliable WebGL technique to guarantee figure is always above cross
-      // regardless of blending mode, depth test settings, or renderOrder.
-      const crossScene  = new THREE.Scene();
-      const figureScene = new THREE.Scene();
-
+      const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 5000);
       camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
       camera.lookAt(0, 160, 0);
@@ -2439,11 +2399,11 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       renderer.setPixelRatio(1);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
-      renderer.autoClear = false; // we control clearing manually for two-pass render
       el.appendChild(renderer.domElement);
       rendererInst = renderer;
 
       // ── Cross ──────────────────────────────────────────────────────────────
+
 
       // Dynamic silver-white glitter texture — regenerated each frame
       const glitterCanvas = document.createElement("canvas");
@@ -2483,6 +2443,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       const crossMat = new THREE.MeshBasicMaterial({
         map: glitterTex, transparent: true, opacity: 1.0,
         blending: THREE.AdditiveBlending, depthWrite: false,
+        depthTest: !isMobile, // mobile: disable depth test so renderOrder alone controls layering
       });
 
       const crossGroup = new THREE.Group();
@@ -2499,12 +2460,17 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
       const crossCenterX = isMobile ? 0 : (-160 * crossWorldPerPx);
       crossGroup.position.set(crossCenterX, 0, 0);
-      crossScene.add(crossGroup);
+      if (isMobile) {
+        crossGroup.renderOrder = 0;
+        crossGroup.traverse(c => { c.renderOrder = 0; });
+      }
+      scene.add(crossGroup);
 
       const wireMat = new THREE.MeshBasicMaterial({
         color: 0x00ffcc, wireframe: true,
         transparent: true, opacity: 0.32,
         blending: THREE.AdditiveBlending, depthWrite: false,
+        depthTest: !isMobile, // mobile: ignore depth so figure always renders visually above cross
       });
 
       let mixer = null;
@@ -2528,7 +2494,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         obj.position.set(110, -box2.min.y - extraH + 70, 0);
         // Same rotation as desktop adjusted 20° CCW on mobile
         obj.rotation.y = isMobile ? -(Math.PI * 170) / 180 : -(Math.PI * 195) / 180;
-        figureScene.add(obj);
+        scene.add(obj);
 
         // Align cross base to figure's ground level.
         // On mobile, crossH was reduced by 31 (310→279), so shift y up by 31 to keep top at same position.
@@ -2557,43 +2523,129 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           let   vel       = 0;
           let   disp      = 0;
           const stiffness = 90;
-          const damping   = 14;
-          const kickVel   = 55;
-          const bounceDuration = 3.5;
+          const damping   = 18.0;
+          const kickVel   = 44;   // upward, modest
 
-          // Collect bones for breathing/lean/arm ragdoll
-          const leanBoneNames  = ["mixamorigSpine","mixamorigSpine1","mixamorigSpine2","mixamorigLeftUpLeg","mixamorigRightUpLeg"];
-          const armBoneNames   = ["mixamorigLeftArm","mixamorigLeftForeArm","mixamorigLeftHand","mixamorigRightArm","mixamorigRightForeArm","mixamorigRightHand"];
-          const idleBoneNames  = ["mixamorigSpine","mixamorigSpine1","mixamorigSpine2","mixamorigNeck","mixamorigHead","mixamorigLeftShoulder","mixamorigRightShoulder"];
-          const lowerLockNames = ["mixamorigLeftFoot","mixamorigRightFoot","mixamorigLeftToeBase","mixamorigRightToeBase","mixamorigLeftLeg","mixamorigRightLeg"];
+          // Collect foot bones
+          const footBones = [];
+          obj.traverse(c => {
+            if (c.isBone && (c.name.toLowerCase().includes("foot") ||
+                             c.name.toLowerCase().includes("toe") ||
+                             c.name.toLowerCase().includes("ankle"))) {
+              footBones.push({ bone: c, worldPos: new THREE.Vector3() });
+            }
+          });
+          let footPositionsLocked = false;
 
-          const leanBones  = [], armBones = [], idleBones = [], lowerLockBones = [];
-          const leanQ = new THREE.Quaternion();
-
-          obj.traverse(bone => {
-            if (!bone.isBone) return;
-            if (leanBoneNames.some(n  => bone.name.includes(n)))  leanBones.push({ bone, baseRot: bone.quaternion.clone() });
-            if (armBoneNames.some(n   => bone.name.includes(n)))  armBones.push({ bone, baseRot: bone.quaternion.clone(), velX:0, velY:0, dispX:0, dispY:0 });
-            if (idleBoneNames.some(n  => bone.name.includes(n)))  idleBones.push({
-              bone, baseRot: bone.quaternion.clone(),
-              frX1: 0.18 + Math.random()*0.12, frX2: 0.29 + Math.random()*0.08,
-              frZ1: 0.22 + Math.random()*0.11, frZ2: 0.33 + Math.random()*0.09,
-              phX1: Math.random()*Math.PI*2,   phX2: Math.random()*Math.PI*2,
-              phZ1: Math.random()*Math.PI*2,   phZ2: Math.random()*Math.PI*2,
-              ampX: 0.008 + Math.random()*0.006, ampZ: 0.006 + Math.random()*0.005,
-            });
-            if (lowerLockNames.some(n => bone.name.includes(n)))  lowerLockBones.push({ bone, worldPos: null });
+          // Collect torso/thigh bones for forward lean
+          const leanBones = [];
+          obj.traverse(c => {
+            if (c.isBone && (c.name.toLowerCase().includes("spine") ||
+                             c.name.toLowerCase().includes("chest") ||
+                             c.name.toLowerCase().includes("thigh") ||
+                             c.name.toLowerCase().includes("upleg"))) {
+              leanBones.push({ bone: c, baseRot: c.quaternion.clone() });
+            }
           });
 
+          // Collect arm bones for ragdoll
+          const armBones = [];
+          obj.traverse(c => {
+            if (c.isBone && (c.name.toLowerCase().includes("arm") ||
+                             c.name.toLowerCase().includes("forearm") ||
+                             c.name.toLowerCase().includes("shoulder") ||
+                             c.name.toLowerCase().includes("elbow") ||
+                             c.name.toLowerCase().includes("hand"))) {
+              armBones.push({ bone: c, baseRot: null, dispX: 0, dispY: 0, velX: 0, velY: 0 });
+            }
+          });
+
+          // Estimate bounce duration for normalizing t (stiffness/damping gives ~settle time)
+          const bounceDuration = 1.2; // seconds estimate
+
+          mixer.addEventListener("finished", () => {
+            if (phase === "intro") {
+              phase = "bounce";
+              vel   = kickVel;
+              disp  = 0;
+              bounceTime = 0;
+              footBones.forEach(fb => {
+                fb.bone.updateWorldMatrix(true, false);
+                fb.worldPos = new THREE.Vector3();
+                fb.bone.getWorldPosition(fb.worldPos);
+              });
+              footPositionsLocked = true;
+              // Snapshot base rotations at frame 45
+              leanBones.forEach(lb => { lb.baseRot = lb.bone.quaternion.clone(); });
+              armBones.forEach(ab => {
+                ab.baseRot = ab.bone.quaternion.clone();
+                ab.dispX = 0; ab.dispY = 0; ab.velX = 0; ab.velY = 0;
+              });
+            }
+          });
+
+          const breathBones = [];
+          obj.traverse(c => {
+            if (c.isBone && (c.name.toLowerCase().includes("spine") ||
+                             c.name.toLowerCase().includes("chest") ||
+                             c.name.toLowerCase().includes("neck"))) {
+              breathBones.push({ bone: c, baseScale: c.scale.clone() });
+            }
+          });
+
+          // Idle sway — upper body bones only (no knees/feet/ankles/toes)
+          const idleBones = [];
+          obj.traverse(c => {
+            if (!c.isBone) return;
+            const n = c.name.toLowerCase();
+            const isUpper = n.includes("spine") || n.includes("chest") ||
+                            n.includes("neck")  || n.includes("head")  ||
+                            n.includes("shoulder") || n.includes("arm") ||
+                            n.includes("forearm")  || n.includes("hand") ||
+                            n.includes("clavicle");
+            if (isUpper) {
+              // Each bone gets unique phase offsets for organic, non-repeating feel
+              idleBones.push({
+                bone:   c,
+                baseRot: null, // snapshotted when breathing starts
+                // Sway frequencies and phases — all slightly irrational for aperiodic motion
+                phX1: Math.random() * Math.PI * 2, frX1: 0.31 + Math.random() * 0.18,
+                phX2: Math.random() * Math.PI * 2, frX2: 0.71 + Math.random() * 0.22,
+                phZ1: Math.random() * Math.PI * 2, frZ1: 0.27 + Math.random() * 0.15,
+                phZ2: Math.random() * Math.PI * 2, frZ2: 0.63 + Math.random() * 0.19,
+                ampX: 0.008 + Math.random() * 0.006,
+                ampZ: 0.006 + Math.random() * 0.005,
+              });
+            }
+          });
+
+          // Lower leg / foot bones to keep locked during idle
+          const lowerLockBones = [];
+          obj.traverse(c => {
+            if (!c.isBone) return;
+            const n = c.name.toLowerCase();
+            if (n.includes("knee") || n.includes("foot") ||
+                n.includes("toe")  || n.includes("ankle")) {
+              lowerLockBones.push({ bone: c, worldPos: null });
+            }
+          });
+
+          const tmpQ  = new THREE.Quaternion();
+          const leanQ = new THREE.Quaternion();
+
+          // Restart function: resets mixer and all phase state to beginning
           const restartAnimation = () => {
-            vel = kickVel; disp = 0; bounceTime = 0; phase = "bounce";
-            leanBones.forEach(lb  => { lb.baseRot = lb.bone.quaternion.clone(); });
-            armBones.forEach(ab   => { ab.baseRot = ab.bone.quaternion.clone(); ab.velX=ab.velY=ab.dispX=ab.dispY=0; });
-            idleBones.forEach(ib  => { ib.baseRot = ib.bone.quaternion.clone(); });
-            lowerLockBones.forEach(lb => {
-              obj.updateWorldMatrix(true, true);
-              const wp = new THREE.Vector3(); lb.bone.getWorldPosition(wp); lb.worldPos = wp;
-            });
+            mixer.stopAllAction();
+            const restartIntro = THREE.AnimationUtils.subclip(clip, "intro", 0, 45, fps);
+            const restartAction = mixer.clipAction(restartIntro);
+            restartAction.setLoop(THREE.LoopOnce, 1);
+            restartAction.clampWhenFinished = true;
+            restartAction.timeScale = 0.5;
+            restartAction.reset().play();
+            phase = "intro";
+            vel = 0; disp = 0; bounceTime = 0; breathTime = 0;
+            footPositionsLocked = false;
+            obj.position.y = restY;
             clock.start();
           };
 
@@ -2613,15 +2665,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             if (now - lastFrame < FRAME_MS) return;
             lastFrame = now - ((now - lastFrame) % FRAME_MS);
             const dt = Math.min(clock.getDelta(), 0.05);
-            if (!isVisible) {
-              if (mixer) mixer.update(dt);
-              // Two-pass render even during fade-out
-              renderer.clear();
-              renderer.render(crossScene, camera);
-              renderer.clearDepth();
-              renderer.render(figureScene, camera);
-              return;
-            }
+            if (!isVisible) { if (mixer) mixer.update(dt); renderer.render(scene, camera); return; }
             if (mixer) mixer.update(dt);
 
             const toCamX = camera.position.x - crossGroup.position.x;
@@ -2669,13 +2713,47 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
                 ab.velY += fy * dt; ab.dispY += ab.velY * dt;
                 const blend = 1 - t;
                 const rx = ab.dispX * blend * 0.35;
-                const rz = ab.dispY * blend * 0.35;
-                const eq = new THREE.Euler(rx, 0, rz);
-                const qq = new THREE.Quaternion().setFromEuler(eq);
-                ab.bone.quaternion.copy(ab.baseRot).multiply(qq);
+                const ry = ab.dispY * blend * 0.20;
+                tmpQ.setFromEuler(new THREE.Euler(rx, ry, 0));
+                ab.bone.quaternion.copy(ab.baseRot).multiply(tmpQ);
               });
 
-              if (bounceTime >= bounceDuration) {
+              // Foot locking
+              if (footPositionsLocked) {
+                footBones.forEach(fb => {
+                  if (!fb.worldPos) return;
+                  const parent = fb.bone.parent;
+                  if (parent) {
+                    parent.updateWorldMatrix(true, false);
+                    const invParent = new THREE.Matrix4().copy(parent.matrixWorld).invert();
+                    const localTarget = fb.worldPos.clone().applyMatrix4(invParent);
+                    fb.bone.position.copy(localTarget);
+                  }
+                });
+              }
+
+              if (Math.abs(disp) < 0.8 && Math.abs(vel) < 0.8) {
+                obj.position.y = restY;
+
+                // Snapshot every idle bone's current world quaternion BEFORE any resets
+                // so idle starts exactly where bounce left off
+                idleBones.forEach(ib => {
+                  ib.bone.updateWorldMatrix(true, false);
+                  // Store world-space quat; we'll apply relative to parent each frame
+                  const worldQ = new THREE.Quaternion();
+                  ib.bone.getWorldQuaternion(worldQ);
+                  ib.worldBaseQ = worldQ;
+                  // Also store local quat as-is right now
+                  ib.baseRot = ib.bone.quaternion.clone();
+                });
+
+                // Snapshot lower-leg world positions before any movement
+                lowerLockBones.forEach(lb => {
+                  lb.bone.updateWorldMatrix(true, false);
+                  lb.worldPos = new THREE.Vector3();
+                  lb.bone.getWorldPosition(lb.worldPos);
+                });
+
                 leanBones.forEach(lb => { lb.bone.quaternion.copy(lb.baseRot); });
                 // Arms stay where they landed — no reset
                 disp = 0; vel = 0;
@@ -2715,12 +2793,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
               });
             }
 
-            // Two-pass render: cross first, depth cleared, figure on top.
-            // autoClear=false so we control the sequence manually.
-            renderer.clear();
-            renderer.render(crossScene, camera);
-            renderer.clearDepth();
-            renderer.render(figureScene, camera);
+            renderer.render(scene, camera);
           };
           animId = requestAnimationFrame(animateWithBreath);
         }
@@ -2731,10 +2804,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         if (!animId) {
           const animate = () => {
             animId = requestAnimationFrame(animate);
-            renderer.clear();
-            renderer.render(crossScene, camera);
-            renderer.clearDepth();
-            renderer.render(figureScene, camera);
+            renderer.render(scene, camera);
           };
           animate();
         }

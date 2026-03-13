@@ -641,18 +641,15 @@ app.get("/api/link-preview", requireAuth, async (req, res) => {
     const buf = await response.arrayBuffer();
     const html = new TextDecoder().decode(buf.slice(0, 204800));
 
-    // Robust meta tag extractor — handles any attribute order, single/double quotes, no quotes
+    // Robust meta tag extractor — handles any attribute order, single/double quotes
     const getMeta = (...props) => {
       for (const prop of props) {
-        // Match <meta ... property/name="prop" ... content="val" ...> in any attribute order
-        const re = new RegExp(
-          `<meta[^>]+(?:property|name)\\s*=\\s*["']?${prop.replace(/:/g,"\\:")}["']?[^>]+content\\s*=\\s*["']([^"']+)["']`,
-          "i"
-        );
-        const re2 = new RegExp(
-          `<meta[^>]+content\\s*=\\s*["']([^"']+)["'][^>]+(?:property|name)\\s*=\\s*["']?${prop.replace(/:/g,"\\:")}["']?`,
-          "i"
-        );
+        // Escape for regex (colon is NOT special, but escape other regex chars just in case)
+        const esc = prop.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // property/name before content
+        const re  = new RegExp(`<meta[^>]+(?:property|name)\\s*=\\s*["']${esc}["'][^>]+content\\s*=\\s*["']([^"'>]+)["']`, "i");
+        // content before property/name
+        const re2 = new RegExp(`<meta[^>]+content\\s*=\\s*["']([^"'>]+)["'][^>]+(?:property|name)\\s*=\\s*["']${esc}["']`, "i");
         const m = html.match(re) || html.match(re2);
         if (m?.[1]) return m[1].trim();
       }
@@ -666,8 +663,8 @@ app.get("/api/link-preview", requireAuth, async (req, res) => {
     const siteName    = getMeta("og:site_name");
     const domain      = new URL(url).hostname.replace(/^www\./, "");
 
-    if (!title) return res.status(422).json({ error: "No preview data found" });
-    return res.json({ title, description, image, siteName, domain, url });
+    if (!title && !description && !image) return res.status(422).json({ error: "No preview data found" });
+    return res.json({ title: title || domain, description, image, siteName, domain, url });
   } catch (err) {
     return res.status(502).json({ error: "Could not fetch preview: " + err.message });
   }
