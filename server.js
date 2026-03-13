@@ -633,22 +633,59 @@ app.get("/api/link-preview", requireAuth, async (req, res) => {
   }
   try {
     const response = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; BrosBot/1.0)" },
-      signal: AbortSignal.timeout(5000),
+      headers: {
+        // Real browser UA — many sites (YouTube, Twitter, Instagram) block or
+        // return stripped HTML to bots. This gets us the full OG-tagged page.
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+      },
+      signal: AbortSignal.timeout(7000),
+      redirect: "follow",
     });
-    const html = await response.text();
-    const get = (prop) => {
-      const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']+)["']`, "i"))
-               || html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${prop}["']`, "i"));
-      return m ? m[1] : null;
+    // Read up to 256 KB — enough to cover <head> on any page
+    const buf  = await response.arrayBuffer();
+    const html = new TextDecoder().decode(buf.slice(0, 262144));
+
+    // Extract every <meta> tag as a raw string first ([\s\S] handles multi-line tags
+    // where property/content attributes are on separate lines, as YouTube does)
+    const metaTags = [];
+    const metaRe   = /<meta[\s\S]*?>/gi;
+    let m;
+    while ((m = metaRe.exec(html)) !== null) metaTags.push(m[0]);
+
+    const getAttr = (tag, attr) => {
+      const r = new RegExp(`\\b${attr}\\s*=\\s*(?:"([^"]*?)"|'([^']*?)'|([^\\s/>]+))`, "i");
+      const x = r.exec(tag);
+      return x ? (x[1] ?? x[2] ?? x[3] ?? "").trim() : null;
     };
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-    const title       = get("og:title")       || (titleMatch ? titleMatch[1].trim() : null);
-    const description = get("og:description") || get("description");
-    const image       = get("og:image");
-    const siteName    = get("og:site_name");
+
+    const getMeta = (...names) => {
+      for (const name of names) {
+        const lc = name.toLowerCase();
+        for (const tag of metaTags) {
+          const prop = (getAttr(tag, "property") || getAttr(tag, "name") || "").toLowerCase();
+          if (prop === lc) {
+            const val = getAttr(tag, "content");
+            if (val) return val;
+          }
+        }
+      }
+      return null;
+    };
+
+    const titleMatch = html.match(/<title[^>]*>([\s\S]{1,300}?)<\/title>/i);
+    const rawTitle   = titleMatch ? titleMatch[1].replace(/\s+/g, " ").trim() : null;
+
+    const title       = getMeta("og:title", "twitter:title") || rawTitle;
+    const description = getMeta("og:description", "twitter:description", "description");
+    const image       = getMeta("og:image", "og:image:url", "twitter:image", "twitter:image:src");
+    const siteName    = getMeta("og:site_name");
     const domain      = new URL(url).hostname.replace(/^www\./, "");
-    return res.json({ title, description, image, siteName, domain, url });
+
+    if (!title && !description && !image)
+      return res.status(422).json({ error: "No preview data found" });
+    return res.json({ title: title || domain, description, image, siteName, domain, url });
   } catch (err) {
     return res.status(502).json({ error: "Could not fetch preview: " + err.message });
   }

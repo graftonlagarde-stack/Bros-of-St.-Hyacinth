@@ -2443,7 +2443,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       const crossMat = new THREE.MeshBasicMaterial({
         map: glitterTex, transparent: true, opacity: 1.0,
         blending: THREE.AdditiveBlending, depthWrite: false,
-        depthTest: !isMobile, // mobile: disable depth test so renderOrder alone controls layering
       });
 
       const crossGroup = new THREE.Group();
@@ -2460,10 +2459,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
       const crossCenterX = isMobile ? 0 : (-160 * crossWorldPerPx);
       crossGroup.position.set(crossCenterX, 0, 0);
-      if (isMobile) {
-        crossGroup.renderOrder = 0;
-        crossGroup.traverse(c => { c.renderOrder = 0; });
-      }
       scene.add(crossGroup);
 
       const wireMat = new THREE.MeshBasicMaterial({
@@ -2804,12 +2799,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         if (!animId) {
           const animate = () => {
             animId = requestAnimationFrame(animate);
-            const toCamX = camera.position.x - crossGroup.position.x;
-            const toCamZ = camera.position.z - crossGroup.position.z;
-            crossGroup.rotation.y = Math.atan2(toCamX, toCamZ);
-            const cruxWorld = new THREE.Vector3(crossGroup.position.x, crossGroup.position.y + crossH * 0.70, crossGroup.position.z);
-            cruxWorld.project(camera);
-            cruxScreenPos.current = { x: (cruxWorld.x + 1) / 2, y: (1 - cruxWorld.y) / 2 };
             renderer.render(scene, camera);
           };
           animate();
@@ -2850,10 +2839,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       speed2:    3  + Math.random() * 7,
       phase1:    Math.random() * Math.PI * 2,
       phase2:    Math.random() * Math.PI * 2,
-      // Mobile: boost base alpha to compensate for cross being farther from camera
-      baseAlpha: isMobile
-        ? (0.32 + Math.random() * 0.30)
-        : (0.18 + Math.random() * 0.22),
+      baseAlpha: 0.18 + Math.random() * 0.22,
       r: 200 + Math.floor(Math.random() * 55),
       g: 215 + Math.floor(Math.random() * 40),
       b: 255,
@@ -2908,7 +2894,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
     </div>
   );
 }
-
 // ─── WORKOUT FIGURE BACKDROP ──────────────────────────────────────────────────
 function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
   const mountRef   = useRef(null);
