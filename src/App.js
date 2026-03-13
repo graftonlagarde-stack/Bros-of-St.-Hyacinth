@@ -310,7 +310,7 @@ function AudioLightbox({ src, onClose }) {
     };
   }, []);
 
-  // Waveform — oscilloscope line when playing, blank when paused
+  // Waveform — idle flat line when paused, oscilloscope line when playing
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -321,25 +321,33 @@ function AudioLightbox({ src, onClose }) {
       const w = canvas.width, h = canvas.height;
       ctx2d.clearRect(0, 0, w, h);
       if (analyserRef.current) {
-        // Time-domain oscilloscope line
         analyserRef.current.fftSize = 2048;
         const bufLen = analyserRef.current.fftSize;
         const data   = new Uint8Array(bufLen);
         analyserRef.current.getByteTimeDomainData(data);
-        ctx2d.strokeStyle = "rgba(0,255,140,0.85)";
+        // Check if audio is actually playing (data deviates from flat 128)
+        const isActive = data.some(v => v !== 128);
+        ctx2d.strokeStyle = isActive ? "rgba(0,255,140,0.85)" : "rgba(0,255,140,0.3)";
         ctx2d.lineWidth   = 1.5;
         ctx2d.beginPath();
-        const sliceW = w / bufLen;
-        let x = 0;
-        for (let i = 0; i < bufLen; i++) {
-          const v = data[i] / 128.0;
-          const y = (v * h) / 2;
-          i === 0 ? ctx2d.moveTo(x, y) : ctx2d.lineTo(x, y);
-          x += sliceW;
+        if (isActive) {
+          // Live oscilloscope — follows actual waveform
+          const sliceW = w / bufLen;
+          let x = 0;
+          for (let i = 0; i < bufLen; i++) {
+            const v = data[i] / 128.0;
+            const y = (v * h) / 2;
+            i === 0 ? ctx2d.moveTo(x, y) : ctx2d.lineTo(x, y);
+            x += sliceW;
+          }
+        } else {
+          // Idle — flat centre line
+          ctx2d.moveTo(0, h / 2);
+          ctx2d.lineTo(w, h / 2);
         }
         ctx2d.stroke();
       }
-      // When not playing, draw nothing — blank canvas
+      // No analyser yet — blank canvas
     };
     draw();
     return () => cancelAnimationFrame(rafId);
@@ -420,7 +428,7 @@ function AudioLightbox({ src, onClose }) {
         fontSize:20, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
       }}>✕</button>
 
-      <div onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:420, display:"flex", flexDirection:"column", alignItems:"center", gap:28 }}
+      <div onClick={e => { e.stopPropagation(); try { initAudioContext(); } catch(_){} }} style={{ width:"100%", maxWidth:420, display:"flex", flexDirection:"column", alignItems:"center", gap:28 }}
            onMouseMove={onScrubMove} onMouseUp={onScrubEnd} onTouchMove={onScrubMove} onTouchEnd={onScrubEnd}>
         <canvas ref={canvasRef} width={360} height={100} style={{ width:"100%", height:100 }} />
 
@@ -456,6 +464,63 @@ function AudioLightbox({ src, onClose }) {
   );
 }
 
+// ─── LINK PREVIEW ────────────────────────────────────────────────────────────
+const URL_REGEX = /https?:\/\/[^\s<>"']+/g;
+
+function extractUrls(text) {
+  return text ? [...new Set(text.match(URL_REGEX) || [])] : [];
+}
+
+function LinkPreview({ url }) {
+  const [data, setData] = useState(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const token = localStorage.getItem("auth_token");
+    fetch(`${API_BASE}/api/link-preview?url=${encodeURIComponent(url)}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.json())
+      .then(d => { if (!cancelled && d.title) setData(d); else if (!cancelled) setFailed(true); })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, [url]);
+
+  if (failed || !data) return null;
+
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer"
+      style={{ display:"block", marginTop:8, textDecoration:"none",
+        background:"rgba(0,0,0,0.45)", border:"1px solid rgba(136,255,0,0.2)",
+        borderLeft:"3px solid rgba(136,255,0,0.6)", borderRadius:4,
+        overflow:"hidden", color:"inherit", cursor:"pointer" }}
+      onClick={e => e.stopPropagation()}>
+      {data.image && (
+        <img src={data.image} alt="" style={{ width:"100%", maxHeight:140, objectFit:"cover", display:"block" }}
+          onError={e => { e.target.style.display = "none"; }} />
+      )}
+      <div style={{ padding:"8px 10px" }}>
+        {data.siteName && (
+          <div style={{ fontSize:10, color:"rgba(136,255,0,0.7)", fontFamily:"'Orbitron',sans-serif",
+            letterSpacing:1, marginBottom:3, textTransform:"uppercase" }}>
+            {data.siteName}
+          </div>
+        )}
+        <div style={{ fontSize:13, fontWeight:700, color:"#e8f8e8", lineHeight:1.3, marginBottom:3 }}>
+          {data.title.length > 80 ? data.title.slice(0, 80) + "…" : data.title}
+        </div>
+        {data.description && (
+          <div style={{ fontSize:11, color:"rgba(200,220,200,0.7)", lineHeight:1.4 }}>
+            {data.description.length > 120 ? data.description.slice(0, 120) + "…" : data.description}
+          </div>
+        )}
+        <div style={{ fontSize:10, color:"rgba(136,255,0,0.45)", marginTop:4 }}>{data.domain}</div>
+      </div>
+    </a>
+  );
+}
+
 // ─── BOARD PAGE ───────────────────────────────────────────────────────────────
 function BoardPage({ username }) {
   const isMobile = useIsMobile();
@@ -470,6 +535,8 @@ function BoardPage({ username }) {
   const scrollContainerRef = useRef(null);
   const textareaRef = useRef(null);
   const fileRef   = useRef(null);
+  const emojiInputRef = useRef(null);   // hidden input for native emoji picker
+  const emojiTargetRef = useRef(null);  // message id currently being reacted to
 
   useEffect(() => { fetchMessages(); }, []);
 
@@ -712,6 +779,7 @@ function BoardPage({ username }) {
             color: "#ffffff",
           }}>
             {msg.text && <div style={{whiteSpace:"pre-wrap"}}>{msg.text}</div>}
+            {msg.text && extractUrls(msg.text).map(url => <LinkPreview key={url} url={url} />)}
             {[msg.media, ...(msg.mediaExtra||[])].filter(Boolean).map((m, mi) => (
               <div key={mi} style={{ marginTop: (mi === 0 && msg.text) ? 8 : mi > 0 ? 6 : 0 }}>
                 {m.type?.startsWith("image/") && (
@@ -768,25 +836,16 @@ function BoardPage({ username }) {
           )}
 
           <div style={{ position:"relative" }}>
-            <button onClick={() => setEmojiPickerFor(emojiPickerFor === msg.id ? null : msg.id)}
+            <button
+              onClick={() => {
+                emojiTargetRef.current = msg.id;
+                setEmojiPickerFor(emojiPickerFor === msg.id ? null : msg.id);
+                // Focus the hidden input after state update so keyboard appears
+                setTimeout(() => { if (emojiInputRef.current) emojiInputRef.current.focus(); }, 50);
+              }}
               style={{ background:"none", border:"none", cursor:"pointer", color:"var(--muted)", fontSize:12, padding:"3px 6px", opacity:0.5, marginTop:2 }}>
               😊 +
             </button>
-            {emojiPickerFor === msg.id && (
-              <div style={{ position:"absolute", bottom:"100%", [isMe?"right":"left"]:0,
-                background:"var(--surface)", border:"1px solid var(--border)",
-                borderTop:"1px solid rgba(140,255,0,0.3)",
-                borderRadius:4, padding:8, display:"flex", gap:4, flexWrap:"wrap",
-                width:196, zIndex:10, boxShadow:"0 4px 20px rgba(0,0,0,0.6), 0 0 20px rgba(140,255,0,0.1)" }}>
-                {EMOJI_REACTIONS.map(e => (
-                  <button key={e} onClick={() => toggleReaction(msg.id, e)}
-                    style={{ background: (msg.reactions[e]||[]).includes(username) ? "rgba(140,255,0,0.15)" : "none",
-                      border:"none", cursor:"pointer", fontSize:20, borderRadius:2, padding:4, transition:"background 0.1s" }}>
-                    {e}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -864,6 +923,20 @@ function BoardPage({ username }) {
     return (
       <>
         {lightbox}
+        {/* Hidden input for native emoji picker — receives emoji, fires reaction, then clears */}
+        <input ref={emojiInputRef} type="text"
+          style={{ position:"fixed", opacity:0, pointerEvents:"none", width:1, height:1, top:-99, left:-99, fontSize:16 }}
+          onChange={e => {
+            const val = e.target.value.trim();
+            if (val && emojiTargetRef.current) {
+              toggleReaction(emojiTargetRef.current, val);
+              emojiTargetRef.current = null;
+              setEmojiPickerFor(null);
+            }
+            e.target.value = "";
+          }}
+          onBlur={() => setEmojiPickerFor(null)}
+        />
         <div ref={chatRootRef} className="chat-mobile-root">
           <div ref={scrollContainerRef} className="chat-mobile-messages" style={{ padding: "80px 14px 20px" }}>
             <div style={{ flex: "1 0 0" }} />
@@ -881,6 +954,20 @@ function BoardPage({ username }) {
   return (
     <>
       {lightbox}
+      {/* Hidden input for native emoji picker */}
+      <input ref={emojiInputRef} type="text"
+        style={{ position:"fixed", opacity:0, pointerEvents:"none", width:1, height:1, top:-99, left:-99, fontSize:16 }}
+        onChange={e => {
+          const val = e.target.value.trim();
+          if (val && emojiTargetRef.current) {
+            toggleReaction(emojiTargetRef.current, val);
+            emojiTargetRef.current = null;
+            setEmojiPickerFor(null);
+          }
+          e.target.value = "";
+        }}
+        onBlur={() => setEmojiPickerFor(null)}
+      />
       <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 0px)", overflow:"hidden", position:"relative" }}>
         <div ref={scrollContainerRef} style={{ flex:1, overflowY:"scroll", overscrollBehavior:"none", WebkitOverflowScrolling:"auto", padding:"120px 28px 130px", display:"flex", flexDirection:"column", gap:4 }}>
           <div style={{ flex: "1 0 0" }} />
@@ -2305,6 +2392,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         color: 0x00ffcc, wireframe: true,
         transparent: true, opacity: 0.32,
         blending: THREE.AdditiveBlending, depthWrite: false,
+        depthTest: !isMobile, // mobile: ignore depth so figure always renders visually above cross
       });
 
       let mixer = null;
@@ -2328,12 +2416,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         obj.position.set(110, -box2.min.y - extraH + 70, 0);
         // Same rotation as desktop adjusted 20° CCW on mobile
         obj.rotation.y = isMobile ? -(Math.PI * 170) / 180 : -(Math.PI * 195) / 180;
-        if (isMobile) {
-          crossGroup.renderOrder = 0;
-          crossGroup.traverse(c => { c.renderOrder = 0; });
-          obj.renderOrder = 1;
-          obj.traverse(c => { c.renderOrder = 1; });
-        }
         scene.add(obj);
 
         // Align cross base to figure's ground level.
