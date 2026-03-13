@@ -1831,15 +1831,15 @@ const css = `
     .xbox-orb-wrap {
       position: absolute;
       left: -60px !important;
-      top: 50%;
-      transform: translateY(-50%) scale(1) !important;
+      top: 52px;
+      transform: scale(1) !important;
       transform-origin: left center;
       width: 220px !important; height: 220px !important;
       transition: transform 0.4s cubic-bezier(0.4,0,0.2,1), left 0.4s cubic-bezier(0.4,0,0.2,1) !important;
     }
     /* Collapsed: scale down and shift right so it's easier to tap */
     .sidebar.nav-collapsed .xbox-orb-wrap {
-      transform: translateY(-50%) scale(0.35) !important;
+      transform: scale(0.35) !important;
       left: -42px !important;
     }
 
@@ -1847,14 +1847,14 @@ const css = `
     .nav-wrap {
       position: fixed !important;
       left: 64px !important;
-      top: 50% !important;
-      transform: translateY(-50%) !important;
+      top: 52px !important;
+      transform: none !important;
       z-index: 299 !important;
       pointer-events: all;
     }
     .nav-wrap.retracted {
       opacity: 0 !important;
-      transform: translateY(-50%) translateX(-40px) !important;
+      transform: translateX(-40px) !important;
       pointer-events: none !important;
     }
     .nav-item-wrap .nav-item {
