@@ -618,6 +618,43 @@ async function sendPushToUser(userId, payload) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// LINK PREVIEW ROUTE
+// ═════════════════════════════════════════════════════════════════════════════
+
+// GET /api/link-preview?url=... — fetches Open Graph / meta tags from a URL
+// Proxied server-side to avoid CORS issues in the browser.
+app.get("/api/link-preview", requireAuth, async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ error: "url is required" });
+  try {
+    new URL(url); // validate
+  } catch {
+    return res.status(400).json({ error: "Invalid URL" });
+  }
+  try {
+    const response = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; BrosBot/1.0)" },
+      signal: AbortSignal.timeout(5000),
+    });
+    const html = await response.text();
+    const get = (prop) => {
+      const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']+)["']`, "i"))
+               || html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${prop}["']`, "i"));
+      return m ? m[1] : null;
+    };
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    const title       = get("og:title")       || (titleMatch ? titleMatch[1].trim() : null);
+    const description = get("og:description") || get("description");
+    const image       = get("og:image");
+    const siteName    = get("og:site_name");
+    const domain      = new URL(url).hostname.replace(/^www\./, "");
+    return res.json({ title, description, image, siteName, domain, url });
+  } catch (err) {
+    return res.status(502).json({ error: "Could not fetch preview: " + err.message });
+  }
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
 // PUSH SUBSCRIPTION ROUTES
 // ═════════════════════════════════════════════════════════════════════════════
 
