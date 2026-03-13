@@ -621,54 +621,91 @@ async function sendPushToUser(userId, payload) {
 // LINK PREVIEW ROUTE
 // ═════════════════════════════════════════════════════════════════════════════
 
-// GET /api/link-preview?url=... — fetches Open Graph / meta tags from a URL
-// Proxied server-side to avoid CORS issues in the browser.
+// GET /api/link-preview?url=... — fetches rich preview data for any URL.
+// Strategy:
+//   1. Try oEmbed (YouTube, Vimeo, Twitter/X support it natively — returns title+thumbnail)
+//   2. Fall back to scraping Open Graph / Twitter Card meta tags from the HTML
 app.get("/api/link-preview", requireAuth, async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: "url is required" });
-  try {
-    new URL(url); // validate
-  } catch {
-    return res.status(400).json({ error: "Invalid URL" });
+  let parsed;
+  try { parsed = new URL(url); } catch { return res.status(400).json({ error: "Invalid URL" }); }
+
+  const domain = parsed.hostname.replace(/^www\./, "");
+  const signal = AbortSignal.timeout(7000);
+  const browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+  // ── Step 1: oEmbed ─────────────────────────────────────────────────────────
+  // These providers expose a JSON endpoint with title, author, thumbnail — no scraping needed.
+  const oEmbedEndpoint = (() => {
+    const enc = encodeURIComponent(url);
+    if (/youtube\.com|youtu\.be/.test(parsed.hostname))
+      return `https://www.youtube.com/oembed?url=${enc}&format=json`;
+    if (/vimeo\.com/.test(parsed.hostname))
+      return `https://vimeo.com/api/oembed.json?url=${enc}`;
+    if (/twitter\.com|x\.com/.test(parsed.hostname))
+      return `https://publish.twitter.com/oembed?url=${enc}&omit_script=true`;
+    if (/reddit\.com/.test(parsed.hostname))
+      return `https://www.reddit.com/oembed?url=${enc}`;
+    return null;
+  })();
+
+  if (oEmbedEndpoint) {
+    try {
+      const r = await fetch(oEmbedEndpoint, {
+        headers: { "User-Agent": browserUA },
+        signal,
+        redirect: "follow",
+      });
+      if (r.ok) {
+        const d = await r.json();
+        // oEmbed gives us: title, author_name, thumbnail_url, provider_name
+        if (d.title) {
+          return res.json({
+            title:       d.title,
+            description: d.author_name ? `By ${d.author_name}` : null,
+            image:       d.thumbnail_url || null,
+            siteName:    d.provider_name || null,
+            domain,
+            url,
+          });
+        }
+      }
+    } catch (_) { /* fall through to OG scrape */ }
   }
+
+  // ── Step 2: OG / Twitter Card scrape ──────────────────────────────────────
+  // Extract every <meta> tag as a raw string so multi-line tags work (YouTube,
+  // Instagram etc. put property= and content= on separate lines).
   try {
-    const response = await fetch(url, {
+    const r = await fetch(url, {
       headers: {
-        // Real browser UA — many sites (YouTube, Twitter, Instagram) block or
-        // return stripped HTML to bots. This gets us the full OG-tagged page.
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "User-Agent": browserUA,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
       },
-      signal: AbortSignal.timeout(7000),
+      signal,
       redirect: "follow",
     });
-    // Read up to 256 KB — enough to cover <head> on any page
-    const buf  = await response.arrayBuffer();
+    const buf  = await r.arrayBuffer();
     const html = new TextDecoder().decode(buf.slice(0, 262144));
 
-    // Extract every <meta> tag as a raw string first ([\s\S] handles multi-line tags
-    // where property/content attributes are on separate lines, as YouTube does)
     const metaTags = [];
     const metaRe   = /<meta[\s\S]*?>/gi;
     let m;
     while ((m = metaRe.exec(html)) !== null) metaTags.push(m[0]);
 
     const getAttr = (tag, attr) => {
-      const r = new RegExp(`\\b${attr}\\s*=\\s*(?:"([^"]*?)"|'([^']*?)'|([^\\s/>]+))`, "i");
-      const x = r.exec(tag);
+      const rx = new RegExp(`\\b${attr}\\s*=\\s*(?:"([^"]*?)"|'([^']*?)'|([^\\s/>]+))`, "i");
+      const x  = rx.exec(tag);
       return x ? (x[1] ?? x[2] ?? x[3] ?? "").trim() : null;
     };
-
     const getMeta = (...names) => {
       for (const name of names) {
         const lc = name.toLowerCase();
         for (const tag of metaTags) {
           const prop = (getAttr(tag, "property") || getAttr(tag, "name") || "").toLowerCase();
-          if (prop === lc) {
-            const val = getAttr(tag, "content");
-            if (val) return val;
-          }
+          if (prop === lc) { const v = getAttr(tag, "content"); if (v) return v; }
         }
       }
       return null;
@@ -681,7 +718,6 @@ app.get("/api/link-preview", requireAuth, async (req, res) => {
     const description = getMeta("og:description", "twitter:description", "description");
     const image       = getMeta("og:image", "og:image:url", "twitter:image", "twitter:image:src");
     const siteName    = getMeta("og:site_name");
-    const domain      = new URL(url).hostname.replace(/^www\./, "");
 
     if (!title && !description && !image)
       return res.status(422).json({ error: "No preview data found" });
