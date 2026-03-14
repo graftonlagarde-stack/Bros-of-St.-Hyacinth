@@ -35,6 +35,7 @@ const cloudinary  = require("cloudinary").v2;
 const multer      = require("multer");
 const streamifier = require("streamifier");
 const webpush     = require("web-push");
+const nodemailer  = require("nodemailer");
 
 const app        = express();
 const PORT       = process.env.PORT || 4000;
@@ -281,6 +282,14 @@ async function initDb() {
     );
   `);
   await db.query(`
+    CREATE TABLE IF NOT EXISTS password_resets (
+      id         SERIAL PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token      TEXT NOT NULL UNIQUE,
+      expires_at BIGINT NOT NULL
+    );
+  `);
+  await db.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
   `);
 
@@ -478,6 +487,86 @@ app.delete("/api/auth/account", requireAuth, async (req, res) => {
     return res.json({ ok: true });
   } catch (err) {
     console.error("deleteAccount:", err);
+    return res.status(500).json({ error: "Server error." });
+  }
+});
+
+// ─── Email transporter (configure SMTP via env vars) ─────────────────────────
+// Required env vars: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
+// e.g. for Gmail: SMTP_HOST=smtp.gmail.com, SMTP_PORT=587, SMTP_USER=you@gmail.com
+//                 SMTP_PASS=your-app-password, SMTP_FROM="Bros of St. Hyacinth <you@gmail.com>"
+const mailer = nodemailer.createTransport({
+  host:   process.env.SMTP_HOST,
+  port:   Number(process.env.SMTP_PORT) || 587,
+  secure: Number(process.env.SMTP_PORT) === 465,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
+
+// POST /api/auth/forgot-password — send a reset link to the user's email
+app.post("/api/auth/forgot-password", async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: "Email is required." });
+  try {
+    const { rows } = await db.query("SELECT id FROM users WHERE LOWER(email) = LOWER($1)", [email]);
+    // Always return 200 — don't reveal whether email exists
+    if (!rows.length) return res.json({ ok: true });
+    const userId = rows[0].id;
+
+    // Generate a secure random token, expires in 1 hour
+    const token     = require("crypto").randomBytes(32).toString("hex");
+    const expiresAt = Date.now() + 60 * 60 * 1000;
+
+    await db.query(
+      `INSERT INTO password_resets (user_id, token, expires_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT DO NOTHING`,
+      [userId, token, expiresAt]
+    );
+
+    const appUrl  = process.env.APP_URL || "https://bros-of-st-hyacinth.vercel.app";
+    const resetUrl = `${appUrl}?reset=${token}`;
+
+    await mailer.sendMail({
+      from:    process.env.SMTP_FROM || "Bros of St. Hyacinth <noreply@example.com>",
+      to:      email,
+      subject: "Password Reset — Bros of St. Hyacinth",
+      text:    `You requested a password reset. Click the link below to set a new password (expires in 1 hour):\n\n${resetUrl}\n\nIf you did not request this, you can safely ignore this email.`,
+      html:    `<p>You requested a password reset. Click the link below to set a new password (expires in 1 hour):</p>
+                <p><a href="${resetUrl}">${resetUrl}</a></p>
+                <p>If you did not request this, you can safely ignore this email.</p>`,
+    });
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("forgot-password:", err);
+    return res.status(500).json({ error: "Server error." });
+  }
+});
+
+// POST /api/auth/reset-password — validate token and update password
+app.post("/api/auth/reset-password", async (req, res) => {
+  const { token, password } = req.body;
+  if (!token || !password) return res.status(400).json({ error: "Token and password are required." });
+  if (password.length < 8)  return res.status(400).json({ error: "Password must be at least 8 characters." });
+  try {
+    const { rows } = await db.query(
+      "SELECT user_id, expires_at FROM password_resets WHERE token = $1",
+      [token]
+    );
+    if (!rows.length)               return res.status(400).json({ error: "Invalid or expired reset link." });
+    if (Date.now() > rows[0].expires_at) {
+      await db.query("DELETE FROM password_resets WHERE token = $1", [token]);
+      return res.status(400).json({ error: "Reset link has expired. Please request a new one." });
+    }
+    const hashed = await bcrypt.hash(password, 12);
+    await db.query("UPDATE users SET password = $1 WHERE id = $2", [hashed, rows[0].user_id]);
+    await db.query("DELETE FROM password_resets WHERE token = $1", [token]);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("reset-password:", err);
     return res.status(500).json({ error: "Server error." });
   }
 });

@@ -124,6 +124,8 @@ const api = {
   login:    (body) => api.post("/api/auth/login",    body),
   me:       ()     => api.get("/api/auth/me"),
   deleteAccount: (body) => api.delete("/api/auth/account", body),
+  forgotPassword: (body) => api.post("/api/auth/forgot-password", body),
+  resetPassword:  (body) => api.post("/api/auth/reset-password",  body),
 
   // Lift logs
   getLogs:    ()     => api.get("/api/logs"),
@@ -2856,16 +2858,12 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       b: 255,
     }));
 
-    const SLOW_MS_FOG = 1000 / 50;
-    const CAP_MS_FOG  = 1000 / 30;
+    const FRAME_MS_FOG = 1000 / 30;
     let lastFogFrame = 0;
-    let avgFogMs = 16.7;
     const draw = (now) => {
       rafId = requestAnimationFrame(draw);
-      const delta = now - lastFogFrame;
-      avgFogMs = avgFogMs * 0.9 + delta * 0.1;
-      if (avgFogMs > SLOW_MS_FOG && delta < CAP_MS_FOG) return;
-      lastFogFrame = now;
+      if (now - lastFogFrame < FRAME_MS_FOG) return;
+      lastFogFrame = now - ((now - lastFogFrame) % FRAME_MS_FOG);
       const t  = (performance.now() - startTime) / 1000;
       const cw = canvas.offsetWidth;
       const ch = canvas.offsetHeight;
@@ -4438,7 +4436,11 @@ function AdminPanel({ currentUser, onClose }) {
 }
 
 function AuthScreen({ onAuth }) {
-  const [mode, setMode]           = useState("welcome"); // welcome | login | register
+  const [mode, setMode]           = useState(() => {
+    // If URL has ?reset=TOKEN, go straight to reset mode
+    const params = new URLSearchParams(window.location.search);
+    return params.get("reset") ? "reset" : "welcome";
+  });
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName]   = useState("");
   const [email, setEmail]         = useState("");
@@ -4447,13 +4449,48 @@ function AuthScreen({ onAuth }) {
   const [robotCheck, setRobotCheck] = useState(false);
   const [error, setError]         = useState("");
   const [loading, setLoading]     = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
 
   const reset = () => {
     setFirstName(""); setLastName(""); setEmail("");
-    setPassword(""); setConfirm(""); setRobotCheck(false); setError("");
+    setPassword(""); setConfirm(""); setRobotCheck(false); setError(""); setForgotSent(false);
   };
 
   const switchMode = (m) => { reset(); setMode(m); };
+
+  const handleForgot = async () => {
+    setError("");
+    if (!email.trim()) { setError("Please enter your email address."); return; }
+    setLoading(true);
+    try {
+      await api.forgotPassword({ email });
+      setForgotSent(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReset = async () => {
+    setError("");
+    if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
+    if (password !== confirm) { setError("Passwords do not match."); return; }
+    const token = new URLSearchParams(window.location.search).get("reset");
+    if (!token) { setError("Invalid or expired reset link."); return; }
+    setLoading(true);
+    try {
+      await api.resetPassword({ token, password });
+      // Clear the token from URL and go to login
+      window.history.replaceState({}, "", window.location.pathname);
+      switchMode("login");
+      setError("");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogin = async () => {
     setError("");
@@ -4538,8 +4575,48 @@ function AuthScreen({ onAuth }) {
               disabled={loading} onClick={handleLogin}>
               {loading ? "LOGGING IN…" : "LOG IN ›"}
             </button>
-            <button className="btn btn-ghost" style={{width:"100%",justifyContent:"center",padding:"10px 20px",fontSize:10}}
+            <button className="btn btn-ghost" style={{width:"100%",justifyContent:"center",padding:"10px 20px",fontSize:10,marginBottom:6}}
               onClick={() => switchMode("welcome")}>← BACK</button>
+            <button className="btn btn-ghost" style={{width:"100%",justifyContent:"center",padding:"8px 20px",fontSize:10,opacity:0.6}}
+              onClick={() => switchMode("forgot")}>Forgot password?</button>
+          </AuthCard>
+        )}
+
+        {/* FORGOT PASSWORD */}
+        {mode === "forgot" && (
+          <AuthCard>
+            <AuthTitle text="Reset Password" />
+            <div style={{color:"var(--muted)",fontSize:11,marginBottom:22,letterSpacing:1,fontFamily:"'Orbitron',sans-serif",textTransform:"uppercase"}}>
+              Enter your email address
+            </div>
+            <AuthField label="Email" type="email" value={email} onChange={setEmail} onEnter={handleForgot} />
+            {error && <div style={{color:"#ff4455",fontSize:12,marginBottom:12,fontWeight:600}}>{error}</div>}
+            {forgotSent && <div style={{color:"var(--accent)",fontSize:12,marginBottom:12,fontWeight:600}}>
+              Reset link sent — check your email.
+            </div>}
+            <button className="btn btn-primary" style={{width:"100%",justifyContent:"center",padding:"13px 20px",marginBottom:10}}
+              disabled={loading || forgotSent} onClick={handleForgot}>
+              {loading ? "SENDING…" : forgotSent ? "EMAIL SENT ✓" : "SEND RESET LINK ›"}
+            </button>
+            <button className="btn btn-ghost" style={{width:"100%",justifyContent:"center",padding:"10px 20px",fontSize:10}}
+              onClick={() => switchMode("login")}>← BACK</button>
+          </AuthCard>
+        )}
+
+        {/* RESET PASSWORD (arrived via email link with ?reset=TOKEN) */}
+        {mode === "reset" && (
+          <AuthCard>
+            <AuthTitle text="New Password" />
+            <div style={{color:"var(--muted)",fontSize:11,marginBottom:22,letterSpacing:1,fontFamily:"'Orbitron',sans-serif",textTransform:"uppercase"}}>
+              Choose a new password
+            </div>
+            <AuthField label="New Password (min. 8 characters)" type="password" value={password} onChange={setPassword} />
+            <AuthField label="Confirm New Password" type="password" value={confirm} onChange={setConfirm} onEnter={handleReset} />
+            {error && <div style={{color:"#ff4455",fontSize:12,marginBottom:12,fontWeight:600}}>{error}</div>}
+            <button className="btn btn-primary" style={{width:"100%",justifyContent:"center",padding:"13px 20px",marginBottom:10}}
+              disabled={loading} onClick={handleReset}>
+              {loading ? "SAVING…" : "SET NEW PASSWORD ›"}
+            </button>
           </AuthCard>
         )}
 
@@ -4903,16 +4980,12 @@ export default function App() {
           gltf.animations.forEach(clip => mixer.clipAction(clip).play());
         }
 
+        const FRAME_MS_ORB = 1000 / 30;
         let lastOrbFrame = 0;
-        let avgOrbMs = 16.7;
-        const SLOW_MS_ORB = 1000 / 50;
-        const CAP_MS_ORB  = 1000 / 30;
         function animate(now) {
           animId = requestAnimationFrame(animate);
-          const delta = now - lastOrbFrame;
-          avgOrbMs = avgOrbMs * 0.9 + delta * 0.1;
-          if (avgOrbMs > SLOW_MS_ORB && delta < CAP_MS_ORB) return;
-          lastOrbFrame = now;
+          if (now - lastOrbFrame < FRAME_MS_ORB) return;
+          lastOrbFrame = now - ((now - lastOrbFrame) % FRAME_MS_ORB);
           const dt = clock.getDelta();
           if (mixer) mixer.update(dt);
           model.position.y = Math.sin(clock.elapsedTime * 0.9) * 0.06;
