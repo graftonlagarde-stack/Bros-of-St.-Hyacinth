@@ -2428,8 +2428,10 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
 
 // ─── AUDIO FIGURE BACKDROP ────────────────────────────────────────────────────
 function AudioFigureBackdrop({ visible = false, isMobile = false }) {
-  const crossMountRef  = useRef(null);  // cross renderer mounts here — bloom CSS applied
-  const figureMountRef = useRef(null);  // figure renderer mounts here — sits above cross
+  const crossMountRef  = useRef(null);  // cross WebGL renderer mounts here
+  const figureMountRef = useRef(null);  // figure WebGL renderer mounts here
+  const bloomCanvasRef = useRef(null);  // 2D canvas for bloom — works on iOS Safari
+  const crossScreenPos = useRef({ x: 0.5, y: 0.5 }); // normalized screen pos of cross
   const visibleRef     = useRef(visible);
   const [opacity, setOpacity] = useState(0);
 
@@ -2469,11 +2471,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       crossRenderer.setSize(w, h);
       crossRenderer.setClearColor(0x000000, 0);
       crossEl.appendChild(crossRenderer.domElement);
-      // Apply bloom animation directly to the canvas — iOS Safari doesn't propagate
-      // CSS filter from a parent div onto a WebGL canvas, so we target the canvas itself.
-      crossRenderer.domElement.style.animation = "crossBloom 0.5s ease-in-out infinite";
-      crossRenderer.domElement.style.position  = "absolute";
-      crossRenderer.domElement.style.inset     = "0";
       crossRendererInst = crossRenderer;
 
       // Dynamic silver-white glitter texture
@@ -2745,6 +2742,18 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             updateGlitter(clock.elapsedTime);
             crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
 
+            // Project cross centre to screen coords for the 2D bloom canvas
+            const cruxWorld = new THREE.Vector3(
+              crossGroup.position.x,
+              crossGroup.position.y + crossH * 0.5,
+              crossGroup.position.z
+            );
+            cruxWorld.project(camera);
+            crossScreenPos.current = {
+              x: (cruxWorld.x + 1) / 2,
+              y: (1 - cruxWorld.y) / 2,
+            };
+
             // Project crux world position → normalized screen coords for fog canvas
             if (phase === "bounce") {
               bounceTime += dt;
@@ -2893,21 +2902,78 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
     };
   }, []);
 
+  // 2D bloom canvas — draws radial glow at cross screen position each frame.
+  // Using a plain 2D canvas (not CSS filter on WebGL) ensures it works on iOS Safari.
+  useEffect(() => {
+    const canvas = bloomCanvasRef.current;
+    if (!canvas) return;
+    let rafId;
+    const startTime = performance.now();
+
+    const draw = (now) => {
+      rafId = requestAnimationFrame(draw);
+      const cw = canvas.offsetWidth;
+      const ch = canvas.offsetHeight;
+      if (cw === 0 || ch === 0) return;
+      canvas.width  = cw;
+      canvas.height = ch;
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, cw, ch);
+
+      const t   = (now - startTime) / 1000;
+      const cx  = cw * crossScreenPos.current.x;
+      const cy  = ch * crossScreenPos.current.y;
+
+      // Flicker — same rhythm as crossBloom keyframes: fast, never dim
+      const flicker = 1.5 + 0.85 * Math.abs(Math.sin(t * Math.PI / 0.5));
+
+      // Five concentric bloom layers — tight inner glow to wide outer halo
+      const layers = [
+        { r: Math.min(cw, ch) * 0.04, a: 0.90 * flicker },
+        { r: Math.min(cw, ch) * 0.10, a: 0.55 * flicker },
+        { r: Math.min(cw, ch) * 0.20, a: 0.32 * flicker },
+        { r: Math.min(cw, ch) * 0.35, a: 0.16 * flicker },
+        { r: Math.min(cw, ch) * 0.55, a: 0.07 * flicker },
+      ];
+
+      layers.forEach(({ r, a }) => {
+        const alpha = Math.min(a, 1.0);
+        const grad  = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+        grad.addColorStop(0,    `rgba(200,228,255,${alpha})`);
+        grad.addColorStop(0.3,  `rgba(180,215,255,${alpha * 0.7})`);
+        grad.addColorStop(0.7,  `rgba(160,200,255,${alpha * 0.3})`);
+        grad.addColorStop(1,    `rgba(140,180,255,0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    };
+    draw(performance.now());
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
   return (
     <div style={{
       position: "fixed", left: isMobile ? 0 : 224, top: 0, right: 0, bottom: isMobile ? 0 : 70,
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
     }}>
-      {/* Cross layer — bloom CSS animation applied directly to the WebGL canvas */}
+      {/* Cross WebGL layer */}
       <div ref={crossMountRef} style={{
         position: "absolute", inset: 0,
         zIndex: 1,
       }} />
-      {/* Figure layer — sits above cross, no bloom */}
+      {/* 2D bloom canvas — drawn in JS, works on iOS Safari */}
+      <canvas ref={bloomCanvasRef} style={{
+        position: "absolute", inset: 0,
+        width: "100%", height: "100%",
+        zIndex: 2,
+      }} />
+      {/* Figure WebGL layer — sits above both cross and bloom */}
       <div ref={figureMountRef} style={{
         position: "absolute", inset: 0,
-        zIndex: 2,
+        zIndex: 3,
       }} />
     </div>
   );
