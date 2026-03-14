@@ -1179,66 +1179,48 @@ const css = `
   @keyframes crossBloom {
     0%   {
       filter:
-        drop-shadow(0 0 10px rgba(180,220,255,1.0))
-        drop-shadow(0 0 28px rgba(160,210,255,0.95))
-        drop-shadow(0 0 65px rgba(140,200,255,0.82))
-        drop-shadow(0 0 130px rgba(120,180,255,0.58))
-        drop-shadow(0 0 220px rgba(100,160,255,0.32))
-        brightness(1.5);
+        drop-shadow(0 0 8px  rgba(180,220,255,1.0))
+        drop-shadow(0 0 22px rgba(160,210,255,0.95))
+        drop-shadow(0 0 55px rgba(140,200,255,0.80))
+        drop-shadow(0 0 110px rgba(120,180,255,0.55))
+        drop-shadow(0 0 200px rgba(100,160,255,0.30))
+        brightness(1.1);
     }
-    15%  {
+    25%  {
       filter:
-        drop-shadow(0 0 20px rgba(235,248,255,1.0))
-        drop-shadow(0 0 58px rgba(215,238,255,0.99))
-        drop-shadow(0 0 125px rgba(195,228,255,0.91))
-        drop-shadow(0 0 250px rgba(175,212,255,0.69))
-        drop-shadow(0 0 420px rgba(155,192,255,0.43))
-        brightness(2.2);
+        drop-shadow(0 0 14px rgba(220,240,255,1.0))
+        drop-shadow(0 0 40px rgba(200,230,255,0.98))
+        drop-shadow(0 0 90px rgba(180,220,255,0.88))
+        drop-shadow(0 0 180px rgba(160,200,255,0.65))
+        drop-shadow(0 0 320px rgba(140,180,255,0.40))
+        brightness(1.6);
     }
-    30%  {
+    55%  {
       filter:
-        drop-shadow(0 0 12px rgba(170,215,255,0.97))
-        drop-shadow(0 0 32px rgba(150,205,255,0.92))
-        drop-shadow(0 0 72px rgba(130,192,255,0.78))
-        drop-shadow(0 0 145px rgba(110,172,255,0.54))
-        drop-shadow(0 0 250px rgba(90,152,255,0.28))
-        brightness(1.55);
+        drop-shadow(0 0 6px  rgba(160,200,255,0.90))
+        drop-shadow(0 0 18px rgba(140,190,255,0.85))
+        drop-shadow(0 0 45px rgba(120,170,255,0.70))
+        drop-shadow(0 0 90px  rgba(100,150,255,0.45))
+        drop-shadow(0 0 160px rgba(80,130,255,0.22))
+        brightness(1.0);
     }
-    48%  {
+    75%  {
       filter:
-        drop-shadow(0 0 22px rgba(242,250,255,1.0))
-        drop-shadow(0 0 62px rgba(222,242,255,0.99))
-        drop-shadow(0 0 135px rgba(202,230,255,0.93))
-        drop-shadow(0 0 270px rgba(182,217,255,0.71))
-        drop-shadow(0 0 460px rgba(162,197,255,0.45))
-        brightness(2.35);
-    }
-    65%  {
-      filter:
-        drop-shadow(0 0 11px rgba(175,218,255,0.98))
-        drop-shadow(0 0 30px rgba(155,208,255,0.93))
-        drop-shadow(0 0 68px rgba(135,195,255,0.79))
-        drop-shadow(0 0 138px rgba(115,175,255,0.55))
-        drop-shadow(0 0 240px rgba(95,155,255,0.29))
-        brightness(1.52);
-    }
-    82%  {
-      filter:
-        drop-shadow(0 0 18px rgba(228,244,255,1.0))
-        drop-shadow(0 0 50px rgba(208,234,255,0.97))
-        drop-shadow(0 0 108px rgba(188,224,255,0.87))
-        drop-shadow(0 0 216px rgba(168,208,255,0.65))
-        drop-shadow(0 0 380px rgba(148,188,255,0.39))
-        brightness(2.0);
+        drop-shadow(0 0 18px rgba(230,245,255,1.0))
+        drop-shadow(0 0 50px rgba(210,235,255,0.98))
+        drop-shadow(0 0 100px rgba(190,220,255,0.88))
+        drop-shadow(0 0 200px rgba(170,205,255,0.65))
+        drop-shadow(0 0 360px rgba(150,185,255,0.38))
+        brightness(1.8);
     }
     100% {
       filter:
-        drop-shadow(0 0 10px rgba(180,220,255,1.0))
-        drop-shadow(0 0 28px rgba(160,210,255,0.95))
-        drop-shadow(0 0 65px rgba(140,200,255,0.82))
-        drop-shadow(0 0 130px rgba(120,180,255,0.58))
-        drop-shadow(0 0 220px rgba(100,160,255,0.32))
-        brightness(1.5);
+        drop-shadow(0 0 8px  rgba(180,220,255,1.0))
+        drop-shadow(0 0 22px rgba(160,210,255,0.95))
+        drop-shadow(0 0 55px rgba(140,200,255,0.80))
+        drop-shadow(0 0 110px rgba(120,180,255,0.55))
+        drop-shadow(0 0 200px rgba(100,160,255,0.30))
+        brightness(1.1);
     }
   }
   @keyframes rankGlow {
@@ -2428,14 +2410,9 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
 
 // ─── AUDIO FIGURE BACKDROP ────────────────────────────────────────────────────
 function AudioFigureBackdrop({ visible = false, isMobile = false }) {
-  const crossMountRef  = useRef(null);  // cross WebGL renderer
-  const figureMountRef = useRef(null);  // figure WebGL renderer
-  const visibleRef     = useRef(visible);
+  const mountRef   = useRef(null);
+  const visibleRef = useRef(visible);
   const [opacity, setOpacity] = useState(0);
-  // CSS cross overlay screen position (percent of container)
-  const [crossScreenPct, setCrossScreenPct] = useState(null);
-  // Cross pixel dimensions in screen space — set once after FBX loads
-  const [crossPxSize, setCrossPxSize] = useState(null);
 
   useEffect(() => {
     visibleRef.current = visible;
@@ -2445,15 +2422,11 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
   }, [visible]);
 
   useEffect(() => {
-    if (!crossMountRef.current || !figureMountRef.current) return;
-    const crossEl  = crossMountRef.current;
-    const figureEl = figureMountRef.current;
+    if (!mountRef.current) return;
+    const el = mountRef.current;
     let animId = null;
-    let crossRendererInst  = null;
-    let figureRendererInst = null;
+    let rendererInst = null;
     let cancelled = false;
-    // throttle setState to avoid too many re-renders
-    let lastStateUpdate = 0;
 
     Promise.all([
       import("three"),
@@ -2463,20 +2436,22 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
       const h = isMobile ? window.innerHeight : (window.innerHeight - 70);
 
+      const scene  = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 5000);
       camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
       camera.lookAt(0, 160, 0);
 
-      // ── Cross renderer ────────────────────────────────────────────────────
-      const crossScene    = new THREE.Scene();
-      const crossRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
-      crossRenderer.setPixelRatio(1);
-      crossRenderer.setSize(w, h);
-      crossRenderer.setClearColor(0x000000, 0);
-      crossEl.appendChild(crossRenderer.domElement);
-      crossRendererInst = crossRenderer;
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
+      renderer.setPixelRatio(1);
+      renderer.setSize(w, h);
+      renderer.setClearColor(0x000000, 0);
+      el.appendChild(renderer.domElement);
+      rendererInst = renderer;
 
-      // Dynamic silver-white glitter texture
+      // ── Cross ──────────────────────────────────────────────────────────────
+
+
+      // Dynamic silver-white glitter texture — regenerated each frame
       const glitterCanvas = document.createElement("canvas");
       glitterCanvas.width = glitterCanvas.height = 128;
       const gCtx = glitterCanvas.getContext("2d");
@@ -2484,6 +2459,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
 
       const updateGlitter = (time) => {
         gCtx.clearRect(0, 0, 128, 128);
+        // Silver-white base gradient
         const grd = gCtx.createLinearGradient(0, 0, 128, 128);
         grd.addColorStop(0,   "#e8eef2");
         grd.addColorStop(0.4, "#ffffff");
@@ -2491,6 +2467,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         grd.addColorStop(1,   "#f0f4f8");
         gCtx.fillStyle = grd;
         gCtx.fillRect(0, 0, 128, 128);
+        // Animated sparkles
         const rng = (s) => { let x = Math.sin(s) * 43758.5453; return x - Math.floor(x); };
         for (let i = 0; i < 60; i++) {
           const tx = time * 0.7 + i * 1.3;
@@ -2512,6 +2489,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       const crossMat = new THREE.MeshBasicMaterial({
         map: glitterTex, transparent: true, opacity: 1.0,
         blending: THREE.AdditiveBlending, depthWrite: false,
+        depthTest: !isMobile, // mobile: disable depth test so renderOrder alone controls layering
       });
 
       const crossGroup = new THREE.Group();
@@ -2521,27 +2499,24 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), crossMat.clone());
       hBar.position.y = crossH * 0.70;
       crossGroup.add(vBar, hBar);
-      const crossCamDist    = isMobile ? 1200 : 660;
-      const crossFovRad     = (40 * Math.PI) / 180;
+      // On desktop canvas starts at left:224 so cross needs an x-offset to appear screen-centered.
+      // On mobile canvas starts at left:0, so no offset needed.
+      const crossCamDist = isMobile ? 1200 : 660;
+      const crossFovRad = (40 * Math.PI) / 180;
       const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
-      const crossCenterX    = isMobile ? 0 : (-160 * crossWorldPerPx);
+      const crossCenterX = isMobile ? 0 : (-160 * crossWorldPerPx);
       crossGroup.position.set(crossCenterX, 0, 0);
-      crossScene.add(crossGroup);
-
-      // ── Figure renderer ───────────────────────────────────────────────────
-      const figureScene    = new THREE.Scene();
-      const figureRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
-      figureRenderer.setPixelRatio(1);
-      figureRenderer.setSize(w, h);
-      figureRenderer.setClearColor(0x000000, 0);
-      figureEl.appendChild(figureRenderer.domElement);
-      figureRendererInst = figureRenderer;
+      if (isMobile) {
+        crossGroup.renderOrder = 0;
+        crossGroup.traverse(c => { c.renderOrder = 0; });
+      }
+      scene.add(crossGroup);
 
       const wireMat = new THREE.MeshBasicMaterial({
         color: 0x00ffcc, wireframe: true,
         transparent: true, opacity: 0.32,
         blending: THREE.AdditiveBlending, depthWrite: false,
-        depthTest: !isMobile,
+        depthTest: !isMobile, // mobile: ignore depth so figure always renders visually above cross
       });
 
       let mixer = null;
@@ -2565,7 +2540,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         obj.position.set(110, -box2.min.y - extraH + 70, 0);
         // Same rotation as desktop adjusted 20° CCW on mobile
         obj.rotation.y = isMobile ? -(Math.PI * 170) / 180 : -(Math.PI * 195) / 180;
-        figureScene.add(obj);
+        scene.add(obj);
 
         // Align cross base to figure's ground level.
         // On mobile, crossH was reduced by 31 (310→279), so shift y up by 31 to keep top at same position.
@@ -2736,7 +2711,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             if (now - lastFrame < FRAME_MS) return;
             lastFrame = now - ((now - lastFrame) % FRAME_MS);
             const dt = Math.min(clock.getDelta(), 0.05);
-            if (!isVisible) { if (mixer) mixer.update(dt); crossRenderer.render(crossScene, camera); figureRenderer.render(figureScene, camera); return; }
+            if (!isVisible) { if (mixer) mixer.update(dt); renderer.render(scene, camera); return; }
             if (mixer) mixer.update(dt);
 
             const toCamX = camera.position.x - crossGroup.position.x;
@@ -2856,19 +2831,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
               });
             }
 
-            // Project cross centre to screen coords for CSS bloom overlay
-            const cruxWorldPos = new THREE.Vector3(
-              crossGroup.position.x,
-              crossGroup.position.y + crossH * 0.5,
-              crossGroup.position.z
-            );
-            cruxWorldPos.project(camera);
-            const sx = (cruxWorldPos.x + 1) / 2 * 100;  // percent
-            const sy = (1 - cruxWorldPos.y) / 2 * 100;
-            setCrossScreenPct({ x: sx, y: sy });
-
-            crossRenderer.render(crossScene, camera);
-            figureRenderer.render(figureScene, camera);
+            renderer.render(scene, camera);
           };
           animId = requestAnimationFrame(animateWithBreath);
         }
@@ -2882,8 +2845,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             const toCamX = camera.position.x - crossGroup.position.x;
             const toCamZ = camera.position.z - crossGroup.position.z;
             crossGroup.rotation.y = Math.atan2(toCamX, toCamZ);
-            crossRenderer.render(crossScene, camera);
-            figureRenderer.render(figureScene, camera);
+            renderer.render(scene, camera);
           };
           animate();
         }
@@ -2893,29 +2855,12 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
     return () => {
       cancelled = true;
       cancelAnimationFrame(animId);
-      if (crossRendererInst) {
-        crossRendererInst.dispose();
-        if (crossEl.contains(crossRendererInst.domElement)) crossEl.removeChild(crossRendererInst.domElement);
-      }
-      if (figureRendererInst) {
-        figureRendererInst.dispose();
-        if (figureEl.contains(figureRendererInst.domElement)) figureEl.removeChild(figureRendererInst.domElement);
+      if (rendererInst) {
+        rendererInst.dispose();
+        if (el.contains(rendererInst.domElement)) el.removeChild(rendererInst.domElement);
       }
     };
   }, []);
-
-  // Compute CSS cross pixel sizes from the same params used in Three.js
-  const cssCross = (() => {
-    const w = typeof window !== "undefined" ? (isMobile ? window.innerWidth : (window.innerWidth - 224)) : 400;
-    const h = typeof window !== "undefined" ? (isMobile ? window.innerHeight : (window.innerHeight - 70)) : 700;
-    const camDist = isMobile ? 1200 : 660;
-    const fovRad  = (40 * Math.PI) / 180;
-    const pxPerWorld = w / (2 * Math.tan(fovRad / 2) * camDist);
-    const cH = (isMobile ? 279 : 230) * pxPerWorld;
-    const cW = (isMobile ? 153 : 125) * pxPerWorld;
-    const bT = (isMobile ? 30  : 23)  * pxPerWorld;
-    return { cH, cW, bT };
-  })();
 
   return (
     <div style={{
@@ -2923,45 +2868,10 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
     }}>
-      {/* Cross WebGL — renders glitter texture */}
-      <div ref={crossMountRef} style={{ position: "absolute", inset: 0, zIndex: 1 }} />
-      {/* CSS cross overlay — positioned to match WebGL cross, bloom applied here.
-          CSS filters on CSS elements work on ALL platforms including iOS Safari. */}
-      {crossScreenPct && (
-        <div style={{
-          position: "absolute",
-          left:   `${crossScreenPct.x}%`,
-          top:    `${crossScreenPct.y}%`,
-          width:  cssCross.bT,
-          height: cssCross.cH,
-          transform: `translate(-50%, -${(0.5 / 1) * 100}%)`,
-          zIndex: 2,
-          animation: "crossBloom 0.5s ease-in-out infinite",
-          pointerEvents: "none",
-        }}>
-          {/* Vertical bar */}
-          <div style={{
-            position: "absolute",
-            left: "50%", top: 0,
-            width: cssCross.bT, height: cssCross.cH,
-            transform: "translateX(-50%)",
-            background: "linear-gradient(160deg,#e8eef2,#ffffff,#d4e4f0)",
-            borderRadius: 3,
-          }} />
-          {/* Horizontal bar — at 70% from top */}
-          <div style={{
-            position: "absolute",
-            left: "50%",
-            top: cssCross.cH * 0.70 - cssCross.bT / 2,
-            width: cssCross.cW, height: cssCross.bT,
-            transform: "translateX(-50%)",
-            background: "linear-gradient(90deg,#d4e4f0,#ffffff,#e8eef2)",
-            borderRadius: 3,
-          }} />
-        </div>
-      )}
-      {/* Figure layer — sits above everything */}
-      <div ref={figureMountRef} style={{ position: "absolute", inset: 0, zIndex: 3 }} />
+      <div ref={mountRef} style={{
+        position: "absolute", inset: 0,
+        animation: "crossBloom 2.8s ease-in-out infinite",
+      }} />
     </div>
   );
 }
