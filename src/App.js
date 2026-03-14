@@ -2462,11 +2462,10 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       camera.lookAt(0, 160, 0);
 
       const crossScene    = new THREE.Scene();
-      const crossRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
+      const crossRenderer = new THREE.WebGLRenderer({ canvas: crossEl, alpha: true, antialias: false });
       crossRenderer.setPixelRatio(1);
       crossRenderer.setSize(w, h);
       crossRenderer.setClearColor(0x000000, 0);
-      crossEl.appendChild(crossRenderer.domElement);
       crossRendererInst = crossRenderer;
 
       const glitterCanvas = document.createElement("canvas");
@@ -2874,7 +2873,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       cancelAnimationFrame(animId);
       if (crossRendererInst) {
         crossRendererInst.dispose();
-        if (crossEl.contains(crossRendererInst.domElement)) crossEl.removeChild(crossRendererInst.domElement);
       }
       if (figureRendererInst) {
         figureRendererInst.dispose();
@@ -2889,7 +2887,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
     }}>
-      <div ref={crossMountRef}  style={{ position: "absolute", inset: 0, zIndex: 1 }} />
+      <canvas ref={crossMountRef} style={{ position: "absolute", inset: 0, zIndex: 1, animation: "crossBloom 0.5s ease-in-out infinite" }} />
       <div ref={figureMountRef} style={{ position: "absolute", inset: 0, zIndex: 2 }} />
     </div>
   );
