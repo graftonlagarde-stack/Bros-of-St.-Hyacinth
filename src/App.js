@@ -2491,7 +2491,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       bloomRenderPass.clearColor = new THREE.Color(0, 0, 0);
       bloomRenderPass.clearAlpha = 0;
       bloomComposer.addPass(bloomRenderPass);
-      const bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 1.8, 0.5, 0.0);
+      const bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 1.2, 0.6, 0.4);
       bloomComposer.addPass(bloomPass);
       bloomComposer.renderToScreen = false;
 
@@ -2513,8 +2513,10 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           void main() {
             vec4 bloom = texture2D(tBloom, vUv);
             vec4 sharp = texture2D(tSharp, vUv);
-            // Bloom additive behind sharp — source shape never overwritten
-            gl_FragColor = vec4(sharp.rgb + bloom.rgb * (1.0 - sharp.a), max(sharp.a, bloom.a));
+            // Subtract sharp from bloom so the cross face itself contributes no bloom —
+            // bloom only appears in the space around the cross, not on top of it.
+            vec3 halo = max(bloom.rgb - sharp.rgb, 0.0);
+            gl_FragColor = vec4(sharp.rgb + halo, max(sharp.a, length(halo) > 0.001 ? bloom.a : 0.0));
           }
         `,
       });
@@ -2571,8 +2573,8 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       };
 
       const crossMat = new THREE.MeshBasicMaterial({
-        map: glitterTex, transparent: true, opacity: 1.0,
-        blending: THREE.AdditiveBlending, depthWrite: false,
+        map: glitterTex, transparent: false,
+        depthWrite: true, depthTest: true,
       });
 
       const crossGroup = new THREE.Group();
