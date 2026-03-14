@@ -1186,32 +1186,50 @@ const css = `
         drop-shadow(0 0 200px rgba(100,160,255,0.30))
         brightness(1.1);
     }
-    25%  {
-      filter:
-        drop-shadow(0 0 14px rgba(220,240,255,1.0))
-        drop-shadow(0 0 40px rgba(200,230,255,0.98))
-        drop-shadow(0 0 90px rgba(180,220,255,0.88))
-        drop-shadow(0 0 180px rgba(160,200,255,0.65))
-        drop-shadow(0 0 320px rgba(140,180,255,0.40))
-        brightness(1.6);
-    }
-    55%  {
-      filter:
-        drop-shadow(0 0 6px  rgba(160,200,255,0.90))
-        drop-shadow(0 0 18px rgba(140,190,255,0.85))
-        drop-shadow(0 0 45px rgba(120,170,255,0.70))
-        drop-shadow(0 0 90px  rgba(100,150,255,0.45))
-        drop-shadow(0 0 160px rgba(80,130,255,0.22))
-        brightness(1.0);
-    }
-    75%  {
+    18%  {
       filter:
         drop-shadow(0 0 18px rgba(230,245,255,1.0))
-        drop-shadow(0 0 50px rgba(210,235,255,0.98))
-        drop-shadow(0 0 100px rgba(190,220,255,0.88))
-        drop-shadow(0 0 200px rgba(170,205,255,0.65))
-        drop-shadow(0 0 360px rgba(150,185,255,0.38))
-        brightness(1.8);
+        drop-shadow(0 0 55px rgba(210,235,255,0.99))
+        drop-shadow(0 0 120px rgba(190,225,255,0.90))
+        drop-shadow(0 0 240px rgba(170,210,255,0.68))
+        drop-shadow(0 0 400px rgba(150,190,255,0.42))
+        brightness(2.0);
+    }
+    32%  {
+      filter:
+        drop-shadow(0 0 5px  rgba(150,195,255,0.85))
+        drop-shadow(0 0 14px rgba(130,180,255,0.80))
+        drop-shadow(0 0 35px rgba(110,165,255,0.65))
+        drop-shadow(0 0 70px rgba(90,145,255,0.40))
+        drop-shadow(0 0 130px rgba(70,125,255,0.18))
+        brightness(0.95);
+    }
+    52%  {
+      filter:
+        drop-shadow(0 0 22px rgba(240,248,255,1.0))
+        drop-shadow(0 0 60px rgba(220,240,255,0.99))
+        drop-shadow(0 0 130px rgba(200,228,255,0.92))
+        drop-shadow(0 0 260px rgba(180,215,255,0.70))
+        drop-shadow(0 0 440px rgba(160,195,255,0.44))
+        brightness(2.2);
+    }
+    68%  {
+      filter:
+        drop-shadow(0 0 7px  rgba(160,205,255,0.88))
+        drop-shadow(0 0 18px rgba(140,190,255,0.82))
+        drop-shadow(0 0 42px rgba(120,172,255,0.68))
+        drop-shadow(0 0 85px rgba(100,152,255,0.44))
+        drop-shadow(0 0 155px rgba(80,132,255,0.22))
+        brightness(1.0);
+    }
+    82%  {
+      filter:
+        drop-shadow(0 0 16px rgba(225,242,255,1.0))
+        drop-shadow(0 0 46px rgba(205,232,255,0.97))
+        drop-shadow(0 0 100px rgba(185,222,255,0.86))
+        drop-shadow(0 0 200px rgba(165,205,255,0.63))
+        drop-shadow(0 0 360px rgba(145,185,255,0.38))
+        brightness(1.85);
     }
     100% {
       filter:
@@ -2410,8 +2428,9 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
 
 // ─── AUDIO FIGURE BACKDROP ────────────────────────────────────────────────────
 function AudioFigureBackdrop({ visible = false, isMobile = false }) {
-  const mountRef   = useRef(null);
-  const visibleRef = useRef(visible);
+  const crossMountRef  = useRef(null);  // cross renderer mounts here — bloom CSS applied
+  const figureMountRef = useRef(null);  // figure renderer mounts here — sits above cross
+  const visibleRef     = useRef(visible);
   const [opacity, setOpacity] = useState(0);
 
   useEffect(() => {
@@ -2422,10 +2441,12 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
   }, [visible]);
 
   useEffect(() => {
-    if (!mountRef.current) return;
-    const el = mountRef.current;
+    if (!crossMountRef.current || !figureMountRef.current) return;
+    const crossEl  = crossMountRef.current;
+    const figureEl = figureMountRef.current;
     let animId = null;
-    let rendererInst = null;
+    let crossRendererInst  = null;
+    let figureRendererInst = null;
     let cancelled = false;
 
     Promise.all([
@@ -2436,22 +2457,21 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
       const h = isMobile ? window.innerHeight : (window.innerHeight - 70);
 
-      const scene  = new THREE.Scene();
+      // Shared camera — both scenes use identical viewpoint so cross and figure align
       const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 5000);
       camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
       camera.lookAt(0, 160, 0);
 
-      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
-      renderer.setPixelRatio(1);
-      renderer.setSize(w, h);
-      renderer.setClearColor(0x000000, 0);
-      el.appendChild(renderer.domElement);
-      rendererInst = renderer;
+      // ── Cross renderer ────────────────────────────────────────────────────
+      const crossScene    = new THREE.Scene();
+      const crossRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
+      crossRenderer.setPixelRatio(1);
+      crossRenderer.setSize(w, h);
+      crossRenderer.setClearColor(0x000000, 0);
+      crossEl.appendChild(crossRenderer.domElement);
+      crossRendererInst = crossRenderer;
 
-      // ── Cross ──────────────────────────────────────────────────────────────
-
-
-      // Dynamic silver-white glitter texture — regenerated each frame
+      // Dynamic silver-white glitter texture
       const glitterCanvas = document.createElement("canvas");
       glitterCanvas.width = glitterCanvas.height = 128;
       const gCtx = glitterCanvas.getContext("2d");
@@ -2459,7 +2479,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
 
       const updateGlitter = (time) => {
         gCtx.clearRect(0, 0, 128, 128);
-        // Silver-white base gradient
         const grd = gCtx.createLinearGradient(0, 0, 128, 128);
         grd.addColorStop(0,   "#e8eef2");
         grd.addColorStop(0.4, "#ffffff");
@@ -2467,7 +2486,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         grd.addColorStop(1,   "#f0f4f8");
         gCtx.fillStyle = grd;
         gCtx.fillRect(0, 0, 128, 128);
-        // Animated sparkles
         const rng = (s) => { let x = Math.sin(s) * 43758.5453; return x - Math.floor(x); };
         for (let i = 0; i < 60; i++) {
           const tx = time * 0.7 + i * 1.3;
@@ -2489,7 +2507,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       const crossMat = new THREE.MeshBasicMaterial({
         map: glitterTex, transparent: true, opacity: 1.0,
         blending: THREE.AdditiveBlending, depthWrite: false,
-        depthTest: !isMobile, // mobile: disable depth test so renderOrder alone controls layering
       });
 
       const crossGroup = new THREE.Group();
@@ -2499,24 +2516,26 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), crossMat.clone());
       hBar.position.y = crossH * 0.70;
       crossGroup.add(vBar, hBar);
-      // On desktop canvas starts at left:224 so cross needs an x-offset to appear screen-centered.
-      // On mobile canvas starts at left:0, so no offset needed.
-      const crossCamDist = isMobile ? 1200 : 660;
-      const crossFovRad = (40 * Math.PI) / 180;
+      const crossCamDist   = isMobile ? 1200 : 660;
+      const crossFovRad    = (40 * Math.PI) / 180;
       const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
-      const crossCenterX = isMobile ? 0 : (-160 * crossWorldPerPx);
+      const crossCenterX   = isMobile ? 0 : (-160 * crossWorldPerPx);
       crossGroup.position.set(crossCenterX, 0, 0);
-      if (isMobile) {
-        crossGroup.renderOrder = 0;
-        crossGroup.traverse(c => { c.renderOrder = 0; });
-      }
-      scene.add(crossGroup);
+      crossScene.add(crossGroup);
+
+      // ── Figure renderer ───────────────────────────────────────────────────
+      const figureScene    = new THREE.Scene();
+      const figureRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
+      figureRenderer.setPixelRatio(1);
+      figureRenderer.setSize(w, h);
+      figureRenderer.setClearColor(0x000000, 0);
+      figureEl.appendChild(figureRenderer.domElement);
+      figureRendererInst = figureRenderer;
 
       const wireMat = new THREE.MeshBasicMaterial({
         color: 0x00ffcc, wireframe: true,
         transparent: true, opacity: 0.32,
         blending: THREE.AdditiveBlending, depthWrite: false,
-        depthTest: !isMobile, // mobile: ignore depth so figure always renders visually above cross
       });
 
       let mixer = null;
@@ -2536,22 +2555,18 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         obj.scale.setScalar(newScale);
         const box2   = new THREE.Box3().setFromObject(obj);
         const extraH = size.y * (newScale - scale);
-        // Same x position as desktop — camera centered on mobile so 110 places figure right-of-center
         obj.position.set(110, -box2.min.y - extraH + 70, 0);
-        // Same rotation as desktop adjusted 20° CCW on mobile
         obj.rotation.y = isMobile ? -(Math.PI * 170) / 180 : -(Math.PI * 195) / 180;
-        scene.add(obj);
+        figureScene.add(obj);
 
-        // Align cross base to figure's ground level.
-        // On mobile, crossH was reduced by 31 (310→279), so shift y up by 31 to keep top at same position.
-        crossGroup.position.y = -box2.min.y - extraH + 70 + 180 + (isMobile ? 0 : 0);
+        // Align cross base to figure's ground level
+        crossGroup.position.y = -box2.min.y - extraH + 70 + 180;
 
         if (obj.animations?.length) {
           const clip = obj.animations[0];
           const fps  = 30;
           mixer = new THREE.AnimationMixer(obj);
 
-          // Intro: play frames 0–45 once at 0.4x speed
           const intro = THREE.AnimationUtils.subclip(clip, "intro", 0, 45, fps);
           const introAction = mixer.clipAction(intro);
           introAction.setLoop(THREE.LoopOnce, 1);
@@ -2559,147 +2574,58 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           introAction.timeScale = 0.5;
           introAction.play();
 
-          // Phase tracking: "intro" → "bounce" → "breathing"
           let phase = "intro";
           let breathTime = 0;
           let bounceTime = 0;
-
-          // Physics bounce — upward kick, 1.5x faster than before
           const restY     = obj.position.y;
           let   vel       = 0;
           let   disp      = 0;
           const stiffness = 90;
-          const damping   = 18.0;
-          const kickVel   = 44;   // upward, modest
+          const damping   = 14;
+          const kickVel   = 55;
+          const bounceDuration = 3.5;
 
-          // Collect foot bones
-          const footBones = [];
-          obj.traverse(c => {
-            if (c.isBone && (c.name.toLowerCase().includes("foot") ||
-                             c.name.toLowerCase().includes("toe") ||
-                             c.name.toLowerCase().includes("ankle"))) {
-              footBones.push({ bone: c, worldPos: new THREE.Vector3() });
-            }
-          });
-          let footPositionsLocked = false;
+          const leanBoneNames  = ["mixamorigSpine","mixamorigSpine1","mixamorigSpine2","mixamorigLeftUpLeg","mixamorigRightUpLeg"];
+          const armBoneNames   = ["mixamorigLeftArm","mixamorigLeftForeArm","mixamorigLeftHand","mixamorigRightArm","mixamorigRightForeArm","mixamorigRightHand"];
+          const idleBoneNames  = ["mixamorigSpine","mixamorigSpine1","mixamorigSpine2","mixamorigNeck","mixamorigHead","mixamorigLeftShoulder","mixamorigRightShoulder"];
+          const lowerLockNames = ["mixamorigLeftFoot","mixamorigRightFoot","mixamorigLeftToeBase","mixamorigRightToeBase","mixamorigLeftLeg","mixamorigRightLeg"];
 
-          // Collect torso/thigh bones for forward lean
-          const leanBones = [];
-          obj.traverse(c => {
-            if (c.isBone && (c.name.toLowerCase().includes("spine") ||
-                             c.name.toLowerCase().includes("chest") ||
-                             c.name.toLowerCase().includes("thigh") ||
-                             c.name.toLowerCase().includes("upleg"))) {
-              leanBones.push({ bone: c, baseRot: c.quaternion.clone() });
-            }
-          });
-
-          // Collect arm bones for ragdoll
-          const armBones = [];
-          obj.traverse(c => {
-            if (c.isBone && (c.name.toLowerCase().includes("arm") ||
-                             c.name.toLowerCase().includes("forearm") ||
-                             c.name.toLowerCase().includes("shoulder") ||
-                             c.name.toLowerCase().includes("elbow") ||
-                             c.name.toLowerCase().includes("hand"))) {
-              armBones.push({ bone: c, baseRot: null, dispX: 0, dispY: 0, velX: 0, velY: 0 });
-            }
-          });
-
-          // Estimate bounce duration for normalizing t (stiffness/damping gives ~settle time)
-          const bounceDuration = 1.2; // seconds estimate
-
-          mixer.addEventListener("finished", () => {
-            if (phase === "intro") {
-              phase = "bounce";
-              vel   = kickVel;
-              disp  = 0;
-              bounceTime = 0;
-              footBones.forEach(fb => {
-                fb.bone.updateWorldMatrix(true, false);
-                fb.worldPos = new THREE.Vector3();
-                fb.bone.getWorldPosition(fb.worldPos);
-              });
-              footPositionsLocked = true;
-              // Snapshot base rotations at frame 45
-              leanBones.forEach(lb => { lb.baseRot = lb.bone.quaternion.clone(); });
-              armBones.forEach(ab => {
-                ab.baseRot = ab.bone.quaternion.clone();
-                ab.dispX = 0; ab.dispY = 0; ab.velX = 0; ab.velY = 0;
-              });
-            }
-          });
-
-          const breathBones = [];
-          obj.traverse(c => {
-            if (c.isBone && (c.name.toLowerCase().includes("spine") ||
-                             c.name.toLowerCase().includes("chest") ||
-                             c.name.toLowerCase().includes("neck"))) {
-              breathBones.push({ bone: c, baseScale: c.scale.clone() });
-            }
-          });
-
-          // Idle sway — upper body bones only (no knees/feet/ankles/toes)
-          const idleBones = [];
-          obj.traverse(c => {
-            if (!c.isBone) return;
-            const n = c.name.toLowerCase();
-            const isUpper = n.includes("spine") || n.includes("chest") ||
-                            n.includes("neck")  || n.includes("head")  ||
-                            n.includes("shoulder") || n.includes("arm") ||
-                            n.includes("forearm")  || n.includes("hand") ||
-                            n.includes("clavicle");
-            if (isUpper) {
-              // Each bone gets unique phase offsets for organic, non-repeating feel
-              idleBones.push({
-                bone:   c,
-                baseRot: null, // snapshotted when breathing starts
-                // Sway frequencies and phases — all slightly irrational for aperiodic motion
-                phX1: Math.random() * Math.PI * 2, frX1: 0.31 + Math.random() * 0.18,
-                phX2: Math.random() * Math.PI * 2, frX2: 0.71 + Math.random() * 0.22,
-                phZ1: Math.random() * Math.PI * 2, frZ1: 0.27 + Math.random() * 0.15,
-                phZ2: Math.random() * Math.PI * 2, frZ2: 0.63 + Math.random() * 0.19,
-                ampX: 0.008 + Math.random() * 0.006,
-                ampZ: 0.006 + Math.random() * 0.005,
-              });
-            }
-          });
-
-          // Lower leg / foot bones to keep locked during idle
-          const lowerLockBones = [];
-          obj.traverse(c => {
-            if (!c.isBone) return;
-            const n = c.name.toLowerCase();
-            if (n.includes("knee") || n.includes("foot") ||
-                n.includes("toe")  || n.includes("ankle")) {
-              lowerLockBones.push({ bone: c, worldPos: null });
-            }
-          });
-
-          const tmpQ  = new THREE.Quaternion();
+          const leanBones  = [], armBones = [], idleBones = [], lowerLockBones = [];
           const leanQ = new THREE.Quaternion();
 
-          // Restart function: resets mixer and all phase state to beginning
+          obj.traverse(bone => {
+            if (!bone.isBone) return;
+            if (leanBoneNames.some(n  => bone.name.includes(n)))  leanBones.push({ bone, baseRot: bone.quaternion.clone() });
+            if (armBoneNames.some(n   => bone.name.includes(n)))  armBones.push({ bone, baseRot: bone.quaternion.clone(), velX:0, velY:0, dispX:0, dispY:0 });
+            if (idleBoneNames.some(n  => bone.name.includes(n)))  idleBones.push({
+              bone, baseRot: bone.quaternion.clone(),
+              frX1: 0.18 + Math.random()*0.12, frX2: 0.29 + Math.random()*0.08,
+              frZ1: 0.22 + Math.random()*0.11, frZ2: 0.33 + Math.random()*0.09,
+              phX1: Math.random()*Math.PI*2,   phX2: Math.random()*Math.PI*2,
+              phZ1: Math.random()*Math.PI*2,   phZ2: Math.random()*Math.PI*2,
+              ampX: 0.008 + Math.random()*0.006, ampZ: 0.006 + Math.random()*0.005,
+            });
+            if (lowerLockNames.some(n => bone.name.includes(n)))  lowerLockBones.push({ bone, worldPos: null });
+          });
+
           const restartAnimation = () => {
-            mixer.stopAllAction();
-            const restartIntro = THREE.AnimationUtils.subclip(clip, "intro", 0, 45, fps);
-            const restartAction = mixer.clipAction(restartIntro);
-            restartAction.setLoop(THREE.LoopOnce, 1);
-            restartAction.clampWhenFinished = true;
-            restartAction.timeScale = 0.5;
-            restartAction.reset().play();
-            phase = "intro";
-            vel = 0; disp = 0; bounceTime = 0; breathTime = 0;
-            footPositionsLocked = false;
-            obj.position.y = restY;
+            vel = kickVel; disp = 0; bounceTime = 0; phase = "bounce";
+            leanBones.forEach(lb  => { lb.baseRot = lb.bone.quaternion.clone(); });
+            armBones.forEach(ab   => { ab.baseRot = ab.bone.quaternion.clone(); ab.velX=ab.velY=ab.dispX=ab.dispY=0; });
+            idleBones.forEach(ib  => { ib.baseRot = ib.bone.quaternion.clone(); });
+            lowerLockBones.forEach(lb => {
+              obj.updateWorldMatrix(true, true);
+              const wp = new THREE.Vector3(); lb.bone.getWorldPosition(wp); lb.worldPos = wp;
+            });
             clock.start();
           };
 
           const FRAME_MS = 1000 / 30;
-          const FADE_MS = 500;
-          let lastFrame = 0;
-          let hiddenAt = visibleRef.current ? Infinity : 0;
+          const FADE_MS  = 500;
+          let lastFrame  = 0;
+          let hiddenAt   = visibleRef.current ? Infinity : 0;
           let wasVisible = visibleRef.current;
+
           const animateWithBreath = (now) => {
             animId = requestAnimationFrame(animateWithBreath);
             const isVisible = visibleRef.current;
@@ -2711,7 +2637,12 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             if (now - lastFrame < FRAME_MS) return;
             lastFrame = now - ((now - lastFrame) % FRAME_MS);
             const dt = Math.min(clock.getDelta(), 0.05);
-            if (!isVisible) { if (mixer) mixer.update(dt); renderer.render(scene, camera); return; }
+            if (!isVisible) {
+              if (mixer) mixer.update(dt);
+              crossRenderer.render(crossScene, camera);
+              figureRenderer.render(figureScene, camera);
+              return;
+            }
             if (mixer) mixer.update(dt);
 
             const toCamX = camera.position.x - crossGroup.position.x;
@@ -2727,21 +2658,14 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
               vel  += force * dt;
               disp += vel   * dt;
               obj.position.y = restY + disp;
-
-              // t: 0→1 over bounce duration, clamped, used to blend back to base
               const t = Math.min(bounceTime / bounceDuration, 1.0);
-
-              // Torso/thigh: slight forward lean peaking at bounce apex, fades with t
-              // Max lean ~4° forward (positive x rotation in local space)
               const leanAmt = (disp / kickVel) * 0.07 * (1 - t * t);
               leanBones.forEach(lb => {
                 leanQ.setFromAxisAngle(new THREE.Vector3(1, 0, 0), leanAmt);
                 lb.bone.quaternion.copy(lb.baseRot).multiply(leanQ);
               });
-
-              // Arm ragdoll: each arm bone driven by figure's vertical acceleration
               const armStiff = 8, armDamp = 2.5;
-              const accel = force; // reuse spring force as proxy for acceleration
+              const accel = force;
               armBones.forEach(ab => {
                 if (!ab.baseRot) return;
                 const extForce = accel * 0.004;
@@ -2751,49 +2675,13 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
                 ab.velY += fy * dt; ab.dispY += ab.velY * dt;
                 const blend = 1 - t;
                 const rx = ab.dispX * blend * 0.35;
-                const ry = ab.dispY * blend * 0.20;
-                tmpQ.setFromEuler(new THREE.Euler(rx, ry, 0));
-                ab.bone.quaternion.copy(ab.baseRot).multiply(tmpQ);
+                const rz = ab.dispY * blend * 0.35;
+                const eq = new THREE.Euler(rx, 0, rz);
+                const qq = new THREE.Quaternion().setFromEuler(eq);
+                ab.bone.quaternion.copy(ab.baseRot).multiply(qq);
               });
-
-              // Foot locking
-              if (footPositionsLocked) {
-                footBones.forEach(fb => {
-                  if (!fb.worldPos) return;
-                  const parent = fb.bone.parent;
-                  if (parent) {
-                    parent.updateWorldMatrix(true, false);
-                    const invParent = new THREE.Matrix4().copy(parent.matrixWorld).invert();
-                    const localTarget = fb.worldPos.clone().applyMatrix4(invParent);
-                    fb.bone.position.copy(localTarget);
-                  }
-                });
-              }
-
-              if (Math.abs(disp) < 0.8 && Math.abs(vel) < 0.8) {
-                obj.position.y = restY;
-
-                // Snapshot every idle bone's current world quaternion BEFORE any resets
-                // so idle starts exactly where bounce left off
-                idleBones.forEach(ib => {
-                  ib.bone.updateWorldMatrix(true, false);
-                  // Store world-space quat; we'll apply relative to parent each frame
-                  const worldQ = new THREE.Quaternion();
-                  ib.bone.getWorldQuaternion(worldQ);
-                  ib.worldBaseQ = worldQ;
-                  // Also store local quat as-is right now
-                  ib.baseRot = ib.bone.quaternion.clone();
-                });
-
-                // Snapshot lower-leg world positions before any movement
-                lowerLockBones.forEach(lb => {
-                  lb.bone.updateWorldMatrix(true, false);
-                  lb.worldPos = new THREE.Vector3();
-                  lb.bone.getWorldPosition(lb.worldPos);
-                });
-
+              if (bounceTime >= bounceDuration) {
                 leanBones.forEach(lb => { lb.bone.quaternion.copy(lb.baseRot); });
-                // Arms stay where they landed — no reset
                 disp = 0; vel = 0;
                 breathTime = 0;
                 phase = "breathing";
@@ -2802,24 +2690,18 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
 
             if (phase === "breathing") {
               breathTime += dt;
-
-              // Subtle upper-body idle sway — aperiodic, zero displacement at t=0
               const eq = new THREE.Euler();
               const qq = new THREE.Quaternion();
               idleBones.forEach(ib => {
                 if (!ib.baseRot) return;
-                // Subtract the t=0 value so displacement starts exactly at zero
                 const rx = (Math.sin(breathTime * ib.frX1 * Math.PI * 2 + ib.phX1) - Math.sin(ib.phX1)) * ib.ampX
                          + (Math.sin(breathTime * ib.frX2 * Math.PI * 2 + ib.phX2) - Math.sin(ib.phX2)) * ib.ampX * 0.5;
                 const rz = (Math.sin(breathTime * ib.frZ1 * Math.PI * 2 + ib.phZ1) - Math.sin(ib.phZ1)) * ib.ampZ
                          + (Math.sin(breathTime * ib.frZ2 * Math.PI * 2 + ib.phZ2) - Math.sin(ib.phZ2)) * ib.ampZ * 0.5;
                 eq.set(rx, 0, rz);
                 qq.setFromEuler(eq);
-                // Apply on top of snapshotted pose — starts exactly where bounce ended
                 ib.bone.quaternion.copy(ib.baseRot).multiply(qq);
               });
-
-              // Keep knees and feet world-locked
               lowerLockBones.forEach(lb => {
                 if (!lb.worldPos) return;
                 const parent = lb.bone.parent;
@@ -2831,13 +2713,15 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
               });
             }
 
-            renderer.render(scene, camera);
+            // Render cross first, then figure on top (separate DOM elements ensure layering)
+            crossRenderer.render(crossScene, camera);
+            figureRenderer.render(figureScene, camera);
           };
           animId = requestAnimationFrame(animateWithBreath);
         }
       }, undefined, e => console.warn("Audio FBX load error:", e));
 
-      // Default fallback animate — only runs if FBX fails to load
+      // Fallback — runs if FBX fails to load
       setTimeout(() => {
         if (!animId) {
           const animate = () => {
@@ -2845,7 +2729,8 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             const toCamX = camera.position.x - crossGroup.position.x;
             const toCamZ = camera.position.z - crossGroup.position.z;
             crossGroup.rotation.y = Math.atan2(toCamX, toCamZ);
-            renderer.render(scene, camera);
+            crossRenderer.render(crossScene, camera);
+            figureRenderer.render(figureScene, camera);
           };
           animate();
         }
@@ -2855,9 +2740,13 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
     return () => {
       cancelled = true;
       cancelAnimationFrame(animId);
-      if (rendererInst) {
-        rendererInst.dispose();
-        if (el.contains(rendererInst.domElement)) el.removeChild(rendererInst.domElement);
+      if (crossRendererInst) {
+        crossRendererInst.dispose();
+        if (crossEl.contains(crossRendererInst.domElement)) crossEl.removeChild(crossRendererInst.domElement);
+      }
+      if (figureRendererInst) {
+        figureRendererInst.dispose();
+        if (figureEl.contains(figureRendererInst.domElement)) figureEl.removeChild(figureRendererInst.domElement);
       }
     };
   }, []);
@@ -2868,9 +2757,16 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
     }}>
-      <div ref={mountRef} style={{
+      {/* Cross layer — bloom CSS animation applied here only */}
+      <div ref={crossMountRef} style={{
         position: "absolute", inset: 0,
-        animation: "crossBloom 2.8s ease-in-out infinite",
+        animation: "crossBloom 0.9s ease-in-out infinite",
+        zIndex: 1,
+      }} />
+      {/* Figure layer — sits above cross, no bloom */}
+      <div ref={figureMountRef} style={{
+        position: "absolute", inset: 0,
+        zIndex: 2,
       }} />
     </div>
   );
