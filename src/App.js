@@ -3038,9 +3038,14 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
           if (!loopBone)  loopObj.traverse(c  => { if (!loopBone  && c.isBone) loopBone  = c; });
 
           if (introBone && loopBone) {
-            // Get world positions of both root bones
-            introBone.updateWorldMatrix(true, false);
-            loopBone.updateWorldMatrix(true, false);
+            // Force a full scene graph update on loopObj before reading world positions.
+            // loopObj has been hidden so its matrices may be stale — this guarantees
+            // getWorldPosition returns the correct value.
+            loopObj.position.copy(introObj.position);
+            loopObj.scale.copy(introObj.scale);
+            loopObj.rotation.copy(introObj.rotation);
+            loopObj.updateMatrixWorld(true);
+            introObj.updateMatrixWorld(true);
             const introWorldPos = new THREE.Vector3();
             const loopWorldPos  = new THREE.Vector3();
             introBone.getWorldPosition(introWorldPos);
@@ -3094,6 +3099,10 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
                 loopAction.play();
                 loopMixer.update(0);
               }
+              // Reset loopObj to exact same transform as introObj before showing
+              loopObj.position.copy(introObj.position);
+              loopObj.scale.copy(introObj.scale);
+              loopObj.rotation.copy(introObj.rotation);
               introObj.visible = false;
               loopObj.visible  = true;
               activeMixer      = loopMixer;
