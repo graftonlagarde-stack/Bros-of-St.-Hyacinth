@@ -2428,9 +2428,11 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
 
 // ─── AUDIO FIGURE BACKDROP ──────────────────────────────────────────────────────────────────────────────
 function AudioFigureBackdrop({ visible = false, isMobile = false }) {
-  const crossMountRef  = useRef(null);  // hidden WebGL cross renderer
-  const bloomCanvasRef = useRef(null);  // 2D canvas — CSS bloom applied here
+  const crossMountRef  = useRef(null);  // cross WebGL renderer
+  const bloomCanvasRef = useRef(null);  // 2D canvas — CSS crossBloom applied here
   const figureMountRef = useRef(null);  // figure WebGL renderer, above bloom
+  const crossScreenPos = useRef({ x: 0.5, y: 0.5 }); // normalised screen pos of cross centre
+  const crossPxDims    = useRef({ h: 100, w: 55, t: 10 }); // cross px dims, set after FBX loads
   const visibleRef     = useRef(visible);
   const [opacity, setOpacity] = useState(0);
 
@@ -2442,10 +2444,9 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
   }, [visible]);
 
   useEffect(() => {
-    if (!crossMountRef.current || !figureMountRef.current || !bloomCanvasRef.current) return;
+    if (!crossMountRef.current || !figureMountRef.current) return;
     const crossEl  = crossMountRef.current;
     const figureEl = figureMountRef.current;
-    const bloomCanvas = bloomCanvasRef.current;
     let animId = null;
     let crossRendererInst  = null;
     let figureRendererInst = null;
@@ -2463,50 +2464,14 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
       camera.lookAt(0, 160, 0);
 
-      // Cross: renders to an offscreen WebGLRenderTarget, then copied to a 2D
-      // canvas each frame. CSS crossBloom is applied to the 2D canvas — this
-      // works on iOS Safari because 2D canvases are never promoted to their own
-      // GPU compositing layer, so CSS filters always apply correctly.
+      // Cross WebGL renderer — renders the glitter cross
       const crossScene    = new THREE.Scene();
       const crossRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
       crossRenderer.setPixelRatio(1);
       crossRenderer.setSize(w, h);
       crossRenderer.setClearColor(0x000000, 0);
-      // Render target to read pixels from
-      const crossTarget = new THREE.WebGLRenderTarget(w, h, {
-        minFilter: THREE.LinearFilter,
-        magFilter: THREE.LinearFilter,
-        format: THREE.RGBAFormat,
-        type: THREE.UnsignedByteType,
-      });
-      // Keep the WebGL canvas hidden — bloom canvas is what the user sees
-      crossRenderer.domElement.style.display = "none";
       crossEl.appendChild(crossRenderer.domElement);
       crossRendererInst = crossRenderer;
-
-      // Pixel buffer for GPU→CPU readback
-      const pixelBuffer = new Uint8Array(w * h * 4);
-
-      // Copies the cross render target pixels into the 2D bloom canvas each frame
-      const renderCross = () => {
-        crossRenderer.setRenderTarget(crossTarget);
-        crossRenderer.render(crossScene, camera);
-        crossRenderer.setRenderTarget(null);
-        // Read pixels from GPU to CPU
-        crossRenderer.readRenderTargetPixels(crossTarget, 0, 0, w, h, pixelBuffer);
-        // Write into 2D bloom canvas — WebGL readback is flipped vertically
-        bloomCanvas.width  = w;
-        bloomCanvas.height = h;
-        const ctx = bloomCanvas.getContext("2d");
-        const imgData = ctx.createImageData(w, h);
-        // Flip vertically on copy (WebGL origin is bottom-left, canvas is top-left)
-        for (let row = 0; row < h; row++) {
-          const src = (h - 1 - row) * w * 4;
-          const dst = row * w * 4;
-          imgData.data.set(pixelBuffer.subarray(src, src + w * 4), dst);
-        }
-        ctx.putImageData(imgData, 0, 0);
-      };
 
       const glitterCanvas = document.createElement("canvas");
       glitterCanvas.width = glitterCanvas.height = 128;
@@ -2558,8 +2523,14 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       const crossCenterX    = isMobile ? 0 : (-160 * crossWorldPerPx);
       crossGroup.position.set(crossCenterX, 0, 0);
       crossScene.add(crossGroup);
+      // Store px dims for the 2D bloom canvas to mirror
+      crossPxDims.current = {
+        h: crossH / crossWorldPerPx,
+        w: crossW / crossWorldPerPx,
+        t: barThick / crossWorldPerPx,
+      };
 
-      // Figure renderer — no bloom, sits above bloom canvas in DOM
+      // Figure renderer — no bloom, sits above in DOM
       const figureScene    = new THREE.Scene();
       const figureRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
       figureRenderer.setPixelRatio(1);
@@ -2767,7 +2738,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             if (now - lastFrame < FRAME_MS) return;
             lastFrame = now - ((now - lastFrame) % FRAME_MS);
             const dt = Math.min(clock.getDelta(), 0.05);
-            if (!isVisible) { if (mixer) mixer.update(dt); renderCross(); figureRenderer.render(figureScene, camera); return; }
+            if (!isVisible) { if (mixer) mixer.update(dt); crossRenderer.render(crossScene, camera); figureRenderer.render(figureScene, camera); return; }
             if (mixer) mixer.update(dt);
 
             const toCamX = camera.position.x - crossGroup.position.x;
@@ -2887,7 +2858,11 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
               });
             }
 
-            renderCross();
+            // Update cross screen position for the 2D bloom canvas
+            const cruxW = new THREE.Vector3(crossGroup.position.x, crossGroup.position.y + crossH * 0.5, crossGroup.position.z);
+            cruxW.project(camera);
+            crossScreenPos.current = { x: (cruxW.x + 1) / 2, y: (1 - cruxW.y) / 2 };
+            crossRenderer.render(crossScene, camera);
             figureRenderer.render(figureScene, camera);
           };
           animId = requestAnimationFrame(animateWithBreath);
@@ -2902,7 +2877,10 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             const toCamX = camera.position.x - crossGroup.position.x;
             const toCamZ = camera.position.z - crossGroup.position.z;
             crossGroup.rotation.y = Math.atan2(toCamX, toCamZ);
-            renderCross();
+            const cruxW = new THREE.Vector3(crossGroup.position.x, crossGroup.position.y + crossH * 0.5, crossGroup.position.z);
+            cruxW.project(camera);
+            crossScreenPos.current = { x: (cruxW.x + 1) / 2, y: (1 - cruxW.y) / 2 };
+            crossRenderer.render(crossScene, camera);
             figureRenderer.render(figureScene, camera);
           };
           animate();
@@ -2924,23 +2902,55 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
     };
   }, []);
 
+  // 2D bloom canvas — draws the cross shape in Canvas 2D so CSS crossBloom filter
+  // has real geometry to work with on every platform including iOS Safari.
+  // Zero GPU readback cost — just two filled rectangles per frame.
+  useEffect(() => {
+    const canvas = bloomCanvasRef.current;
+    if (!canvas) return;
+    let rafId;
+    const FRAME_MS = 1000 / 30;
+    let lastFrame  = 0;
+    const draw = (now) => {
+      rafId = requestAnimationFrame(draw);
+      if (now - lastFrame < FRAME_MS) return;
+      lastFrame = now;
+      const cw = canvas.offsetWidth;
+      const ch = canvas.offsetHeight;
+      if (!cw || !ch) return;
+      canvas.width  = cw;
+      canvas.height = ch;
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, cw, ch);
+      const cx  = cw * crossScreenPos.current.x;
+      const cy  = ch * crossScreenPos.current.y;
+      const { h: pH, w: pW, t: pT } = crossPxDims.current;
+      // Silver-white fill — matches glitter texture tone so bloom colour is correct
+      ctx.fillStyle = "rgba(235,242,250,0.92)";
+      // Vertical bar — centred at cx, bottom of cross at cy + pH*0.5
+      ctx.fillRect(cx - pT / 2, cy - pH * 0.5, pT, pH);
+      // Horizontal bar — at 20% from top of cross (70% up from base = 30% down from top)
+      ctx.fillRect(cx - pW / 2, cy - pH * 0.5 + pH * 0.30 - pT / 2, pW, pT);
+    };
+    draw(0);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
   return (
     <div style={{
       position: "fixed", left: isMobile ? 0 : 224, top: 0, right: 0, bottom: isMobile ? 0 : 70,
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
     }}>
-      {/* Hidden cross WebGL renderer — pixels copied to bloom canvas each frame */}
-      <div ref={crossMountRef} style={{ display: "none" }} />
-      {/* 2D bloom canvas — receives cross pixels, CSS crossBloom applied here */}
+      {/* Cross WebGL — renders the glitter texture */}
+      <div ref={crossMountRef} style={{ position: "absolute", inset: 0, zIndex: 1 }} />
+      {/* 2D bloom canvas — cross shape drawn here so CSS filter has geometry to work with */}
       <canvas ref={bloomCanvasRef} style={{
-        position: "absolute", inset: 0,
-        width: "100%", height: "100%",
-        zIndex: 1,
-        animation: "crossBloom 0.5s ease-in-out infinite",
+        position: "absolute", inset: 0, width: "100%", height: "100%",
+        zIndex: 2, animation: "crossBloom 0.5s ease-in-out infinite",
       }} />
-      {/* Figure WebGL layer — sits above bloom */}
-      <div ref={figureMountRef} style={{ position: "absolute", inset: 0, zIndex: 2 }} />
+      {/* Figure layer — sits above everything */}
+      <div ref={figureMountRef} style={{ position: "absolute", inset: 0, zIndex: 3 }} />
     </div>
   );
 }
