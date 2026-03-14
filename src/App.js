@@ -2469,6 +2469,11 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       crossRenderer.setSize(w, h);
       crossRenderer.setClearColor(0x000000, 0);
       crossEl.appendChild(crossRenderer.domElement);
+      // Apply bloom animation directly to the canvas — iOS Safari doesn't propagate
+      // CSS filter from a parent div onto a WebGL canvas, so we target the canvas itself.
+      crossRenderer.domElement.style.animation = "crossBloom 0.5s ease-in-out infinite";
+      crossRenderer.domElement.style.position  = "absolute";
+      crossRenderer.domElement.style.inset     = "0";
       crossRendererInst = crossRenderer;
 
       // Dynamic silver-white glitter texture
@@ -2894,10 +2899,9 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
     }}>
-      {/* Cross layer — bloom CSS animation applied here only */}
+      {/* Cross layer — bloom CSS animation applied directly to the WebGL canvas */}
       <div ref={crossMountRef} style={{
         position: "absolute", inset: 0,
-        animation: "crossBloom 0.5s ease-in-out infinite",
         zIndex: 1,
       }} />
       {/* Figure layer — sits above cross, no bloom */}
