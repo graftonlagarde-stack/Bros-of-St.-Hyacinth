@@ -2428,12 +2428,13 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
 
 // ─── AUDIO FIGURE BACKDROP ──────────────────────────────────────────────────────────────────────────────
 function AudioFigureBackdrop({ visible = false, isMobile = false }) {
-  const crossMountRef  = useRef(null);  // cross WebGL renderer
-  const bloomCanvasRef = useRef(null);  // 2D canvas — CSS crossBloom applied here
-  const figureMountRef = useRef(null);  // figure WebGL renderer, above bloom
-  const crossScreenPos = useRef({ x: 0.5, y: 0.5 }); // normalised screen pos of cross centre
+  const figureMountRef = useRef(null);  // figure WebGL renderer
   const visibleRef     = useRef(visible);
-  const [opacity, setOpacity] = useState(0);
+  const [opacity, setOpacity]       = useState(0);
+  // Pre-rendered cross snapshot: data URL set once after FBX loads + cross is positioned
+  const [crossSnapshot, setCrossSnapshot] = useState(null);
+  // Cross image position/size in percent of container, set once after positioning
+  const [crossLayout, setCrossLayout] = useState(null);
 
   useEffect(() => {
     visibleRef.current = visible;
@@ -2443,11 +2444,9 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
   }, [visible]);
 
   useEffect(() => {
-    if (!crossMountRef.current || !figureMountRef.current) return;
-    const crossEl  = crossMountRef.current;
+    if (!figureMountRef.current) return;
     const figureEl = figureMountRef.current;
     let animId = null;
-    let crossRendererInst  = null;
     let figureRendererInst = null;
     let cancelled = false;
 
@@ -2463,52 +2462,46 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
       camera.lookAt(0, 160, 0);
 
-      // Cross WebGL renderer — renders the glitter cross
+      // ── Cross: rendered ONCE to a snapshot image ─────────────────────────
+      // Build cross in a temporary offscreen renderer, snapshot it as a PNG,
+      // then tear down the renderer. The PNG is displayed as a plain <img>
+      // with the CSS crossBloom animation — CSS filters on <img> work on all
+      // platforms including iOS Safari.
       const crossScene    = new THREE.Scene();
       const crossRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
       crossRenderer.setPixelRatio(1);
       crossRenderer.setSize(w, h);
       crossRenderer.setClearColor(0x000000, 0);
-      crossEl.appendChild(crossRenderer.domElement);
-      crossRendererInst = crossRenderer;
 
+      // Glitter texture (static snapshot — no animation needed for the pre-render)
       const glitterCanvas = document.createElement("canvas");
       glitterCanvas.width = glitterCanvas.height = 128;
       const gCtx = glitterCanvas.getContext("2d");
+      const grd = gCtx.createLinearGradient(0, 0, 128, 128);
+      grd.addColorStop(0,   "#e8eef2");
+      grd.addColorStop(0.4, "#ffffff");
+      grd.addColorStop(0.7, "#d4e4f0");
+      grd.addColorStop(1,   "#f0f4f8");
+      gCtx.fillStyle = grd;
+      gCtx.fillRect(0, 0, 128, 128);
+      // Add some static sparkles
+      const rng = (s) => { let x = Math.sin(s) * 43758.5453; return x - Math.floor(x); };
+      for (let i = 0; i < 60; i++) {
+        const x = rng(i * 1.3) * 128, y = rng(i * 2.1) * 128, r = rng(i * 0.7) * 3 + 0.5;
+        const a = rng(i * 3.3) * 0.9 + 0.1;
+        const spark = gCtx.createRadialGradient(x, y, 0, x, y, r * 4);
+        spark.addColorStop(0,   `rgba(255,255,255,${a})`);
+        spark.addColorStop(0.3, `rgba(210,230,245,${a * 0.5})`);
+        spark.addColorStop(1,   "rgba(255,255,255,0)");
+        gCtx.fillStyle = spark;
+        gCtx.beginPath(); gCtx.arc(x, y, r * 4, 0, Math.PI * 2); gCtx.fill();
+      }
       const glitterTex = new THREE.CanvasTexture(glitterCanvas);
-
-      const updateGlitter = (time) => {
-        gCtx.clearRect(0, 0, 128, 128);
-        const grd = gCtx.createLinearGradient(0, 0, 128, 128);
-        grd.addColorStop(0,   "#e8eef2");
-        grd.addColorStop(0.4, "#ffffff");
-        grd.addColorStop(0.7, "#d4e4f0");
-        grd.addColorStop(1,   "#f0f4f8");
-        gCtx.fillStyle = grd;
-        gCtx.fillRect(0, 0, 128, 128);
-        const rng = (s) => { let x = Math.sin(s) * 43758.5453; return x - Math.floor(x); };
-        for (let i = 0; i < 60; i++) {
-          const tx = time * 0.7 + i * 1.3;
-          const x  = rng(tx) * 128;
-          const y  = rng(tx + 99) * 128;
-          const r  = rng(tx + 17) * 3 + 0.5;
-          const br = Math.sin(time * (2 + rng(i) * 4) + i) * 0.5 + 0.5;
-          const a  = br * 0.9 + 0.1;
-          const spark = gCtx.createRadialGradient(x, y, 0, x, y, r * 4);
-          spark.addColorStop(0,   `rgba(255,255,255,${a})`);
-          spark.addColorStop(0.3, `rgba(210,230,245,${a * 0.5})`);
-          spark.addColorStop(1,   "rgba(255,255,255,0)");
-          gCtx.fillStyle = spark;
-          gCtx.beginPath(); gCtx.arc(x, y, r * 4, 0, Math.PI * 2); gCtx.fill();
-        }
-        glitterTex.needsUpdate = true;
-      };
 
       const crossMat = new THREE.MeshBasicMaterial({
         map: glitterTex, transparent: true, opacity: 1.0,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
-
       const crossGroup = new THREE.Group();
       const crossH = isMobile ? 279 : 230, crossW = isMobile ? 153 : 125, barThick = isMobile ? 30 : 23;
       const vBar = new THREE.Mesh(new THREE.BoxGeometry(barThick, crossH, barThick), crossMat);
@@ -2523,7 +2516,39 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       crossGroup.position.set(crossCenterX, 0, 0);
       crossScene.add(crossGroup);
 
-      // Figure renderer — no bloom, sits above in DOM
+      // We need the cross y position which is set after the FBX loads.
+      // Store a callback to snapshot once y is known.
+      const snapshotCross = (crossYWorld) => {
+        if (cancelled) return;
+        crossGroup.position.y = crossYWorld;
+        // Face cross toward camera (same as render loop)
+        const toCamX = camera.position.x - crossGroup.position.x;
+        const toCamZ = camera.position.z - crossGroup.position.z;
+        crossGroup.rotation.y = Math.atan2(toCamX, toCamZ);
+        crossRenderer.render(crossScene, camera);
+        const dataURL = crossRenderer.domElement.toDataURL("image/png");
+        setCrossSnapshot(dataURL);
+        // Project cross centre to get screen position for the img overlay
+        const centre = new THREE.Vector3(crossGroup.position.x, crossYWorld + crossH * 0.5, 0);
+        centre.project(camera);
+        const sx = (centre.x + 1) / 2 * 100;  // percent
+        const sy = (1 - centre.y) / 2 * 100;
+        // Cross pixel height via perspective projection
+        const topWorld    = new THREE.Vector3(crossGroup.position.x, crossYWorld + crossH, 0);
+        const bottomWorld = new THREE.Vector3(crossGroup.position.x, crossYWorld, 0);
+        topWorld.project(camera);    const topPct = (1 - topWorld.y) / 2 * 100;
+        bottomWorld.project(camera); const botPct = (1 - bottomWorld.y) / 2 * 100;
+        const leftWorld  = new THREE.Vector3(crossGroup.position.x - crossW / 2, crossYWorld + crossH * 0.7, 0);
+        const rightWorld = new THREE.Vector3(crossGroup.position.x + crossW / 2, crossYWorld + crossH * 0.7, 0);
+        leftWorld.project(camera);   const leftPct  = (leftWorld.x + 1) / 2 * 100;
+        rightWorld.project(camera);  const rightPct = (rightWorld.x + 1) / 2 * 100;
+        setCrossLayout({ topPct, botPct, leftPct, rightPct });
+        // Clean up the temporary cross renderer — no longer needed
+        crossRenderer.dispose();
+        glitterTex.dispose();
+      };
+
+      // ── Figure renderer ───────────────────────────────────────────────────
       const figureScene    = new THREE.Scene();
       const figureRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
       figureRenderer.setPixelRatio(1);
@@ -2564,7 +2589,9 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
 
         // Align cross base to figure's ground level.
         // On mobile, crossH was reduced by 31 (310→279), so shift y up by 31 to keep top at same position.
-        crossGroup.position.y = -box2.min.y - extraH + 70 + 180 + (isMobile ? 0 : 0);
+        const crossY = -box2.min.y - extraH + 70 + 180;
+        crossGroup.position.y = crossY;
+        snapshotCross(crossY);
 
         if (obj.animations?.length) {
           const clip = obj.animations[0];
@@ -2731,7 +2758,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             if (now - lastFrame < FRAME_MS) return;
             lastFrame = now - ((now - lastFrame) % FRAME_MS);
             const dt = Math.min(clock.getDelta(), 0.05);
-            if (!isVisible) { if (mixer) mixer.update(dt); crossRenderer.render(crossScene, camera); figureRenderer.render(figureScene, camera); return; }
+            if (!isVisible) { if (mixer) mixer.update(dt); figureRenderer.render(figureScene, camera); return; }
             if (mixer) mixer.update(dt);
 
             const toCamX = camera.position.x - crossGroup.position.x;
@@ -2851,11 +2878,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
               });
             }
 
-            // Update cross screen position for the 2D bloom canvas
-            const cruxW = new THREE.Vector3(crossGroup.position.x, crossGroup.position.y + crossH * 0.5, crossGroup.position.z);
-            cruxW.project(camera);
-            crossScreenPos.current = { x: (cruxW.x + 1) / 2, y: (1 - cruxW.y) / 2 };
-            crossRenderer.render(crossScene, camera);
             figureRenderer.render(figureScene, camera);
           };
           animId = requestAnimationFrame(animateWithBreath);
@@ -2870,10 +2892,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             const toCamX = camera.position.x - crossGroup.position.x;
             const toCamZ = camera.position.z - crossGroup.position.z;
             crossGroup.rotation.y = Math.atan2(toCamX, toCamZ);
-            const cruxW = new THREE.Vector3(crossGroup.position.x, crossGroup.position.y + crossH * 0.5, crossGroup.position.z);
-            cruxW.project(camera);
-            crossScreenPos.current = { x: (cruxW.x + 1) / 2, y: (1 - cruxW.y) / 2 };
-            crossRenderer.render(crossScene, camera);
             figureRenderer.render(figureScene, camera);
           };
           animate();
@@ -2884,58 +2902,11 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
     return () => {
       cancelled = true;
       cancelAnimationFrame(animId);
-      if (crossRendererInst) {
-        crossRendererInst.dispose();
-        if (crossEl.contains(crossRendererInst.domElement)) crossEl.removeChild(crossRendererInst.domElement);
-      }
       if (figureRendererInst) {
         figureRendererInst.dispose();
         if (figureEl.contains(figureRendererInst.domElement)) figureEl.removeChild(figureRendererInst.domElement);
       }
     };
-  }, []);
-
-  // 2D bloom canvas — draws the cross shape in Canvas 2D so CSS crossBloom filter
-  // has real geometry to work with on every platform including iOS Safari.
-  // Zero GPU readback cost — just two filled rectangles per frame.
-  useEffect(() => {
-    const canvas = bloomCanvasRef.current;
-    if (!canvas) return;
-    let rafId;
-    const FRAME_MS = 1000 / 30;
-    let lastFrame  = 0;
-    const draw = (now) => {
-      rafId = requestAnimationFrame(draw);
-      if (now - lastFrame < FRAME_MS) return;
-      lastFrame = now;
-      const cw = canvas.offsetWidth;
-      const ch = canvas.offsetHeight;
-      if (!cw || !ch) return;
-      canvas.width  = cw;
-      canvas.height = ch;
-      const ctx = canvas.getContext("2d");
-      ctx.clearRect(0, 0, cw, ch);
-      const cx  = cw * crossScreenPos.current.x;
-      const cy  = ch * crossScreenPos.current.y;
-      // Recompute pixel dims from current canvas width — handles resize and DPR correctly
-      const fovRad     = (40 * Math.PI) / 180;
-      const camDist    = isMobile ? 1200 : 660;
-      const cH3d = isMobile ? 279 : 230;
-      const cW3d = isMobile ? 153 : 125;
-      const cT3d = isMobile ? 30  : 23;
-      const pxPW   = cw / (2 * Math.tan(fovRad / 2) * camDist);
-      const pH = cH3d * pxPW;
-      const pW = cW3d * pxPW;
-      const pT = cT3d * pxPW;
-      // Silver-white fill — matches glitter texture tone so bloom colour is correct
-      ctx.fillStyle = "rgba(235,242,250,0.92)";
-      // Vertical bar — centred at cx, bottom of cross at cy + pH*0.5
-      ctx.fillRect(cx - pT / 2, cy - pH * 0.5, pT, pH);
-      // Horizontal bar — at 30% down from top (mirrors hBar.position.y = crossH * 0.70)
-      ctx.fillRect(cx - pW / 2, cy - pH * 0.5 + pH * 0.30 - pT / 2, pW, pT);
-    };
-    draw(0);
-    return () => cancelAnimationFrame(rafId);
   }, []);
 
   return (
@@ -2944,15 +2915,25 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
     }}>
-      {/* 2D bloom canvas — behind cross WebGL so bloom is a halo, not an overlay */}
-      <canvas ref={bloomCanvasRef} style={{
-        position: "absolute", inset: 0, width: "100%", height: "100%",
-        zIndex: 1, animation: "crossBloom 0.5s ease-in-out infinite",
-      }} />
-      {/* Cross WebGL — renders the glitter texture, sits above bloom */}
-      <div ref={crossMountRef} style={{ position: "absolute", inset: 0, zIndex: 2 }} />
-      {/* Figure layer — sits above everything */}
-      <div ref={figureMountRef} style={{ position: "absolute", inset: 0, zIndex: 3 }} />
+      {/* Pre-rendered cross snapshot with CSS bloom — works on all platforms */}
+      {crossSnapshot && crossLayout && (
+        <img
+          src={crossSnapshot}
+          style={{
+            position: "absolute",
+            left:   `${crossLayout.leftPct}%`,
+            top:    `${crossLayout.topPct}%`,
+            width:  `${crossLayout.rightPct - crossLayout.leftPct}%`,
+            height: `${crossLayout.botPct - crossLayout.topPct}%`,
+            zIndex: 1,
+            animation: "crossBloom 0.5s ease-in-out infinite",
+            imageRendering: "pixelated",
+          }}
+          alt=""
+        />
+      )}
+      {/* Figure WebGL layer — above cross */}
+      <div ref={figureMountRef} style={{ position: "absolute", inset: 0, zIndex: 2 }} />
     </div>
   );
 }
