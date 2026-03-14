@@ -2466,6 +2466,9 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       crossRenderer.setPixelRatio(1);
       crossRenderer.setSize(w, h);
       crossRenderer.setClearColor(0x000000, 0);
+      crossRenderer.toneMapping        = THREE.ACESFilmicToneMapping;
+      crossRenderer.toneMappingExposure = 3.5;
+      crossRenderer.outputColorSpace   = THREE.SRGBColorSpace;
       crossRendererInst = crossRenderer;
 
       const glitterCanvas = document.createElement("canvas");
@@ -2500,9 +2503,13 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         glitterTex.needsUpdate = true;
       };
 
-      const crossMat = new THREE.MeshBasicMaterial({
-        map: glitterTex, transparent: true, opacity: 1.0,
-        blending: THREE.AdditiveBlending, depthWrite: false,
+      const crossMat = new THREE.MeshStandardMaterial({
+        emissive: new THREE.Color(0xddeeff),
+        emissiveMap: glitterTex,
+        emissiveIntensity: 3.5,
+        transparent: true, opacity: 1.0,
+        depthWrite: false,
+        metalness: 0, roughness: 1,
       });
       const crossGroup = new THREE.Group();
       const crossH = isMobile ? 279 : 230, crossW = isMobile ? 153 : 125, barThick = isMobile ? 30 : 23;
@@ -2733,7 +2740,12 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             const camAngle = Math.atan2(toCamX, toCamZ);
             crossGroup.rotation.set(0, camAngle, 0);
             updateGlitter(clock.elapsedTime);
-            crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
+            // Flicker emissive intensity — drives the tone-mapped bloom naturally
+            const ft = clock.elapsedTime;
+            const flicker = 3.2 + 1.4 * Math.abs(Math.sin(ft * 6.3)) + 0.8 * Math.abs(Math.sin(ft * 11.3 + 1.1)) + 0.5 * Math.abs(Math.sin(ft * 17.7 + 2.3));
+            crossMat.emissiveIntensity = flicker;
+            // Keep hBar in sync
+            hBar.material.emissiveIntensity = flicker;
 
             if (phase === "bounce") {
               bounceTime += dt;
