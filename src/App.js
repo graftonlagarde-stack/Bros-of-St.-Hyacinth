@@ -1176,6 +1176,53 @@ const css = `
     50%  { opacity: 1.0;  filter: brightness(1.3) drop-shadow(0 0 20px rgba(255,255,255,0.9)); }
     100% { opacity: 0.88; filter: brightness(1.1) drop-shadow(0 0 12px rgba(200,220,255,0.75)); }
   }
+  @keyframes crossBloom {
+    0%   {
+      filter:
+        drop-shadow(0 0 8px  rgba(180,220,255,1.0))
+        drop-shadow(0 0 22px rgba(160,210,255,0.95))
+        drop-shadow(0 0 55px rgba(140,200,255,0.80))
+        drop-shadow(0 0 110px rgba(120,180,255,0.55))
+        drop-shadow(0 0 200px rgba(100,160,255,0.30))
+        brightness(1.1);
+    }
+    25%  {
+      filter:
+        drop-shadow(0 0 14px rgba(220,240,255,1.0))
+        drop-shadow(0 0 40px rgba(200,230,255,0.98))
+        drop-shadow(0 0 90px rgba(180,220,255,0.88))
+        drop-shadow(0 0 180px rgba(160,200,255,0.65))
+        drop-shadow(0 0 320px rgba(140,180,255,0.40))
+        brightness(1.6);
+    }
+    55%  {
+      filter:
+        drop-shadow(0 0 6px  rgba(160,200,255,0.90))
+        drop-shadow(0 0 18px rgba(140,190,255,0.85))
+        drop-shadow(0 0 45px rgba(120,170,255,0.70))
+        drop-shadow(0 0 90px  rgba(100,150,255,0.45))
+        drop-shadow(0 0 160px rgba(80,130,255,0.22))
+        brightness(1.0);
+    }
+    75%  {
+      filter:
+        drop-shadow(0 0 18px rgba(230,245,255,1.0))
+        drop-shadow(0 0 50px rgba(210,235,255,0.98))
+        drop-shadow(0 0 100px rgba(190,220,255,0.88))
+        drop-shadow(0 0 200px rgba(170,205,255,0.65))
+        drop-shadow(0 0 360px rgba(150,185,255,0.38))
+        brightness(1.8);
+    }
+    100% {
+      filter:
+        drop-shadow(0 0 8px  rgba(180,220,255,1.0))
+        drop-shadow(0 0 22px rgba(160,210,255,0.95))
+        drop-shadow(0 0 55px rgba(140,200,255,0.80))
+        drop-shadow(0 0 110px rgba(120,180,255,0.55))
+        drop-shadow(0 0 200px rgba(100,160,255,0.30))
+        brightness(1.1);
+    }
+  }
   @keyframes rankGlow {
     0%,100% { box-shadow: 0 0 20px rgba(136,255,0,0.2), inset 0 0 40px rgba(136,255,0,0.03); }
     50%     { box-shadow: 0 0 40px rgba(136,255,0,0.45), inset 0 0 60px rgba(136,255,0,0.07); }
@@ -2674,14 +2721,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             updateGlitter(clock.elapsedTime);
             crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
 
-            // Project crux world position → normalized screen coords for fog canvas
-            const cruxWorld = new THREE.Vector3(crossGroup.position.x, crossGroup.position.y + crossH * 0.70, crossGroup.position.z);
-            cruxWorld.project(camera);
-            cruxScreenPos.current = {
-              x: (cruxWorld.x + 1) / 2,
-              y: (1 - cruxWorld.y) / 2,
-            };
-
             if (phase === "bounce") {
               bounceTime += dt;
               const force = -stiffness * disp - damping * vel;
@@ -2806,9 +2845,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             const toCamX = camera.position.x - crossGroup.position.x;
             const toCamZ = camera.position.z - crossGroup.position.z;
             crossGroup.rotation.y = Math.atan2(toCamX, toCamZ);
-            const cruxWorld = new THREE.Vector3(crossGroup.position.x, crossGroup.position.y + crossH * 0.70, crossGroup.position.z);
-            cruxWorld.project(camera);
-            cruxScreenPos.current = { x: (cruxWorld.x + 1) / 2, y: (1 - cruxWorld.y) / 2 };
             renderer.render(scene, camera);
           };
           animate();
@@ -2826,89 +2862,16 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
     };
   }, []);
 
-  const fogCanvasRef  = useRef(null);
-  const cruxScreenPos = useRef({ x: 0.38, y: 0.28 }); // normalized 0-1
-
-  // 2D flickering fog glow around cross
-  useEffect(() => {
-    const canvas = fogCanvasRef.current;
-    if (!canvas) return;
-    let rafId;
-    const startTime = performance.now();
-
-    // Crux screen position read from projected Three.js coords each frame via cruxScreenPos ref
-
-    // Fog layers — all centered tightly on crux, varied radii
-    const NUM_BLOBS = 18;
-    const blobs = Array.from({ length: NUM_BLOBS }, (_, i) => ({
-      offX:      (Math.random() - 0.5) * 0.04,  // tight cluster around crux
-      offY:      (Math.random() - 0.5) * 0.04,
-      radius:    0.05 + Math.random() * 0.12,
-      // Rapid flicker: high-frequency primary + slower secondary
-      speed1:    8  + Math.random() * 18,
-      speed2:    3  + Math.random() * 7,
-      phase1:    Math.random() * Math.PI * 2,
-      phase2:    Math.random() * Math.PI * 2,
-      // Mobile: boost base alpha to compensate for cross being farther from camera
-      baseAlpha: isMobile
-        ? (0.32 + Math.random() * 0.30)
-        : (0.18 + Math.random() * 0.22),
-      r: 200 + Math.floor(Math.random() * 55),
-      g: 215 + Math.floor(Math.random() * 40),
-      b: 255,
-    }));
-
-    const FRAME_MS_FOG = 1000 / 30;
-    let lastFogFrame = 0;
-    const draw = (now) => {
-      rafId = requestAnimationFrame(draw);
-      if (now - lastFogFrame < FRAME_MS_FOG) return;
-      lastFogFrame = now - ((now - lastFogFrame) % FRAME_MS_FOG);
-      const t  = (performance.now() - startTime) / 1000;
-      const cw = canvas.offsetWidth;
-      const ch = canvas.offsetHeight;
-      if (cw === 0 || ch === 0) { rafId = requestAnimationFrame(draw); return; }
-      canvas.width  = cw;
-      canvas.height = ch;
-      const ctx = canvas.getContext("2d");
-      ctx.clearRect(0, 0, cw, ch);
-
-      const ox = cw * cruxScreenPos.current.x;
-      const oy = ch * cruxScreenPos.current.y;
-
-      blobs.forEach(b => {
-        const f1 = Math.abs(Math.sin(t * b.speed1 + b.phase1));  // rapid flicker
-        const f2 = Math.sin(t * b.speed2 + b.phase2) * 0.5 + 0.5; // slow modulation
-        const alpha = b.baseAlpha * f1 * (0.4 + f2 * 0.6);
-        if (alpha < 0.005) return;
-        const bx = ox + b.offX * cw;
-        const by = oy + b.offY * ch;
-        const r  = b.radius * Math.min(cw, ch) * (0.8 + f2 * 0.4);
-
-        const grad = ctx.createRadialGradient(bx, by, 0, bx, by, r);
-        grad.addColorStop(0,    `rgba(${b.r},${b.g},${b.b},${alpha})`);
-        grad.addColorStop(0.35, `rgba(${b.r},${b.g},${b.b},${alpha * 0.5})`);
-        grad.addColorStop(1,    `rgba(${b.r},${b.g},${b.b},0)`);
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(bx, by, r, 0, Math.PI * 2);
-        ctx.fill();
-      });
-
-      rafId = requestAnimationFrame(draw);
-    };
-    draw(0);
-    return () => cancelAnimationFrame(rafId);
-  }, []);
-
   return (
     <div style={{
       position: "fixed", left: isMobile ? 0 : 224, top: 0, right: 0, bottom: isMobile ? 0 : 70,
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
     }}>
-      <div ref={mountRef} style={{ position: "absolute", inset: 0, filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)" }} />
-      <canvas ref={fogCanvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+      <div ref={mountRef} style={{
+        position: "absolute", inset: 0,
+        animation: "crossBloom 2.8s ease-in-out infinite",
+      }} />
     </div>
   );
 }
