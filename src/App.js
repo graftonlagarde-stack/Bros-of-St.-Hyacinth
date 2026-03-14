@@ -4801,6 +4801,7 @@ export default function App() {
   const glbCanvasRef = useRef(null);
   const navWrapRef = useRef(null);
   const orbWrapRef = useRef(null);
+  const swipeTouchRef = useRef(null); // { x, y } of touchstart
 
   const [currentTrack, setCurrentTrack] = useState(PERMANENT_TRACKS[0] ?? null);
   const [isPlaying, setIsPlaying]       = useState(false);
@@ -5087,7 +5088,22 @@ export default function App() {
       <style>{css}</style>
       <div className="app-bg" />
       <div className="grid-stars" />
-      <div className="app">
+      <div className="app"
+          onTouchStart={isMobile ? (e) => {
+            const t = e.touches[0];
+            swipeTouchRef.current = { x: t.clientX, y: t.clientY };
+          } : undefined}
+          onTouchEnd={isMobile ? (e) => {
+            if (!swipeTouchRef.current) return;
+            const dx = e.changedTouches[0].clientX - swipeTouchRef.current.x;
+            const dy = e.changedTouches[0].clientY - swipeTouchRef.current.y;
+            swipeTouchRef.current = null;
+            // Only trigger if horizontal movement dominates and exceeds threshold
+            if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+            if (dx < 0 && navExpanded)  setNavExpanded(false); // swipe left → collapse
+            if (dx > 0 && !navExpanded) setNavExpanded(true);  // swipe right → expand
+          } : undefined}
+        >
         <div className={`sidebar${navExpanded ? "" : " nav-collapsed"}`}>
           {/* Logo */}
           <div className="logo" style={{
