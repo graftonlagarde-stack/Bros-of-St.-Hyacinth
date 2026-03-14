@@ -2452,11 +2452,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
     Promise.all([
       import("three"),
       import("three/examples/jsm/loaders/FBXLoader"),
-      import("three/examples/jsm/postprocessing/EffectComposer"),
-      import("three/examples/jsm/postprocessing/RenderPass"),
-      import("three/examples/jsm/postprocessing/UnrealBloomPass"),
-      import("three/examples/jsm/postprocessing/ShaderPass"),
-    ]).then(([THREE, { FBXLoader }, { EffectComposer }, { RenderPass }, { UnrealBloomPass }, { ShaderPass }]) => {
+    ]).then(([THREE, { FBXLoader }]) => {
       if (cancelled) return;
       const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
       const h = isMobile ? window.innerHeight : (window.innerHeight - 70);
@@ -2465,82 +2461,12 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
       camera.lookAt(0, 160, 0);
 
-      // ── Cross: selective bloom ──────────────────────────────────────────
-      // bloomComposer renders the cross into a bloom texture (no background).
-      // A second plain render captures the sharp cross.
-      // A composite ShaderPass adds bloom additively behind the sharp cross,
-      // so the source shape is never obscured, and alpha stays transparent.
       const crossScene    = new THREE.Scene();
-      const crossRenderer = new THREE.WebGLRenderer({ canvas: crossEl, alpha: true, antialias: false, premultipliedAlpha: false });
+      const crossRenderer = new THREE.WebGLRenderer({ canvas: crossEl, alpha: true, antialias: false });
       crossRenderer.setPixelRatio(1);
       crossRenderer.setSize(w, h);
       crossRenderer.setClearColor(0x000000, 0);
       crossRendererInst = crossRenderer;
-
-      const rtOpts = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, type: THREE.HalfFloatType };
-      const sharpTarget = new THREE.WebGLRenderTarget(w, h, rtOpts);
-      const bloomTarget = new THREE.WebGLRenderTarget(w, h, rtOpts);
-
-      // Render cross once to sharpTarget — single clean render resolves AdditiveBlending
-      // correctly with no double-add at the intersection.
-      const renderToSharp = () => {
-        crossRenderer.setRenderTarget(sharpTarget);
-        crossRenderer.setClearColor(0x000000, 0);
-        crossRenderer.clear();
-        crossRenderer.render(crossScene, camera);
-        crossRenderer.setRenderTarget(null);
-      };
-
-      // bloomComposer reads from sharpTarget via TexturePass — bloom is applied to the
-      // already-composited cross image, so the intersection is never seen by UnrealBloomPass.
-      const bloomComposer = new EffectComposer(crossRenderer, bloomTarget);
-      const texturePass = new ShaderPass(new THREE.RawShaderMaterial({
-        uniforms: { tDiffuse: { value: sharpTarget.texture } },
-        vertexShader: `attribute vec2 uv; attribute vec2 position; varying vec2 vUv;
-          void main() { vUv = uv; gl_Position = vec4(position, 0.0, 1.0); }`,
-        fragmentShader: `precision mediump float; uniform sampler2D tDiffuse; varying vec2 vUv;
-          void main() { gl_FragColor = texture2D(tDiffuse, vUv); }`,
-        glslVersion: THREE.GLSL1,
-      }), "tDiffuse");
-      bloomComposer.addPass(texturePass);
-      const bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.6, 0.9, 0.75);
-      bloomComposer.addPass(bloomPass);
-      bloomComposer.renderToScreen = false;
-
-      // Composite shader: bloom additive behind sharp cross, transparent background.
-      const compositePass = new ShaderPass({
-        uniforms: {
-          tBloom: { value: null },
-          tSharp: { value: null },
-        },
-        vertexShader: `
-          varying vec2 vUv;
-          void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
-        `,
-        fragmentShader: `
-          uniform sampler2D tBloom;
-          uniform sampler2D tSharp;
-          varying vec2 vUv;
-          void main() {
-            vec4 bloom = texture2D(tBloom, vUv);
-            vec4 sharp = texture2D(tSharp, vUv);
-            gl_FragColor = vec4(sharp.rgb + bloom.rgb * (1.0 - sharp.a), max(sharp.a, bloom.a));
-          }
-        `,
-      });
-      const compositeComposer = new EffectComposer(crossRenderer);
-      compositeComposer.addPass(compositePass);
-
-      const renderCross = () => {
-        // Step 1: render cross once cleanly → sharpTarget
-        renderToSharp();
-        // Step 2: bloom from sharpTarget → bloomComposer internal buffers
-        bloomComposer.render();
-        // Step 3: composite bloom + sharp → canvas
-        compositePass.uniforms.tBloom.value = bloomComposer.renderTarget2.texture;
-        compositePass.uniforms.tSharp.value = sharpTarget.texture;
-        compositeComposer.render();
-      };
 
       const glitterCanvas = document.createElement("canvas");
       glitterCanvas.width = glitterCanvas.height = 128;
@@ -2578,15 +2504,11 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         map: glitterTex, transparent: true, opacity: 1.0,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
-
       const crossGroup = new THREE.Group();
       const crossH = isMobile ? 279 : 230, crossW = isMobile ? 153 : 125, barThick = isMobile ? 30 : 23;
-      // PlaneGeometry instead of BoxGeometry — coplanar flat bars share the same Z so
-      // there is no overlapping geometry at the intersection, eliminating the double-add
-      // artifact that caused the black square with AdditiveBlending + depthWrite:false.
-      const vBar = new THREE.Mesh(new THREE.PlaneGeometry(barThick, crossH), crossMat);
+      const vBar = new THREE.Mesh(new THREE.BoxGeometry(barThick, crossH, barThick), crossMat);
       vBar.position.y = crossH / 2;
-      const hBar = new THREE.Mesh(new THREE.PlaneGeometry(crossW, barThick), crossMat.clone());
+      const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), crossMat.clone());
       hBar.position.y = crossH * 0.70;
       crossGroup.add(vBar, hBar);
       const crossCamDist    = isMobile ? 1200 : 660;
@@ -2596,7 +2518,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       crossGroup.position.set(crossCenterX, 0, 0);
       crossScene.add(crossGroup);
 
-      // Figure renderer — no bloom, sits above cross
       const figureScene    = new THREE.Scene();
       const figureRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
       figureRenderer.setPixelRatio(1);
@@ -2804,7 +2725,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             if (now - lastFrame < FRAME_MS) return;
             lastFrame = now - ((now - lastFrame) % FRAME_MS);
             const dt = Math.min(clock.getDelta(), 0.05);
-            if (!isVisible) { if (mixer) mixer.update(dt); renderCross(); figureRenderer.render(figureScene, camera); return; }
+            if (!isVisible) { if (mixer) mixer.update(dt); crossRenderer.render(crossScene, camera); figureRenderer.render(figureScene, camera); return; }
             if (mixer) mixer.update(dt);
 
             const toCamX = camera.position.x - crossGroup.position.x;
@@ -2812,6 +2733,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             const camAngle = Math.atan2(toCamX, toCamZ);
             crossGroup.rotation.set(0, camAngle, 0);
             updateGlitter(clock.elapsedTime);
+            crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
 
             if (phase === "bounce") {
               bounceTime += dt;
@@ -2923,12 +2845,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
               });
             }
 
-            // Flicker: match original crossBloom 0.5s cycle (2Hz base)
-            const ft = clock.elapsedTime;
-            bloomPass.strength = 0.55 + 0.15 * Math.abs(Math.sin(ft * Math.PI * 2 * 2))
-                               + 0.08 * Math.abs(Math.sin(ft * Math.PI * 2 * 3.7 + 1.1))
-                               + 0.04 * Math.abs(Math.sin(ft * Math.PI * 2 * 5.3 + 2.3));
-            renderCross();
+            crossRenderer.render(crossScene, camera);
             figureRenderer.render(figureScene, camera);
           };
           animId = requestAnimationFrame(animateWithBreath);
@@ -2943,7 +2860,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             const toCamX = camera.position.x - crossGroup.position.x;
             const toCamZ = camera.position.z - crossGroup.position.z;
             crossGroup.rotation.y = Math.atan2(toCamX, toCamZ);
-            renderCross();
+            crossRenderer.render(crossScene, camera);
             figureRenderer.render(figureScene, camera);
           };
           animate();
@@ -2954,7 +2871,9 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
     return () => {
       cancelled = true;
       cancelAnimationFrame(animId);
-      if (crossRendererInst) crossRendererInst.dispose();
+      if (crossRendererInst) {
+        crossRendererInst.dispose();
+      }
       if (figureRendererInst) {
         figureRendererInst.dispose();
         if (figureEl.contains(figureRendererInst.domElement)) figureEl.removeChild(figureRendererInst.domElement);
@@ -2968,8 +2887,8 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
     }}>
-      <canvas ref={crossMountRef}  style={{ position: "absolute", inset: 0, zIndex: 1 }} />
-      <div   ref={figureMountRef} style={{ position: "absolute", inset: 0, zIndex: 2 }} />
+      <canvas ref={crossMountRef} style={{ position: "absolute", inset: 0, zIndex: 1, animation: "crossBloom 0.5s ease-in-out infinite" }} />
+      <div ref={figureMountRef} style={{ position: "absolute", inset: 0, zIndex: 2 }} />
     </div>
   );
 }
@@ -3119,14 +3038,9 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
           if (!loopBone)  loopObj.traverse(c  => { if (!loopBone  && c.isBone) loopBone  = c; });
 
           if (introBone && loopBone) {
-            // Force a full scene graph update on loopObj before reading world positions.
-            // loopObj has been hidden so its matrices may be stale — this guarantees
-            // getWorldPosition returns the correct value.
-            loopObj.position.copy(introObj.position);
-            loopObj.scale.copy(introObj.scale);
-            loopObj.rotation.copy(introObj.rotation);
-            loopObj.updateMatrixWorld(true);
-            introObj.updateMatrixWorld(true);
+            // Get world positions of both root bones
+            introBone.updateWorldMatrix(true, false);
+            loopBone.updateWorldMatrix(true, false);
             const introWorldPos = new THREE.Vector3();
             const loopWorldPos  = new THREE.Vector3();
             introBone.getWorldPosition(introWorldPos);
@@ -3180,10 +3094,6 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
                 loopAction.play();
                 loopMixer.update(0);
               }
-              // Reset loopObj to exact same transform as introObj before showing
-              loopObj.position.copy(introObj.position);
-              loopObj.scale.copy(introObj.scale);
-              loopObj.rotation.copy(introObj.rotation);
               introObj.visible = false;
               loopObj.visible  = true;
               activeMixer      = loopMixer;
