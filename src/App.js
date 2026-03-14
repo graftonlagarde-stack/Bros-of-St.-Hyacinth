@@ -2432,7 +2432,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
   const bloomCanvasRef = useRef(null);  // 2D canvas — CSS crossBloom applied here
   const figureMountRef = useRef(null);  // figure WebGL renderer, above bloom
   const crossScreenPos = useRef({ x: 0.5, y: 0.5 }); // normalised screen pos of cross centre
-  const crossPxDims    = useRef({ h: 100, w: 55, t: 10 }); // cross px dims, set after FBX loads
   const visibleRef     = useRef(visible);
   const [opacity, setOpacity] = useState(0);
 
@@ -2523,12 +2522,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       const crossCenterX    = isMobile ? 0 : (-160 * crossWorldPerPx);
       crossGroup.position.set(crossCenterX, 0, 0);
       crossScene.add(crossGroup);
-      // Store px dims for the 2D bloom canvas to mirror
-      crossPxDims.current = {
-        h: crossH / crossWorldPerPx,
-        w: crossW / crossWorldPerPx,
-        t: barThick / crossWorldPerPx,
-      };
 
       // Figure renderer — no bloom, sits above in DOM
       const figureScene    = new THREE.Scene();
@@ -2924,12 +2917,21 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       ctx.clearRect(0, 0, cw, ch);
       const cx  = cw * crossScreenPos.current.x;
       const cy  = ch * crossScreenPos.current.y;
-      const { h: pH, w: pW, t: pT } = crossPxDims.current;
+      // Recompute pixel dims from current canvas width — handles resize and DPR correctly
+      const fovRad     = (40 * Math.PI) / 180;
+      const camDist    = isMobile ? 1200 : 660;
+      const cH3d = isMobile ? 279 : 230;
+      const cW3d = isMobile ? 153 : 125;
+      const cT3d = isMobile ? 30  : 23;
+      const pxPW   = cw / (2 * Math.tan(fovRad / 2) * camDist);
+      const pH = cH3d * pxPW;
+      const pW = cW3d * pxPW;
+      const pT = cT3d * pxPW;
       // Silver-white fill — matches glitter texture tone so bloom colour is correct
       ctx.fillStyle = "rgba(235,242,250,0.92)";
       // Vertical bar — centred at cx, bottom of cross at cy + pH*0.5
       ctx.fillRect(cx - pT / 2, cy - pH * 0.5, pT, pH);
-      // Horizontal bar — at 20% from top of cross (70% up from base = 30% down from top)
+      // Horizontal bar — at 30% down from top (mirrors hBar.position.y = crossH * 0.70)
       ctx.fillRect(cx - pW / 2, cy - pH * 0.5 + pH * 0.30 - pT / 2, pW, pT);
     };
     draw(0);
@@ -2942,13 +2944,13 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
     }}>
-      {/* Cross WebGL — renders the glitter texture */}
-      <div ref={crossMountRef} style={{ position: "absolute", inset: 0, zIndex: 1 }} />
-      {/* 2D bloom canvas — cross shape drawn here so CSS filter has geometry to work with */}
+      {/* 2D bloom canvas — behind cross WebGL so bloom is a halo, not an overlay */}
       <canvas ref={bloomCanvasRef} style={{
         position: "absolute", inset: 0, width: "100%", height: "100%",
-        zIndex: 2, animation: "crossBloom 0.5s ease-in-out infinite",
+        zIndex: 1, animation: "crossBloom 0.5s ease-in-out infinite",
       }} />
+      {/* Cross WebGL — renders the glitter texture, sits above bloom */}
+      <div ref={crossMountRef} style={{ position: "absolute", inset: 0, zIndex: 2 }} />
       {/* Figure layer — sits above everything */}
       <div ref={figureMountRef} style={{ position: "absolute", inset: 0, zIndex: 3 }} />
     </div>
