@@ -519,25 +519,36 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     const token     = require("crypto").randomBytes(32).toString("hex");
     const expiresAt = Date.now() + 60 * 60 * 1000;
 
+    // Delete any existing reset token for this user before inserting a fresh one
+    await db.query("DELETE FROM password_resets WHERE user_id = $1", [userId]);
     await db.query(
-      `INSERT INTO password_resets (user_id, token, expires_at)
-       VALUES ($1, $2, $3)
-       ON CONFLICT DO NOTHING`,
+      "INSERT INTO password_resets (user_id, token, expires_at) VALUES ($1, $2, $3)",
       [userId, token, expiresAt]
     );
 
-    const appUrl  = process.env.APP_URL || "https://bros-of-st-hyacinth.vercel.app";
+    const appUrl   = process.env.APP_URL || "https://bros-of-st-hyacinth.vercel.app";
     const resetUrl = `${appUrl}?reset=${token}`;
 
-    await mailer.sendMail({
-      from:    process.env.SMTP_FROM || "Bros of St. Hyacinth <noreply@example.com>",
-      to:      email,
-      subject: "Password Reset — Bros of St. Hyacinth",
-      text:    `You requested a password reset. Click the link below to set a new password (expires in 1 hour):\n\n${resetUrl}\n\nIf you did not request this, you can safely ignore this email.`,
-      html:    `<p>You requested a password reset. Click the link below to set a new password (expires in 1 hour):</p>
-                <p><a href="${resetUrl}">${resetUrl}</a></p>
-                <p>If you did not request this, you can safely ignore this email.</p>`,
-    });
+    // Return a clear error if SMTP is not yet configured
+    if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      console.warn("forgot-password: SMTP not configured — reset URL:", resetUrl);
+      return res.status(500).json({ error: "Email sending is not configured on this server yet." });
+    }
+
+    try {
+      await mailer.sendMail({
+        from:    process.env.SMTP_FROM || "Bros of St. Hyacinth <noreply@example.com>",
+        to:      email,
+        subject: "Password Reset — Bros of St. Hyacinth",
+        text:    `You requested a password reset. Click the link below to set a new password (expires in 1 hour):\n\n${resetUrl}\n\nIf you did not request this, you can safely ignore this email.`,
+        html:    `<p>You requested a password reset. Click the link below to set a new password (expires in 1 hour):</p>
+                  <p><a href="${resetUrl}">${resetUrl}</a></p>
+                  <p>If you did not request this, you can safely ignore this email.</p>`,
+      });
+    } catch (mailErr) {
+      console.error("forgot-password mail error:", mailErr.message);
+      return res.status(500).json({ error: "Failed to send reset email. Please check server email configuration." });
+    }
 
     return res.json({ ok: true });
   } catch (err) {
