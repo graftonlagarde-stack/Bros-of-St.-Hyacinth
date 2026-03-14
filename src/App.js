@@ -2478,25 +2478,36 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       crossRendererInst = crossRenderer;
 
       const rtOpts = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, type: THREE.HalfFloatType };
-      // bloomTarget: cross rendered dark background, bloom applied — source of bloom texture
-      const bloomTarget = new THREE.WebGLRenderTarget(w, h, rtOpts);
-      // sharpTarget: plain cross render, transparent background — stays unmodified
       const sharpTarget = new THREE.WebGLRenderTarget(w, h, rtOpts);
+      const bloomTarget = new THREE.WebGLRenderTarget(w, h, rtOpts);
 
-      // bloomComposer: renders cross + UnrealBloomPass into its own internal buffers.
-      // renderToScreen=false keeps it off-canvas. After render(), the result is in
-      // bloomComposer.renderTarget2.texture (the composer's final write buffer).
+      // Render cross once to sharpTarget — single clean render resolves AdditiveBlending
+      // correctly with no double-add at the intersection.
+      const renderToSharp = () => {
+        crossRenderer.setRenderTarget(sharpTarget);
+        crossRenderer.setClearColor(0x000000, 0);
+        crossRenderer.clear();
+        crossRenderer.render(crossScene, camera);
+        crossRenderer.setRenderTarget(null);
+      };
+
+      // bloomComposer reads from sharpTarget via TexturePass — bloom is applied to the
+      // already-composited cross image, so the intersection is never seen by UnrealBloomPass.
       const bloomComposer = new EffectComposer(crossRenderer, bloomTarget);
-      const bloomRenderPass = new RenderPass(crossScene, camera);
-      bloomRenderPass.clearColor = new THREE.Color(0, 0, 0);
-      bloomRenderPass.clearAlpha = 0;
-      bloomComposer.addPass(bloomRenderPass);
-      const bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.6, 0.5, 0.75);
+      const texturePass = new ShaderPass(new THREE.RawShaderMaterial({
+        uniforms: { tDiffuse: { value: sharpTarget.texture } },
+        vertexShader: `attribute vec2 uv; attribute vec2 position; varying vec2 vUv;
+          void main() { vUv = uv; gl_Position = vec4(position, 0.0, 1.0); }`,
+        fragmentShader: `precision mediump float; uniform sampler2D tDiffuse; varying vec2 vUv;
+          void main() { gl_FragColor = texture2D(tDiffuse, vUv); }`,
+        glslVersion: THREE.GLSL1,
+      }), "tDiffuse");
+      bloomComposer.addPass(texturePass);
+      const bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.6, 0.9, 0.75);
       bloomComposer.addPass(bloomPass);
       bloomComposer.renderToScreen = false;
 
       // Composite shader: bloom additive behind sharp cross, transparent background.
-      // tBloom is read from bloomComposer.renderTarget2.texture after each bloom render.
       const compositePass = new ShaderPass({
         uniforms: {
           tBloom: { value: null },
@@ -2513,7 +2524,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           void main() {
             vec4 bloom = texture2D(tBloom, vUv);
             vec4 sharp = texture2D(tSharp, vUv);
-            // Sharp cross rendered on top, bloom additive behind it
             gl_FragColor = vec4(sharp.rgb + bloom.rgb * (1.0 - sharp.a), max(sharp.a, bloom.a));
           }
         `,
@@ -2522,17 +2532,11 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       compositeComposer.addPass(compositePass);
 
       const renderCross = () => {
-        // Step 1: bloom pass — result lands in bloomComposer.renderTarget2.texture
+        // Step 1: render cross once cleanly → sharpTarget
+        renderToSharp();
+        // Step 2: bloom from sharpTarget → bloomComposer internal buffers
         bloomComposer.render();
-
-        // Step 2: sharp cross into sharpTarget
-        crossRenderer.setRenderTarget(sharpTarget);
-        crossRenderer.setClearColor(0x000000, 0);
-        crossRenderer.clear();
-        crossRenderer.render(crossScene, camera);
-        crossRenderer.setRenderTarget(null);
-
-        // Step 3: composite to canvas — point uniforms at the just-rendered textures
+        // Step 3: composite bloom + sharp → canvas
         compositePass.uniforms.tBloom.value = bloomComposer.renderTarget2.texture;
         compositePass.uniforms.tSharp.value = sharpTarget.texture;
         compositeComposer.render();
@@ -2577,9 +2581,12 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
 
       const crossGroup = new THREE.Group();
       const crossH = isMobile ? 279 : 230, crossW = isMobile ? 153 : 125, barThick = isMobile ? 30 : 23;
-      const vBar = new THREE.Mesh(new THREE.BoxGeometry(barThick, crossH, barThick), crossMat);
+      // PlaneGeometry instead of BoxGeometry — coplanar flat bars share the same Z so
+      // there is no overlapping geometry at the intersection, eliminating the double-add
+      // artifact that caused the black square with AdditiveBlending + depthWrite:false.
+      const vBar = new THREE.Mesh(new THREE.PlaneGeometry(barThick, crossH), crossMat);
       vBar.position.y = crossH / 2;
-      const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), crossMat.clone());
+      const hBar = new THREE.Mesh(new THREE.PlaneGeometry(crossW, barThick), crossMat.clone());
       hBar.position.y = crossH * 0.70;
       crossGroup.add(vBar, hBar);
       const crossCamDist    = isMobile ? 1200 : 660;
