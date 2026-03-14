@@ -2428,8 +2428,9 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
 
 // ─── AUDIO FIGURE BACKDROP ──────────────────────────────────────────────────────────────────────────────
 function AudioFigureBackdrop({ visible = false, isMobile = false }) {
-  const crossMountRef  = useRef(null);
-  const figureMountRef = useRef(null);
+  const crossMountRef  = useRef(null);  // hidden WebGL cross renderer
+  const bloomCanvasRef = useRef(null);  // 2D canvas — CSS bloom applied here
+  const figureMountRef = useRef(null);  // figure WebGL renderer, above bloom
   const visibleRef     = useRef(visible);
   const [opacity, setOpacity] = useState(0);
 
@@ -2441,9 +2442,10 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
   }, [visible]);
 
   useEffect(() => {
-    if (!crossMountRef.current || !figureMountRef.current) return;
+    if (!crossMountRef.current || !figureMountRef.current || !bloomCanvasRef.current) return;
     const crossEl  = crossMountRef.current;
     const figureEl = figureMountRef.current;
+    const bloomCanvas = bloomCanvasRef.current;
     let animId = null;
     let crossRendererInst  = null;
     let figureRendererInst = null;
@@ -2452,10 +2454,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
     Promise.all([
       import("three"),
       import("three/examples/jsm/loaders/FBXLoader"),
-      import("three/examples/jsm/postprocessing/EffectComposer"),
-      import("three/examples/jsm/postprocessing/RenderPass"),
-      import("three/examples/jsm/postprocessing/UnrealBloomPass"),
-    ]).then(([THREE, { FBXLoader }, { EffectComposer }, { RenderPass }, { UnrealBloomPass }]) => {
+    ]).then(([THREE, { FBXLoader }]) => {
       if (cancelled) return;
       const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
       const h = isMobile ? window.innerHeight : (window.innerHeight - 70);
@@ -2464,23 +2463,50 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
       camera.lookAt(0, 160, 0);
 
+      // Cross: renders to an offscreen WebGLRenderTarget, then copied to a 2D
+      // canvas each frame. CSS crossBloom is applied to the 2D canvas — this
+      // works on iOS Safari because 2D canvases are never promoted to their own
+      // GPU compositing layer, so CSS filters always apply correctly.
       const crossScene    = new THREE.Scene();
       const crossRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
       crossRenderer.setPixelRatio(1);
       crossRenderer.setSize(w, h);
       crossRenderer.setClearColor(0x000000, 0);
+      // Render target to read pixels from
+      const crossTarget = new THREE.WebGLRenderTarget(w, h, {
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        format: THREE.RGBAFormat,
+        type: THREE.UnsignedByteType,
+      });
+      // Keep the WebGL canvas hidden — bloom canvas is what the user sees
+      crossRenderer.domElement.style.display = "none";
       crossEl.appendChild(crossRenderer.domElement);
       crossRendererInst = crossRenderer;
 
-      const crossComposer = new EffectComposer(crossRenderer);
-      crossComposer.addPass(new RenderPass(crossScene, camera));
-      const bloomPass = new UnrealBloomPass(
-        new THREE.Vector2(w, h),
-        1.4,  // strength — animated each frame for flicker
-        0.4,  // radius — tight halo that hugs the cross bars
-        0.1   // threshold — only the bright glitter pixels bloom
-      );
-      crossComposer.addPass(bloomPass);
+      // Pixel buffer for GPU→CPU readback
+      const pixelBuffer = new Uint8Array(w * h * 4);
+
+      // Copies the cross render target pixels into the 2D bloom canvas each frame
+      const renderCross = () => {
+        crossRenderer.setRenderTarget(crossTarget);
+        crossRenderer.render(crossScene, camera);
+        crossRenderer.setRenderTarget(null);
+        // Read pixels from GPU to CPU
+        crossRenderer.readRenderTargetPixels(crossTarget, 0, 0, w, h, pixelBuffer);
+        // Write into 2D bloom canvas — WebGL readback is flipped vertically
+        bloomCanvas.width  = w;
+        bloomCanvas.height = h;
+        const ctx = bloomCanvas.getContext("2d");
+        const imgData = ctx.createImageData(w, h);
+        // Flip vertically on copy (WebGL origin is bottom-left, canvas is top-left)
+        for (let row = 0; row < h; row++) {
+          const src = (h - 1 - row) * w * 4;
+          const dst = row * w * 4;
+          imgData.data.set(pixelBuffer.subarray(src, src + w * 4), dst);
+        }
+        ctx.putImageData(imgData, 0, 0);
+      };
 
       const glitterCanvas = document.createElement("canvas");
       glitterCanvas.width = glitterCanvas.height = 128;
@@ -2533,6 +2559,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       crossGroup.position.set(crossCenterX, 0, 0);
       crossScene.add(crossGroup);
 
+      // Figure renderer — no bloom, sits above bloom canvas in DOM
       const figureScene    = new THREE.Scene();
       const figureRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
       figureRenderer.setPixelRatio(1);
@@ -2740,7 +2767,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             if (now - lastFrame < FRAME_MS) return;
             lastFrame = now - ((now - lastFrame) % FRAME_MS);
             const dt = Math.min(clock.getDelta(), 0.05);
-            if (!isVisible) { if (mixer) mixer.update(dt); crossComposer.render(); figureRenderer.render(figureScene, camera); return; }
+            if (!isVisible) { if (mixer) mixer.update(dt); renderCross(); figureRenderer.render(figureScene, camera); return; }
             if (mixer) mixer.update(dt);
 
             const toCamX = camera.position.x - crossGroup.position.x;
@@ -2749,6 +2776,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             crossGroup.rotation.set(0, camAngle, 0);
             updateGlitter(clock.elapsedTime);
             crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
+
             if (phase === "bounce") {
               bounceTime += dt;
               const force = -stiffness * disp - damping * vel;
@@ -2859,9 +2887,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
               });
             }
 
-            const ft = clock.elapsedTime;
-            bloomPass.strength = 1.2 + 0.5 * Math.abs(Math.sin(ft * 6.3)) + 0.3 * Math.abs(Math.sin(ft * 11.7 + 1.2));
-            crossComposer.render();
+            renderCross();
             figureRenderer.render(figureScene, camera);
           };
           animId = requestAnimationFrame(animateWithBreath);
@@ -2876,8 +2902,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             const toCamX = camera.position.x - crossGroup.position.x;
             const toCamZ = camera.position.z - crossGroup.position.z;
             crossGroup.rotation.y = Math.atan2(toCamX, toCamZ);
-            bloomPass.strength = 1.4;
-            crossComposer.render();
+            renderCross();
             figureRenderer.render(figureScene, camera);
           };
           animate();
@@ -2905,7 +2930,16 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
     }}>
-      <div ref={crossMountRef}  style={{ position: "absolute", inset: 0, zIndex: 1 }} />
+      {/* Hidden cross WebGL renderer — pixels copied to bloom canvas each frame */}
+      <div ref={crossMountRef} style={{ display: "none" }} />
+      {/* 2D bloom canvas — receives cross pixels, CSS crossBloom applied here */}
+      <canvas ref={bloomCanvasRef} style={{
+        position: "absolute", inset: 0,
+        width: "100%", height: "100%",
+        zIndex: 1,
+        animation: "crossBloom 0.5s ease-in-out infinite",
+      }} />
+      {/* Figure WebGL layer — sits above bloom */}
       <div ref={figureMountRef} style={{ position: "absolute", inset: 0, zIndex: 2 }} />
     </div>
   );
