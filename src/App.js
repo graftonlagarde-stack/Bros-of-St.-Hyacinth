@@ -1179,66 +1179,66 @@ const css = `
   @keyframes crossBloom {
     0%   {
       filter:
-        drop-shadow(0 0 8px  rgba(180,220,255,1.0))
-        drop-shadow(0 0 22px rgba(160,210,255,0.95))
-        drop-shadow(0 0 55px rgba(140,200,255,0.80))
-        drop-shadow(0 0 110px rgba(120,180,255,0.55))
-        drop-shadow(0 0 200px rgba(100,160,255,0.30))
-        brightness(1.1);
+        drop-shadow(0 0 10px rgba(180,220,255,1.0))
+        drop-shadow(0 0 28px rgba(160,210,255,0.95))
+        drop-shadow(0 0 65px rgba(140,200,255,0.82))
+        drop-shadow(0 0 130px rgba(120,180,255,0.58))
+        drop-shadow(0 0 220px rgba(100,160,255,0.32))
+        brightness(1.5);
     }
-    18%  {
+    15%  {
       filter:
-        drop-shadow(0 0 18px rgba(230,245,255,1.0))
-        drop-shadow(0 0 55px rgba(210,235,255,0.99))
-        drop-shadow(0 0 120px rgba(190,225,255,0.90))
-        drop-shadow(0 0 240px rgba(170,210,255,0.68))
-        drop-shadow(0 0 400px rgba(150,190,255,0.42))
-        brightness(2.0);
-    }
-    32%  {
-      filter:
-        drop-shadow(0 0 5px  rgba(150,195,255,0.85))
-        drop-shadow(0 0 14px rgba(130,180,255,0.80))
-        drop-shadow(0 0 35px rgba(110,165,255,0.65))
-        drop-shadow(0 0 70px rgba(90,145,255,0.40))
-        drop-shadow(0 0 130px rgba(70,125,255,0.18))
-        brightness(0.95);
-    }
-    52%  {
-      filter:
-        drop-shadow(0 0 22px rgba(240,248,255,1.0))
-        drop-shadow(0 0 60px rgba(220,240,255,0.99))
-        drop-shadow(0 0 130px rgba(200,228,255,0.92))
-        drop-shadow(0 0 260px rgba(180,215,255,0.70))
-        drop-shadow(0 0 440px rgba(160,195,255,0.44))
+        drop-shadow(0 0 20px rgba(235,248,255,1.0))
+        drop-shadow(0 0 58px rgba(215,238,255,0.99))
+        drop-shadow(0 0 125px rgba(195,228,255,0.91))
+        drop-shadow(0 0 250px rgba(175,212,255,0.69))
+        drop-shadow(0 0 420px rgba(155,192,255,0.43))
         brightness(2.2);
     }
-    68%  {
+    30%  {
       filter:
-        drop-shadow(0 0 7px  rgba(160,205,255,0.88))
-        drop-shadow(0 0 18px rgba(140,190,255,0.82))
-        drop-shadow(0 0 42px rgba(120,172,255,0.68))
-        drop-shadow(0 0 85px rgba(100,152,255,0.44))
-        drop-shadow(0 0 155px rgba(80,132,255,0.22))
-        brightness(1.0);
+        drop-shadow(0 0 12px rgba(170,215,255,0.97))
+        drop-shadow(0 0 32px rgba(150,205,255,0.92))
+        drop-shadow(0 0 72px rgba(130,192,255,0.78))
+        drop-shadow(0 0 145px rgba(110,172,255,0.54))
+        drop-shadow(0 0 250px rgba(90,152,255,0.28))
+        brightness(1.55);
+    }
+    48%  {
+      filter:
+        drop-shadow(0 0 22px rgba(242,250,255,1.0))
+        drop-shadow(0 0 62px rgba(222,242,255,0.99))
+        drop-shadow(0 0 135px rgba(202,230,255,0.93))
+        drop-shadow(0 0 270px rgba(182,217,255,0.71))
+        drop-shadow(0 0 460px rgba(162,197,255,0.45))
+        brightness(2.35);
+    }
+    65%  {
+      filter:
+        drop-shadow(0 0 11px rgba(175,218,255,0.98))
+        drop-shadow(0 0 30px rgba(155,208,255,0.93))
+        drop-shadow(0 0 68px rgba(135,195,255,0.79))
+        drop-shadow(0 0 138px rgba(115,175,255,0.55))
+        drop-shadow(0 0 240px rgba(95,155,255,0.29))
+        brightness(1.52);
     }
     82%  {
       filter:
-        drop-shadow(0 0 16px rgba(225,242,255,1.0))
-        drop-shadow(0 0 46px rgba(205,232,255,0.97))
-        drop-shadow(0 0 100px rgba(185,222,255,0.86))
-        drop-shadow(0 0 200px rgba(165,205,255,0.63))
-        drop-shadow(0 0 360px rgba(145,185,255,0.38))
-        brightness(1.85);
+        drop-shadow(0 0 18px rgba(228,244,255,1.0))
+        drop-shadow(0 0 50px rgba(208,234,255,0.97))
+        drop-shadow(0 0 108px rgba(188,224,255,0.87))
+        drop-shadow(0 0 216px rgba(168,208,255,0.65))
+        drop-shadow(0 0 380px rgba(148,188,255,0.39))
+        brightness(2.0);
     }
     100% {
       filter:
-        drop-shadow(0 0 8px  rgba(180,220,255,1.0))
-        drop-shadow(0 0 22px rgba(160,210,255,0.95))
-        drop-shadow(0 0 55px rgba(140,200,255,0.80))
-        drop-shadow(0 0 110px rgba(120,180,255,0.55))
-        drop-shadow(0 0 200px rgba(100,160,255,0.30))
-        brightness(1.1);
+        drop-shadow(0 0 10px rgba(180,220,255,1.0))
+        drop-shadow(0 0 28px rgba(160,210,255,0.95))
+        drop-shadow(0 0 65px rgba(140,200,255,0.82))
+        drop-shadow(0 0 130px rgba(120,180,255,0.58))
+        drop-shadow(0 0 220px rgba(100,160,255,0.32))
+        brightness(1.5);
     }
   }
   @keyframes rankGlow {
@@ -2897,7 +2897,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       {/* Cross layer — bloom CSS animation applied here only */}
       <div ref={crossMountRef} style={{
         position: "absolute", inset: 0,
-        animation: "crossBloom 0.9s ease-in-out infinite",
+        animation: "crossBloom 0.5s ease-in-out infinite",
         zIndex: 1,
       }} />
       {/* Figure layer — sits above cross, no bloom */}
