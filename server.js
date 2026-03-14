@@ -35,7 +35,6 @@ const cloudinary  = require("cloudinary").v2;
 const multer      = require("multer");
 const streamifier = require("streamifier");
 const webpush     = require("web-push");
-const nodemailer  = require("nodemailer");
 
 const app        = express();
 const PORT       = process.env.PORT || 4000;
@@ -491,21 +490,8 @@ app.delete("/api/auth/account", requireAuth, async (req, res) => {
   }
 });
 
-// ─── Email transporter (configure SMTP via env vars) ─────────────────────────
-// Required env vars: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
-// e.g. for Gmail: SMTP_HOST=smtp.gmail.com, SMTP_PORT=587, SMTP_USER=you@gmail.com
-//                 SMTP_PASS=your-app-password, SMTP_FROM="Bros of St. Hyacinth <you@gmail.com>"
-const mailer = nodemailer.createTransport({
-  host:   process.env.SMTP_HOST,
-  port:   Number(process.env.SMTP_PORT) || 587,
-  secure: Number(process.env.SMTP_PORT) === 465,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
-
-// POST /api/auth/forgot-password — send a reset link to the user's email
+// POST /api/auth/forgot-password — send a reset link via Resend API (no SMTP needed)
+// Required env var: RESEND_API_KEY (from resend.com)
 app.post("/api/auth/forgot-password", async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: "Email is required." });
@@ -519,7 +505,7 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     const token     = require("crypto").randomBytes(32).toString("hex");
     const expiresAt = Date.now() + 60 * 60 * 1000;
 
-    // Delete any existing reset token for this user before inserting a fresh one
+    // Delete any existing reset token for this user, then insert fresh one
     await db.query("DELETE FROM password_resets WHERE user_id = $1", [userId]);
     await db.query(
       "INSERT INTO password_resets (user_id, token, expires_at) VALUES ($1, $2, $3)",
@@ -529,25 +515,38 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     const appUrl   = process.env.APP_URL || "https://bros-of-st-hyacinth.vercel.app";
     const resetUrl = `${appUrl}?reset=${token}`;
 
-    // Return a clear error if SMTP is not yet configured
-    if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
-      console.warn("forgot-password: SMTP not configured — reset URL:", resetUrl);
-      return res.status(500).json({ error: "Email sending is not configured on this server yet." });
+    if (!process.env.RESEND_API_KEY) {
+      console.warn("forgot-password: RESEND_API_KEY not set — reset URL:", resetUrl);
+      return res.status(500).json({ error: "Email sending is not configured on this server." });
     }
 
+    // Send via Resend REST API — no SMTP, no extra packages
     try {
-      await mailer.sendMail({
-        from:    process.env.SMTP_FROM || "Bros of St. Hyacinth <noreply@example.com>",
-        to:      email,
-        subject: "Password Reset — Bros of St. Hyacinth",
-        text:    `You requested a password reset. Click the link below to set a new password (expires in 1 hour):\n\n${resetUrl}\n\nIf you did not request this, you can safely ignore this email.`,
-        html:    `<p>You requested a password reset. Click the link below to set a new password (expires in 1 hour):</p>
-                  <p><a href="${resetUrl}">${resetUrl}</a></p>
-                  <p>If you did not request this, you can safely ignore this email.</p>`,
+      const mailRes = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type":  "application/json",
+        },
+        body: JSON.stringify({
+          from:    process.env.RESEND_FROM || "Bros of St. Hyacinth <onboarding@resend.dev>",
+          to:      [email],
+          subject: "Password Reset — Bros of St. Hyacinth",
+          text:    `You requested a password reset. Click the link below to set a new password (expires in 1 hour):\n\n${resetUrl}\n\nIf you did not request this, you can safely ignore this email.`,
+          html:    `<p>You requested a password reset.</p>
+                    <p>Click the link below to set a new password (expires in 1 hour):</p>
+                    <p><a href="${resetUrl}">${resetUrl}</a></p>
+                    <p>If you did not request this, you can safely ignore this email.</p>`,
+        }),
       });
+      if (!mailRes.ok) {
+        const errBody = await mailRes.text();
+        console.error("forgot-password Resend error:", mailRes.status, errBody);
+        return res.status(500).json({ error: "Failed to send reset email." });
+      }
     } catch (mailErr) {
       console.error("forgot-password mail error:", mailErr.message);
-      return res.status(500).json({ error: "Failed to send reset email. Please check server email configuration." });
+      return res.status(500).json({ error: "Failed to send reset email." });
     }
 
     return res.json({ ok: true });
