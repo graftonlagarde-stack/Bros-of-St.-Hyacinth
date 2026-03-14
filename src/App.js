@@ -2555,18 +2555,22 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         obj.scale.setScalar(newScale);
         const box2   = new THREE.Box3().setFromObject(obj);
         const extraH = size.y * (newScale - scale);
+        // Same x position as desktop — camera centered on mobile so 110 places figure right-of-center
         obj.position.set(110, -box2.min.y - extraH + 70, 0);
+        // Same rotation as desktop adjusted 20° CCW on mobile
         obj.rotation.y = isMobile ? -(Math.PI * 170) / 180 : -(Math.PI * 195) / 180;
         figureScene.add(obj);
 
-        // Align cross base to figure's ground level
-        crossGroup.position.y = -box2.min.y - extraH + 70 + 180;
+        // Align cross base to figure's ground level.
+        // On mobile, crossH was reduced by 31 (310→279), so shift y up by 31 to keep top at same position.
+        crossGroup.position.y = -box2.min.y - extraH + 70 + 180 + (isMobile ? 0 : 0);
 
         if (obj.animations?.length) {
           const clip = obj.animations[0];
           const fps  = 30;
           mixer = new THREE.AnimationMixer(obj);
 
+          // Intro: play frames 0–45 once at 0.4x speed
           const intro = THREE.AnimationUtils.subclip(clip, "intro", 0, 45, fps);
           const introAction = mixer.clipAction(intro);
           introAction.setLoop(THREE.LoopOnce, 1);
@@ -2574,58 +2578,147 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           introAction.timeScale = 0.5;
           introAction.play();
 
+          // Phase tracking: "intro" → "bounce" → "breathing"
           let phase = "intro";
           let breathTime = 0;
           let bounceTime = 0;
+
+          // Physics bounce — upward kick, 1.5x faster than before
           const restY     = obj.position.y;
           let   vel       = 0;
           let   disp      = 0;
           const stiffness = 90;
-          const damping   = 14;
-          const kickVel   = 55;
-          const bounceDuration = 3.5;
+          const damping   = 18.0;
+          const kickVel   = 44;   // upward, modest
 
-          const leanBoneNames  = ["mixamorigSpine","mixamorigSpine1","mixamorigSpine2","mixamorigLeftUpLeg","mixamorigRightUpLeg"];
-          const armBoneNames   = ["mixamorigLeftArm","mixamorigLeftForeArm","mixamorigLeftHand","mixamorigRightArm","mixamorigRightForeArm","mixamorigRightHand"];
-          const idleBoneNames  = ["mixamorigSpine","mixamorigSpine1","mixamorigSpine2","mixamorigNeck","mixamorigHead","mixamorigLeftShoulder","mixamorigRightShoulder"];
-          const lowerLockNames = ["mixamorigLeftFoot","mixamorigRightFoot","mixamorigLeftToeBase","mixamorigRightToeBase","mixamorigLeftLeg","mixamorigRightLeg"];
+          // Collect foot bones
+          const footBones = [];
+          obj.traverse(c => {
+            if (c.isBone && (c.name.toLowerCase().includes("foot") ||
+                             c.name.toLowerCase().includes("toe") ||
+                             c.name.toLowerCase().includes("ankle"))) {
+              footBones.push({ bone: c, worldPos: new THREE.Vector3() });
+            }
+          });
+          let footPositionsLocked = false;
 
-          const leanBones  = [], armBones = [], idleBones = [], lowerLockBones = [];
-          const leanQ = new THREE.Quaternion();
-
-          obj.traverse(bone => {
-            if (!bone.isBone) return;
-            if (leanBoneNames.some(n  => bone.name.includes(n)))  leanBones.push({ bone, baseRot: bone.quaternion.clone() });
-            if (armBoneNames.some(n   => bone.name.includes(n)))  armBones.push({ bone, baseRot: bone.quaternion.clone(), velX:0, velY:0, dispX:0, dispY:0 });
-            if (idleBoneNames.some(n  => bone.name.includes(n)))  idleBones.push({
-              bone, baseRot: bone.quaternion.clone(),
-              frX1: 0.18 + Math.random()*0.12, frX2: 0.29 + Math.random()*0.08,
-              frZ1: 0.22 + Math.random()*0.11, frZ2: 0.33 + Math.random()*0.09,
-              phX1: Math.random()*Math.PI*2,   phX2: Math.random()*Math.PI*2,
-              phZ1: Math.random()*Math.PI*2,   phZ2: Math.random()*Math.PI*2,
-              ampX: 0.008 + Math.random()*0.006, ampZ: 0.006 + Math.random()*0.005,
-            });
-            if (lowerLockNames.some(n => bone.name.includes(n)))  lowerLockBones.push({ bone, worldPos: null });
+          // Collect torso/thigh bones for forward lean
+          const leanBones = [];
+          obj.traverse(c => {
+            if (c.isBone && (c.name.toLowerCase().includes("spine") ||
+                             c.name.toLowerCase().includes("chest") ||
+                             c.name.toLowerCase().includes("thigh") ||
+                             c.name.toLowerCase().includes("upleg"))) {
+              leanBones.push({ bone: c, baseRot: c.quaternion.clone() });
+            }
           });
 
+          // Collect arm bones for ragdoll
+          const armBones = [];
+          obj.traverse(c => {
+            if (c.isBone && (c.name.toLowerCase().includes("arm") ||
+                             c.name.toLowerCase().includes("forearm") ||
+                             c.name.toLowerCase().includes("shoulder") ||
+                             c.name.toLowerCase().includes("elbow") ||
+                             c.name.toLowerCase().includes("hand"))) {
+              armBones.push({ bone: c, baseRot: null, dispX: 0, dispY: 0, velX: 0, velY: 0 });
+            }
+          });
+
+          // Estimate bounce duration for normalizing t (stiffness/damping gives ~settle time)
+          const bounceDuration = 1.2; // seconds estimate
+
+          mixer.addEventListener("finished", () => {
+            if (phase === "intro") {
+              phase = "bounce";
+              vel   = kickVel;
+              disp  = 0;
+              bounceTime = 0;
+              footBones.forEach(fb => {
+                fb.bone.updateWorldMatrix(true, false);
+                fb.worldPos = new THREE.Vector3();
+                fb.bone.getWorldPosition(fb.worldPos);
+              });
+              footPositionsLocked = true;
+              // Snapshot base rotations at frame 45
+              leanBones.forEach(lb => { lb.baseRot = lb.bone.quaternion.clone(); });
+              armBones.forEach(ab => {
+                ab.baseRot = ab.bone.quaternion.clone();
+                ab.dispX = 0; ab.dispY = 0; ab.velX = 0; ab.velY = 0;
+              });
+            }
+          });
+
+          const breathBones = [];
+          obj.traverse(c => {
+            if (c.isBone && (c.name.toLowerCase().includes("spine") ||
+                             c.name.toLowerCase().includes("chest") ||
+                             c.name.toLowerCase().includes("neck"))) {
+              breathBones.push({ bone: c, baseScale: c.scale.clone() });
+            }
+          });
+
+          // Idle sway — upper body bones only (no knees/feet/ankles/toes)
+          const idleBones = [];
+          obj.traverse(c => {
+            if (!c.isBone) return;
+            const n = c.name.toLowerCase();
+            const isUpper = n.includes("spine") || n.includes("chest") ||
+                            n.includes("neck")  || n.includes("head")  ||
+                            n.includes("shoulder") || n.includes("arm") ||
+                            n.includes("forearm")  || n.includes("hand") ||
+                            n.includes("clavicle");
+            if (isUpper) {
+              // Each bone gets unique phase offsets for organic, non-repeating feel
+              idleBones.push({
+                bone:   c,
+                baseRot: null, // snapshotted when breathing starts
+                // Sway frequencies and phases — all slightly irrational for aperiodic motion
+                phX1: Math.random() * Math.PI * 2, frX1: 0.31 + Math.random() * 0.18,
+                phX2: Math.random() * Math.PI * 2, frX2: 0.71 + Math.random() * 0.22,
+                phZ1: Math.random() * Math.PI * 2, frZ1: 0.27 + Math.random() * 0.15,
+                phZ2: Math.random() * Math.PI * 2, frZ2: 0.63 + Math.random() * 0.19,
+                ampX: 0.008 + Math.random() * 0.006,
+                ampZ: 0.006 + Math.random() * 0.005,
+              });
+            }
+          });
+
+          // Lower leg / foot bones to keep locked during idle
+          const lowerLockBones = [];
+          obj.traverse(c => {
+            if (!c.isBone) return;
+            const n = c.name.toLowerCase();
+            if (n.includes("knee") || n.includes("foot") ||
+                n.includes("toe")  || n.includes("ankle")) {
+              lowerLockBones.push({ bone: c, worldPos: null });
+            }
+          });
+
+          const tmpQ  = new THREE.Quaternion();
+          const leanQ = new THREE.Quaternion();
+
+          // Restart function: resets mixer and all phase state to beginning
           const restartAnimation = () => {
-            vel = kickVel; disp = 0; bounceTime = 0; phase = "bounce";
-            leanBones.forEach(lb  => { lb.baseRot = lb.bone.quaternion.clone(); });
-            armBones.forEach(ab   => { ab.baseRot = ab.bone.quaternion.clone(); ab.velX=ab.velY=ab.dispX=ab.dispY=0; });
-            idleBones.forEach(ib  => { ib.baseRot = ib.bone.quaternion.clone(); });
-            lowerLockBones.forEach(lb => {
-              obj.updateWorldMatrix(true, true);
-              const wp = new THREE.Vector3(); lb.bone.getWorldPosition(wp); lb.worldPos = wp;
-            });
+            mixer.stopAllAction();
+            const restartIntro = THREE.AnimationUtils.subclip(clip, "intro", 0, 45, fps);
+            const restartAction = mixer.clipAction(restartIntro);
+            restartAction.setLoop(THREE.LoopOnce, 1);
+            restartAction.clampWhenFinished = true;
+            restartAction.timeScale = 0.5;
+            restartAction.reset().play();
+            phase = "intro";
+            vel = 0; disp = 0; bounceTime = 0; breathTime = 0;
+            footPositionsLocked = false;
+            obj.position.y = restY;
             clock.start();
           };
 
           const FRAME_MS = 1000 / 30;
-          const FADE_MS  = 500;
-          let lastFrame  = 0;
-          let hiddenAt   = visibleRef.current ? Infinity : 0;
+          const FADE_MS = 500;
+          let lastFrame = 0;
+          let hiddenAt = visibleRef.current ? Infinity : 0;
           let wasVisible = visibleRef.current;
-
           const animateWithBreath = (now) => {
             animId = requestAnimationFrame(animateWithBreath);
             const isVisible = visibleRef.current;
@@ -2637,12 +2730,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             if (now - lastFrame < FRAME_MS) return;
             lastFrame = now - ((now - lastFrame) % FRAME_MS);
             const dt = Math.min(clock.getDelta(), 0.05);
-            if (!isVisible) {
-              if (mixer) mixer.update(dt);
-              crossRenderer.render(crossScene, camera);
-              figureRenderer.render(figureScene, camera);
-              return;
-            }
+            if (!isVisible) { if (mixer) mixer.update(dt); crossRenderer.render(crossScene, camera); figureRenderer.render(figureScene, camera); return; }
             if (mixer) mixer.update(dt);
 
             const toCamX = camera.position.x - crossGroup.position.x;
@@ -2652,20 +2740,28 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             updateGlitter(clock.elapsedTime);
             crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
 
+            // Project crux world position → normalized screen coords for fog canvas
             if (phase === "bounce") {
               bounceTime += dt;
               const force = -stiffness * disp - damping * vel;
               vel  += force * dt;
               disp += vel   * dt;
               obj.position.y = restY + disp;
+
+              // t: 0→1 over bounce duration, clamped, used to blend back to base
               const t = Math.min(bounceTime / bounceDuration, 1.0);
+
+              // Torso/thigh: slight forward lean peaking at bounce apex, fades with t
+              // Max lean ~4° forward (positive x rotation in local space)
               const leanAmt = (disp / kickVel) * 0.07 * (1 - t * t);
               leanBones.forEach(lb => {
                 leanQ.setFromAxisAngle(new THREE.Vector3(1, 0, 0), leanAmt);
                 lb.bone.quaternion.copy(lb.baseRot).multiply(leanQ);
               });
+
+              // Arm ragdoll: each arm bone driven by figure's vertical acceleration
               const armStiff = 8, armDamp = 2.5;
-              const accel = force;
+              const accel = force; // reuse spring force as proxy for acceleration
               armBones.forEach(ab => {
                 if (!ab.baseRot) return;
                 const extForce = accel * 0.004;
@@ -2675,13 +2771,49 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
                 ab.velY += fy * dt; ab.dispY += ab.velY * dt;
                 const blend = 1 - t;
                 const rx = ab.dispX * blend * 0.35;
-                const rz = ab.dispY * blend * 0.35;
-                const eq = new THREE.Euler(rx, 0, rz);
-                const qq = new THREE.Quaternion().setFromEuler(eq);
-                ab.bone.quaternion.copy(ab.baseRot).multiply(qq);
+                const ry = ab.dispY * blend * 0.20;
+                tmpQ.setFromEuler(new THREE.Euler(rx, ry, 0));
+                ab.bone.quaternion.copy(ab.baseRot).multiply(tmpQ);
               });
-              if (bounceTime >= bounceDuration) {
+
+              // Foot locking
+              if (footPositionsLocked) {
+                footBones.forEach(fb => {
+                  if (!fb.worldPos) return;
+                  const parent = fb.bone.parent;
+                  if (parent) {
+                    parent.updateWorldMatrix(true, false);
+                    const invParent = new THREE.Matrix4().copy(parent.matrixWorld).invert();
+                    const localTarget = fb.worldPos.clone().applyMatrix4(invParent);
+                    fb.bone.position.copy(localTarget);
+                  }
+                });
+              }
+
+              if (Math.abs(disp) < 0.8 && Math.abs(vel) < 0.8) {
+                obj.position.y = restY;
+
+                // Snapshot every idle bone's current world quaternion BEFORE any resets
+                // so idle starts exactly where bounce left off
+                idleBones.forEach(ib => {
+                  ib.bone.updateWorldMatrix(true, false);
+                  // Store world-space quat; we'll apply relative to parent each frame
+                  const worldQ = new THREE.Quaternion();
+                  ib.bone.getWorldQuaternion(worldQ);
+                  ib.worldBaseQ = worldQ;
+                  // Also store local quat as-is right now
+                  ib.baseRot = ib.bone.quaternion.clone();
+                });
+
+                // Snapshot lower-leg world positions before any movement
+                lowerLockBones.forEach(lb => {
+                  lb.bone.updateWorldMatrix(true, false);
+                  lb.worldPos = new THREE.Vector3();
+                  lb.bone.getWorldPosition(lb.worldPos);
+                });
+
                 leanBones.forEach(lb => { lb.bone.quaternion.copy(lb.baseRot); });
+                // Arms stay where they landed — no reset
                 disp = 0; vel = 0;
                 breathTime = 0;
                 phase = "breathing";
@@ -2690,18 +2822,24 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
 
             if (phase === "breathing") {
               breathTime += dt;
+
+              // Subtle upper-body idle sway — aperiodic, zero displacement at t=0
               const eq = new THREE.Euler();
               const qq = new THREE.Quaternion();
               idleBones.forEach(ib => {
                 if (!ib.baseRot) return;
+                // Subtract the t=0 value so displacement starts exactly at zero
                 const rx = (Math.sin(breathTime * ib.frX1 * Math.PI * 2 + ib.phX1) - Math.sin(ib.phX1)) * ib.ampX
                          + (Math.sin(breathTime * ib.frX2 * Math.PI * 2 + ib.phX2) - Math.sin(ib.phX2)) * ib.ampX * 0.5;
                 const rz = (Math.sin(breathTime * ib.frZ1 * Math.PI * 2 + ib.phZ1) - Math.sin(ib.phZ1)) * ib.ampZ
                          + (Math.sin(breathTime * ib.frZ2 * Math.PI * 2 + ib.phZ2) - Math.sin(ib.phZ2)) * ib.ampZ * 0.5;
                 eq.set(rx, 0, rz);
                 qq.setFromEuler(eq);
+                // Apply on top of snapshotted pose — starts exactly where bounce ended
                 ib.bone.quaternion.copy(ib.baseRot).multiply(qq);
               });
+
+              // Keep knees and feet world-locked
               lowerLockBones.forEach(lb => {
                 if (!lb.worldPos) return;
                 const parent = lb.bone.parent;
@@ -2713,7 +2851,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
               });
             }
 
-            // Render cross first, then figure on top (separate DOM elements ensure layering)
             crossRenderer.render(crossScene, camera);
             figureRenderer.render(figureScene, camera);
           };
@@ -2721,7 +2858,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         }
       }, undefined, e => console.warn("Audio FBX load error:", e));
 
-      // Fallback — runs if FBX fails to load
+      // Default fallback animate — only runs if FBX fails to load
       setTimeout(() => {
         if (!animId) {
           const animate = () => {
