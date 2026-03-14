@@ -2452,7 +2452,11 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
     Promise.all([
       import("three"),
       import("three/examples/jsm/loaders/FBXLoader"),
-    ]).then(([THREE, { FBXLoader }]) => {
+      import("three/examples/jsm/postprocessing/EffectComposer"),
+      import("three/examples/jsm/postprocessing/RenderPass"),
+      import("three/examples/jsm/postprocessing/UnrealBloomPass"),
+      import("three/examples/jsm/postprocessing/ShaderPass"),
+    ]).then(([THREE, { FBXLoader }, { EffectComposer }, { RenderPass }, { UnrealBloomPass }, { ShaderPass }]) => {
       if (cancelled) return;
       const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
       const h = isMobile ? window.innerHeight : (window.innerHeight - 70);
@@ -2461,12 +2465,74 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
       camera.lookAt(0, 160, 0);
 
+      // ── Cross: selective bloom ──────────────────────────────────────────
+      // bloomComposer renders the cross into a bloom texture (no background).
+      // A second plain render captures the sharp cross.
+      // A composite ShaderPass adds bloom additively behind the sharp cross,
+      // so the source shape is never obscured, and alpha stays transparent.
       const crossScene    = new THREE.Scene();
-      const crossRenderer = new THREE.WebGLRenderer({ canvas: crossEl, alpha: true, antialias: false });
+      const crossRenderer = new THREE.WebGLRenderer({ canvas: crossEl, alpha: true, antialias: false, premultipliedAlpha: false });
       crossRenderer.setPixelRatio(1);
       crossRenderer.setSize(w, h);
       crossRenderer.setClearColor(0x000000, 0);
       crossRendererInst = crossRenderer;
+
+      const rtOpts = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, type: THREE.HalfFloatType };
+      // bloomTarget: cross rendered dark background, bloom applied — source of bloom texture
+      const bloomTarget = new THREE.WebGLRenderTarget(w, h, rtOpts);
+      // sharpTarget: plain cross render, transparent background — stays unmodified
+      const sharpTarget = new THREE.WebGLRenderTarget(w, h, rtOpts);
+
+      const bloomComposer = new EffectComposer(crossRenderer, bloomTarget);
+      const bloomRenderPass = new RenderPass(crossScene, camera);
+      bloomRenderPass.clearColor = new THREE.Color(0, 0, 0);
+      bloomRenderPass.clearAlpha = 0;
+      bloomComposer.addPass(bloomRenderPass);
+      const bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 1.8, 0.5, 0.0);
+      bloomComposer.addPass(bloomPass);
+      bloomComposer.renderToScreen = false;
+
+      // Final composite pass — drawn to the canvas
+      const compositeComposer = new EffectComposer(crossRenderer);
+      const compositePass = new ShaderPass({
+        uniforms: {
+          tBloom: { value: null },
+          tSharp: { value: null },
+        },
+        vertexShader: `
+          varying vec2 vUv;
+          void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
+        `,
+        fragmentShader: `
+          uniform sampler2D tBloom;
+          uniform sampler2D tSharp;
+          varying vec2 vUv;
+          void main() {
+            vec4 bloom = texture2D(tBloom, vUv);
+            vec4 sharp = texture2D(tSharp, vUv);
+            // Additive bloom behind sharp cross — bloom never overwrites source pixels
+            gl_FragColor = vec4(sharp.rgb + bloom.rgb * (1.0 - sharp.a), max(sharp.a, bloom.a));
+          }
+        `,
+      });
+      compositePass.uniforms.tBloom.value = bloomTarget.texture;
+      compositePass.uniforms.tSharp.value = sharpTarget.texture;
+      compositePass.renderToScreen = true;
+      compositeComposer.addPass(compositePass);
+
+      // renderCross: called every frame
+      // 1. Render bloom pass (cross with UnrealBloom → bloomTarget)
+      // 2. Render sharp cross → sharpTarget
+      // 3. Composite: bloom additive behind sharp → canvas
+      const renderCross = () => {
+        bloomComposer.render();
+        crossRenderer.setRenderTarget(sharpTarget);
+        crossRenderer.setClearColor(0x000000, 0);
+        crossRenderer.clear();
+        crossRenderer.render(crossScene, camera);
+        crossRenderer.setRenderTarget(null);
+        compositeComposer.render();
+      };
 
       const glitterCanvas = document.createElement("canvas");
       glitterCanvas.width = glitterCanvas.height = 128;
@@ -2504,6 +2570,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
         map: glitterTex, transparent: true, opacity: 1.0,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
+
       const crossGroup = new THREE.Group();
       const crossH = isMobile ? 279 : 230, crossW = isMobile ? 153 : 125, barThick = isMobile ? 30 : 23;
       const vBar = new THREE.Mesh(new THREE.BoxGeometry(barThick, crossH, barThick), crossMat);
@@ -2518,6 +2585,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       crossGroup.position.set(crossCenterX, 0, 0);
       crossScene.add(crossGroup);
 
+      // Figure renderer — no bloom, sits above cross
       const figureScene    = new THREE.Scene();
       const figureRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
       figureRenderer.setPixelRatio(1);
@@ -2725,7 +2793,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             if (now - lastFrame < FRAME_MS) return;
             lastFrame = now - ((now - lastFrame) % FRAME_MS);
             const dt = Math.min(clock.getDelta(), 0.05);
-            if (!isVisible) { if (mixer) mixer.update(dt); crossRenderer.render(crossScene, camera); figureRenderer.render(figureScene, camera); return; }
+            if (!isVisible) { if (mixer) mixer.update(dt); renderCross(); figureRenderer.render(figureScene, camera); return; }
             if (mixer) mixer.update(dt);
 
             const toCamX = camera.position.x - crossGroup.position.x;
@@ -2733,7 +2801,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             const camAngle = Math.atan2(toCamX, toCamZ);
             crossGroup.rotation.set(0, camAngle, 0);
             updateGlitter(clock.elapsedTime);
-            crossMat.opacity = 0.88 + Math.sin(clock.elapsedTime * 4.1) * 0.08 + Math.sin(clock.elapsedTime * 11.3) * 0.04;
 
             if (phase === "bounce") {
               bounceTime += dt;
@@ -2845,7 +2912,12 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
               });
             }
 
-            crossRenderer.render(crossScene, camera);
+            // Flicker: match original crossBloom 0.5s cycle (2Hz base)
+            const ft = clock.elapsedTime;
+            bloomPass.strength = 1.5 + 0.8 * Math.abs(Math.sin(ft * Math.PI * 2 * 2))
+                               + 0.4 * Math.abs(Math.sin(ft * Math.PI * 2 * 3.7 + 1.1))
+                               + 0.2 * Math.abs(Math.sin(ft * Math.PI * 2 * 5.3 + 2.3));
+            renderCross();
             figureRenderer.render(figureScene, camera);
           };
           animId = requestAnimationFrame(animateWithBreath);
@@ -2860,7 +2932,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             const toCamX = camera.position.x - crossGroup.position.x;
             const toCamZ = camera.position.z - crossGroup.position.z;
             crossGroup.rotation.y = Math.atan2(toCamX, toCamZ);
-            crossRenderer.render(crossScene, camera);
+            renderCross();
             figureRenderer.render(figureScene, camera);
           };
           animate();
@@ -2871,9 +2943,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
     return () => {
       cancelled = true;
       cancelAnimationFrame(animId);
-      if (crossRendererInst) {
-        crossRendererInst.dispose();
-      }
+      if (crossRendererInst) crossRendererInst.dispose();
       if (figureRendererInst) {
         figureRendererInst.dispose();
         if (figureEl.contains(figureRendererInst.domElement)) figureEl.removeChild(figureRendererInst.domElement);
@@ -2887,8 +2957,8 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
     }}>
-      <canvas ref={crossMountRef} style={{ position: "absolute", inset: 0, zIndex: 1, animation: "crossBloom 0.5s ease-in-out infinite" }} />
-      <div ref={figureMountRef} style={{ position: "absolute", inset: 0, zIndex: 2 }} />
+      <canvas ref={crossMountRef}  style={{ position: "absolute", inset: 0, zIndex: 1 }} />
+      <div   ref={figureMountRef} style={{ position: "absolute", inset: 0, zIndex: 2 }} />
     </div>
   );
 }
@@ -3038,9 +3108,14 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
           if (!loopBone)  loopObj.traverse(c  => { if (!loopBone  && c.isBone) loopBone  = c; });
 
           if (introBone && loopBone) {
-            // Get world positions of both root bones
-            introBone.updateWorldMatrix(true, false);
-            loopBone.updateWorldMatrix(true, false);
+            // Force a full scene graph update on loopObj before reading world positions.
+            // loopObj has been hidden so its matrices may be stale — this guarantees
+            // getWorldPosition returns the correct value.
+            loopObj.position.copy(introObj.position);
+            loopObj.scale.copy(introObj.scale);
+            loopObj.rotation.copy(introObj.rotation);
+            loopObj.updateMatrixWorld(true);
+            introObj.updateMatrixWorld(true);
             const introWorldPos = new THREE.Vector3();
             const loopWorldPos  = new THREE.Vector3();
             introBone.getWorldPosition(introWorldPos);
@@ -3094,6 +3169,10 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
                 loopAction.play();
                 loopMixer.update(0);
               }
+              // Reset loopObj to exact same transform as introObj before showing
+              loopObj.position.copy(introObj.position);
+              loopObj.scale.copy(introObj.scale);
+              loopObj.rotation.copy(introObj.rotation);
               introObj.visible = false;
               loopObj.visible  = true;
               activeMixer      = loopMixer;
