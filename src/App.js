@@ -2491,7 +2491,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       bloomRenderPass.clearColor = new THREE.Color(0, 0, 0);
       bloomRenderPass.clearAlpha = 0;
       bloomComposer.addPass(bloomRenderPass);
-      const bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 1.2, 0.6, 0.4);
+      const bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.6, 0.5, 0.75);
       bloomComposer.addPass(bloomPass);
       bloomComposer.renderToScreen = false;
 
@@ -2513,10 +2513,8 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           void main() {
             vec4 bloom = texture2D(tBloom, vUv);
             vec4 sharp = texture2D(tSharp, vUv);
-            // Subtract sharp from bloom so the cross face itself contributes no bloom —
-            // bloom only appears in the space around the cross, not on top of it.
-            vec3 halo = max(bloom.rgb - sharp.rgb, 0.0);
-            gl_FragColor = vec4(sharp.rgb + halo, max(sharp.a, length(halo) > 0.001 ? bloom.a : 0.0));
+            // Sharp cross rendered on top, bloom additive behind it
+            gl_FragColor = vec4(sharp.rgb + bloom.rgb * (1.0 - sharp.a), max(sharp.a, bloom.a));
           }
         `,
       });
@@ -2573,8 +2571,8 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       };
 
       const crossMat = new THREE.MeshBasicMaterial({
-        map: glitterTex, transparent: false,
-        depthWrite: true, depthTest: true,
+        map: glitterTex, transparent: true, opacity: 1.0,
+        blending: THREE.AdditiveBlending, depthWrite: false,
       });
 
       const crossGroup = new THREE.Group();
@@ -2920,9 +2918,9 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
 
             // Flicker: match original crossBloom 0.5s cycle (2Hz base)
             const ft = clock.elapsedTime;
-            bloomPass.strength = 1.5 + 0.8 * Math.abs(Math.sin(ft * Math.PI * 2 * 2))
-                               + 0.4 * Math.abs(Math.sin(ft * Math.PI * 2 * 3.7 + 1.1))
-                               + 0.2 * Math.abs(Math.sin(ft * Math.PI * 2 * 5.3 + 2.3));
+            bloomPass.strength = 0.55 + 0.15 * Math.abs(Math.sin(ft * Math.PI * 2 * 2))
+                               + 0.08 * Math.abs(Math.sin(ft * Math.PI * 2 * 3.7 + 1.1))
+                               + 0.04 * Math.abs(Math.sin(ft * Math.PI * 2 * 5.3 + 2.3));
             renderCross();
             figureRenderer.render(figureScene, camera);
           };
