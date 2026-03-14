@@ -2483,6 +2483,9 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       // sharpTarget: plain cross render, transparent background — stays unmodified
       const sharpTarget = new THREE.WebGLRenderTarget(w, h, rtOpts);
 
+      // bloomComposer: renders cross + UnrealBloomPass into its own internal buffers.
+      // renderToScreen=false keeps it off-canvas. After render(), the result is in
+      // bloomComposer.renderTarget2.texture (the composer's final write buffer).
       const bloomComposer = new EffectComposer(crossRenderer, bloomTarget);
       const bloomRenderPass = new RenderPass(crossScene, camera);
       bloomRenderPass.clearColor = new THREE.Color(0, 0, 0);
@@ -2492,8 +2495,8 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       bloomComposer.addPass(bloomPass);
       bloomComposer.renderToScreen = false;
 
-      // Final composite pass — drawn to the canvas
-      const compositeComposer = new EffectComposer(crossRenderer);
+      // Composite shader: bloom additive behind sharp cross, transparent background.
+      // tBloom is read from bloomComposer.renderTarget2.texture after each bloom render.
       const compositePass = new ShaderPass({
         uniforms: {
           tBloom: { value: null },
@@ -2510,27 +2513,28 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           void main() {
             vec4 bloom = texture2D(tBloom, vUv);
             vec4 sharp = texture2D(tSharp, vUv);
-            // Additive bloom behind sharp cross — bloom never overwrites source pixels
+            // Bloom additive behind sharp — source shape never overwritten
             gl_FragColor = vec4(sharp.rgb + bloom.rgb * (1.0 - sharp.a), max(sharp.a, bloom.a));
           }
         `,
       });
-      compositePass.uniforms.tBloom.value = bloomTarget.texture;
-      compositePass.uniforms.tSharp.value = sharpTarget.texture;
-      compositePass.renderToScreen = true;
+      const compositeComposer = new EffectComposer(crossRenderer);
       compositeComposer.addPass(compositePass);
 
-      // renderCross: called every frame
-      // 1. Render bloom pass (cross with UnrealBloom → bloomTarget)
-      // 2. Render sharp cross → sharpTarget
-      // 3. Composite: bloom additive behind sharp → canvas
       const renderCross = () => {
+        // Step 1: bloom pass — result lands in bloomComposer.renderTarget2.texture
         bloomComposer.render();
+
+        // Step 2: sharp cross into sharpTarget
         crossRenderer.setRenderTarget(sharpTarget);
         crossRenderer.setClearColor(0x000000, 0);
         crossRenderer.clear();
         crossRenderer.render(crossScene, camera);
         crossRenderer.setRenderTarget(null);
+
+        // Step 3: composite to canvas — point uniforms at the just-rendered textures
+        compositePass.uniforms.tBloom.value = bloomComposer.renderTarget2.texture;
+        compositePass.uniforms.tSharp.value = sharpTarget.texture;
         compositeComposer.render();
       };
 
