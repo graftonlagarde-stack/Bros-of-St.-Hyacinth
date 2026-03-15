@@ -1116,7 +1116,8 @@ function BoardPage({ username }) {
                   borderRadius:24, zIndex:200,
                   boxShadow:"0 4px 24px rgba(0,0,0,0.8), 0 0 16px rgba(136,255,0,0.08)",
                   display:"flex", alignItems:"center", padding:"4px 6px", gap:0,
-                  whiteSpace:"nowrap",
+                  overflowX:"auto", scrollbarWidth:"none",
+                  maxWidth: isMobile ? "calc(100vw - 24px)" : "none",
                 }}>
                 {quickBarEmojis.map(e => (
                   <button key={e}
