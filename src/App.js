@@ -885,6 +885,8 @@ function BoardPage({ username }) {
 
   // ── Visual viewport resize: keeps chat above keyboard on all mobile browsers ──
   const chatRootRef = useRef(null);
+  const showFullPickerRef = useRef(showFullPicker);
+  useEffect(() => { showFullPickerRef.current = showFullPicker; }, [showFullPicker]);
   useEffect(() => {
     if (!isMobile) return;
     const vv = window.visualViewport;
@@ -904,7 +906,9 @@ function BoardPage({ username }) {
         document.documentElement.scrollTop = 0;
         document.body.scrollTop = 0;
       }
-      if (scrollContainerRef.current) {
+      // Don't scroll chat to bottom when the emoji picker's search input is focused —
+      // that would jump the chat down when the emoji keyboard opens.
+      if (scrollContainerRef.current && !showFullPickerRef.current) {
         scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
       }
     };
