@@ -779,15 +779,20 @@ function BoardPage({ username }) {
 
   useEffect(() => { fetchMessages(); }, []);
 
-  // Close emoji pickers on outside click
+  // Close emoji pickers on outside click.
+  // Only listen to mousedown (not touchstart) — on mobile, iOS fires a synthetic
+  // touchstart on the document when the keyboard opens, which would close the picker.
+  // The mobile full picker is dismissed via its backdrop overlay instead.
   useEffect(() => {
     if (!emojiPickerFor && !showFullPicker) return;
-    const close = () => { setEmojiPickerFor(null); setShowFullPicker(null); setEmojiSearch(""); };
+    const close = (e) => { setEmojiPickerFor(null); setShowFullPicker(null); setEmojiSearch(""); };
     document.addEventListener("mousedown", close);
-    document.addEventListener("touchstart", close);
+    // touchstart only for the quick bar (not full picker — handled by backdrop on mobile)
+    const closeTouchQuickBar = (e) => { if (!showFullPicker) close(); };
+    document.addEventListener("touchstart", closeTouchQuickBar);
     return () => {
       document.removeEventListener("mousedown", close);
-      document.removeEventListener("touchstart", close);
+      document.removeEventListener("touchstart", closeTouchQuickBar);
     };
   }, [emojiPickerFor, showFullPicker]);
 
@@ -1209,8 +1214,8 @@ function BoardPage({ username }) {
                       ))}
                     </div>
                   )}
-                  {/* Emoji grid */}
-                  <div style={{ display:"flex", flexWrap:"wrap", overflowY:"auto", padding:6, gap:0, flex:1 }}>
+                  {/* Emoji grid — fixed height so window stays stable while typing */}
+                  <div style={{ display:"flex", flexWrap:"wrap", overflowY:"auto", padding:6, gap:0, height: isMobile ? 260 : 200, alignContent:"flex-start" }}>
                     {filteredEmojis.length === 0
                       ? <div style={{ color:"var(--muted)", fontSize:13, padding:12 }}>No results</div>
                       : filteredEmojis.map(e => (
