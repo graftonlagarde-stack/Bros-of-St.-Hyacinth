@@ -864,7 +864,7 @@ function BoardPage({ username }) {
   // The mobile full picker is dismissed via its backdrop overlay instead.
   useEffect(() => {
     if (!emojiPickerFor && !showFullPicker) return;
-    const close = (e) => { setEmojiPickerFor(null); setShowFullPicker(null); setEmojiSearch(""); };
+    const close = (e) => { setEmojiPickerFor(null); setShowFullPicker(null); showFullPickerRef.current = null; setEmojiSearch(""); };
     document.addEventListener("mousedown", close);
     // touchstart only for the quick bar (not full picker — handled by backdrop on mobile)
     const closeTouchQuickBar = (e) => { if (!showFullPicker) close(); };
@@ -885,8 +885,7 @@ function BoardPage({ username }) {
 
   // ── Visual viewport resize: keeps chat above keyboard on all mobile browsers ──
   const chatRootRef = useRef(null);
-  const showFullPickerRef = useRef(showFullPicker);
-  useEffect(() => { showFullPickerRef.current = showFullPicker; }, [showFullPicker]);
+  const showFullPickerRef = useRef(null);
   useEffect(() => {
     if (!isMobile) return;
     const vv = window.visualViewport;
@@ -999,7 +998,7 @@ function BoardPage({ username }) {
     if (!alreadyHas) recordEmojiUse(emoji);
     saveReaction(msgId, alreadyHas ? null : emoji);
     setEmojiPickerFor(null);
-    setShowFullPicker(null);
+    setShowFullPicker(null); showFullPickerRef.current = null;
     setEmojiSearch("");
   };
   // kept as alias for reaction bar taps
@@ -1233,7 +1232,7 @@ function BoardPage({ username }) {
                   {/* + opens full picker */}
                   <button
                     onMouseDown={e => e.preventDefault()}
-                    onClick={() => { setEmojiPickerFor(null); setShowFullPicker(msg.id); setEmojiCatIdx(0); setEmojiSearch(""); }}
+                    onClick={() => { setEmojiPickerFor(null); setShowFullPicker(msg.id); showFullPickerRef.current = msg.id; setEmojiCatIdx(0); setEmojiSearch(""); }}
                     style={{
                       background:"rgba(136,255,0,0.1)", border:"1px solid rgba(136,255,0,0.3)",
                       cursor:"pointer", color:"rgba(136,255,0,0.9)", fontSize:16, fontWeight:700,
@@ -1270,7 +1269,7 @@ function BoardPage({ username }) {
                   const dx = Math.abs(e.changedTouches[0].clientX - swipeStartX);
                   swipeStartY = null; swipeStartX = null;
                   // Only dismiss if clearly downward and not a horizontal scroll
-                  if (dy > 50 && dy > dx * 1.5) { setShowFullPicker(null); setEmojiSearch(""); }
+                  if (dy > 50 && dy > dx * 1.5) { setShowFullPicker(null); showFullPickerRef.current = null; setEmojiSearch(""); }
                 };
                 return (
                 <div
@@ -1365,7 +1364,7 @@ function BoardPage({ username }) {
                 ? createPortal(
                     <>
                       {/* Backdrop */}
-                      <div onClick={() => { setShowFullPicker(null); setEmojiSearch(""); }}
+                      <div onClick={() => { setShowFullPicker(null); showFullPickerRef.current = null; setEmojiSearch(""); }}
                         style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:999 }} />
                       {pickerContent}
                     </>,
