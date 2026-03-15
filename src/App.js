@@ -1153,10 +1153,20 @@ function BoardPage({ username }) {
                 ? EMOJI_NAMES.filter(([,n]) => n.includes(emojiSearch.toLowerCase())).map(([e])=>e)
                 : EMOJI_CATEGORIES[emojiCatIdx]?.emojis ?? [];
 
-              const pickerContent = (
+              const pickerContent = (() => {
+                let swipeStartY = null;
+                const onSwipeTouchStart = (e) => { swipeStartY = e.touches[0].clientY; };
+                const onSwipeTouchEnd   = (e) => {
+                  if (swipeStartY === null) return;
+                  const dy = e.changedTouches[0].clientY - swipeStartY;
+                  swipeStartY = null;
+                  if (dy > 60) { setShowFullPicker(null); setEmojiSearch(""); }
+                };
+                return (
                 <div
                   onMouseDown={e => e.stopPropagation()}
-                  onTouchStart={e => e.stopPropagation()}
+                  onTouchStart={e => { e.stopPropagation(); onSwipeTouchStart(e); }}
+                  onTouchEnd={onSwipeTouchEnd}
                   style={isMobile ? {
                     position:"fixed", left:0, right:0, bottom:0,
                     background:"#0a1a0e", borderTop:"1px solid rgba(136,255,0,0.25)",
@@ -1214,12 +1224,15 @@ function BoardPage({ username }) {
                       ))}
                     </div>
                   )}
-                  {/* Emoji grid — fixed height so window stays stable while typing */}
-                  <div style={{ display:"flex", flexWrap:"wrap", overflowY:"auto", padding:6, gap:0, height: isMobile ? 260 : 200, alignContent:"flex-start" }}>
+                  {/* Emoji grid — key on container forces full remount on category change,
+                      preventing emoji DOM nodes from being reused across categories */}
+                  <div
+                    key={emojiSearch.trim() ? "search" : `cat-${emojiCatIdx}`}
+                    style={{ display:"flex", flexWrap:"wrap", overflowY:"auto", padding:6, gap:0, height: isMobile ? 260 : 200, alignContent:"flex-start" }}>
                     {filteredEmojis.length === 0
                       ? <div style={{ color:"var(--muted)", fontSize:13, padding:12 }}>No results</div>
-                      : filteredEmojis.map(e => (
-                        <button key={e}
+                      : filteredEmojis.map((e, ei) => (
+                        <button key={`${emojiSearch.trim() ? "s" : emojiCatIdx}-${ei}`}
                           onMouseDown={ev => ev.preventDefault()}
                           onClick={() => pickEmoji(msg.id, e)}
                           style={{
@@ -1235,7 +1248,8 @@ function BoardPage({ username }) {
                     }
                   </div>
                 </div>
-              );
+                );
+              })();
 
               return isMobile
                 ? createPortal(
