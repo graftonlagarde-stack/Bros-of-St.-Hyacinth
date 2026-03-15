@@ -1025,12 +1025,17 @@ function BoardPage({ username }) {
 
           <div style={{
             background: isMe ? "linear-gradient(135deg,rgba(0,102,170,0.65),rgba(0,51,102,0.65))" : "linear-gradient(135deg,rgba(0,14,6,0.65),rgba(0,8,3,0.65))",
-            border: `1px solid ${isMe ? "rgba(140,255,0,0.3)" : "var(--border)"}`,
+            border: emojiPickerFor === msg.id
+              ? "1px solid rgba(136,255,0,0.75)"
+              : `1px solid ${isMe ? "rgba(140,255,0,0.3)" : "var(--border)"}`,
             borderRadius: isMe ? "8px 2px 8px 8px" : "2px 8px 8px 8px",
             padding: msg.text ? "10px 14px" : "4px",
             fontSize:14, lineHeight:1.5, wordBreak:"break-word",
-            boxShadow: isMe ? "0 2px 12px rgba(0,100,200,0.3)" : "0 2px 8px rgba(0,0,0,0.4)",
+            boxShadow: emojiPickerFor === msg.id
+              ? "0 0 0 2px rgba(136,255,0,0.15), 0 2px 16px rgba(136,255,0,0.2)"
+              : isMe ? "0 2px 12px rgba(0,100,200,0.3)" : "0 2px 8px rgba(0,0,0,0.4)",
             color: "#ffffff",
+            transition: "border 0.15s, box-shadow 0.15s",
           }}>
             {msg.text && <div style={{whiteSpace:"pre-wrap"}}>{msg.text}</div>}
             {msg.text && extractUrls(msg.text).map(url => (
