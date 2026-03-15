@@ -1106,47 +1106,58 @@ function BoardPage({ username }) {
             </button>
 
             {/* ── Quick-bar: single row of most-used + + button ── */}
-            {emojiPickerFor === msg.id && (
-              <div
-                onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
-                onTouchStart={e => e.stopPropagation()}
-                style={{
-                  position:"absolute", bottom:"calc(100% + 4px)", [isMe?"right":"left"]:0,
-                  background:"#0a1a0e", border:"1px solid rgba(136,255,0,0.25)",
-                  borderRadius:24, zIndex:200,
-                  boxShadow:"0 4px 24px rgba(0,0,0,0.8), 0 0 16px rgba(136,255,0,0.08)",
-                  display:"flex", alignItems:"center", padding:"4px 6px", gap:0,
-                  overflowX:"auto", scrollbarWidth:"none",
-                  maxWidth: isMobile ? "calc(100vw - 24px)" : "none",
-                }}>
-                {quickBarEmojis.map(e => (
-                  <button key={e}
-                    onMouseDown={ev => ev.preventDefault()}
-                    onClick={() => pickEmoji(msg.id, e)}
-                    style={{
-                      background: (msg.reactions[e]||[]).includes(username) ? "rgba(136,255,0,0.2)" : "none",
-                      border:"none", cursor:"pointer", fontSize:22,
-                      borderRadius:"50%", width:36, height:36, lineHeight:1,
-                      display:"flex", alignItems:"center", justifyContent:"center",
-                      transition:"background 0.1s",
-                    }}>
-                    {e}
-                  </button>
-                ))}
-                {/* + opens full picker */}
-                <button
-                  onMouseDown={e => e.preventDefault()}
-                  onClick={() => { setEmojiPickerFor(null); setShowFullPicker(msg.id); setEmojiCatIdx(0); setEmojiSearch(""); }}
-                  style={{
-                    background:"rgba(136,255,0,0.1)", border:"1px solid rgba(136,255,0,0.3)",
-                    cursor:"pointer", color:"rgba(136,255,0,0.9)", fontSize:16, fontWeight:700,
-                    borderRadius:"50%", width:30, height:30, lineHeight:1, marginLeft:4,
-                    display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
+            {emojiPickerFor === msg.id && (() => {
+              const bar = (
+                <div
+                  onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
+                  onTouchStart={e => e.stopPropagation()}
+                  style={isMobile ? {
+                    position:"fixed", left:"50%", transform:"translateX(-50%)",
+                    bottom: 90,
+                    background:"#0a1a0e", border:"1px solid rgba(136,255,0,0.25)",
+                    borderRadius:24, zIndex:500,
+                    boxShadow:"0 4px 24px rgba(0,0,0,0.8), 0 0 16px rgba(136,255,0,0.08)",
+                    display:"flex", alignItems:"center", padding:"4px 6px", gap:0,
+                    overflowX:"auto", scrollbarWidth:"none",
+                    maxWidth:"calc(100vw - 24px)",
+                  } : {
+                    position:"absolute", bottom:"calc(100% + 4px)", [isMe?"right":"left"]:0,
+                    background:"#0a1a0e", border:"1px solid rgba(136,255,0,0.25)",
+                    borderRadius:24, zIndex:200,
+                    boxShadow:"0 4px 24px rgba(0,0,0,0.8), 0 0 16px rgba(136,255,0,0.08)",
+                    display:"flex", alignItems:"center", padding:"4px 6px", gap:0,
+                    overflowX:"auto", scrollbarWidth:"none",
                   }}>
-                  +
-                </button>
-              </div>
-            )}
+                  {quickBarEmojis.map(e => (
+                    <button key={e}
+                      onMouseDown={ev => ev.preventDefault()}
+                      onClick={() => pickEmoji(msg.id, e)}
+                      style={{
+                        background: (msg.reactions[e]||[]).includes(username) ? "rgba(136,255,0,0.2)" : "none",
+                        border:"none", cursor:"pointer", fontSize:22,
+                        borderRadius:"50%", width:36, height:36, lineHeight:1,
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        transition:"background 0.1s", flexShrink:0,
+                      }}>
+                      {e}
+                    </button>
+                  ))}
+                  {/* + opens full picker */}
+                  <button
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => { setEmojiPickerFor(null); setShowFullPicker(msg.id); setEmojiCatIdx(0); setEmojiSearch(""); }}
+                    style={{
+                      background:"rgba(136,255,0,0.1)", border:"1px solid rgba(136,255,0,0.3)",
+                      cursor:"pointer", color:"rgba(136,255,0,0.9)", fontSize:16, fontWeight:700,
+                      borderRadius:"50%", width:30, height:30, lineHeight:1, marginLeft:4,
+                      display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
+                    }}>
+                    +
+                  </button>
+                </div>
+              );
+              return isMobile ? createPortal(bar, document.body) : bar;
+            })()}
 
             {/* ── Full picker — portal so mobile can be a bottom sheet ── */}
             {showFullPicker === msg.id && (() => {
@@ -1156,12 +1167,22 @@ function BoardPage({ username }) {
 
               const pickerContent = (() => {
                 let swipeStartY = null;
-                const onSwipeTouchStart = (e) => { swipeStartY = e.touches[0].clientY; };
-                const onSwipeTouchEnd   = (e) => {
+                let swipeStartX = null;
+                const HANDLE_ZONE = 44; // px from top of picker — only swipe from handle area
+                const onSwipeTouchStart = (e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const touchY = e.touches[0].clientY;
+                  if (touchY - rect.top > HANDLE_ZONE) return; // outside handle zone
+                  swipeStartY = touchY;
+                  swipeStartX = e.touches[0].clientX;
+                };
+                const onSwipeTouchEnd = (e) => {
                   if (swipeStartY === null) return;
                   const dy = e.changedTouches[0].clientY - swipeStartY;
-                  swipeStartY = null;
-                  if (dy > 60) { setShowFullPicker(null); setEmojiSearch(""); }
+                  const dx = Math.abs(e.changedTouches[0].clientX - swipeStartX);
+                  swipeStartY = null; swipeStartX = null;
+                  // Only dismiss if clearly downward and not a horizontal scroll
+                  if (dy > 50 && dy > dx * 1.5) { setShowFullPicker(null); setEmojiSearch(""); }
                 };
                 return (
                 <div
