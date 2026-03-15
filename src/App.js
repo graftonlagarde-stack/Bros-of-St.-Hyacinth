@@ -886,6 +886,7 @@ function BoardPage({ username }) {
   // ── Visual viewport resize: keeps chat above keyboard on all mobile browsers ──
   const chatRootRef = useRef(null);
   const showFullPickerRef = useRef(null);
+  const chatInputFocusedRef = useRef(false); // true only while chat textarea is focused
   useEffect(() => {
     if (!isMobile) return;
     const vv = window.visualViewport;
@@ -905,9 +906,9 @@ function BoardPage({ username }) {
         document.documentElement.scrollTop = 0;
         document.body.scrollTop = 0;
       }
-      // Don't scroll chat to bottom when the emoji picker's search input is focused —
-      // that would jump the chat down when the emoji keyboard opens.
-      if (scrollContainerRef.current && !showFullPickerRef.current) {
+      // Only scroll chat to bottom when the chat's own textarea triggered the keyboard —
+      // not when the emoji picker search input opened/closed the keyboard.
+      if (scrollContainerRef.current && chatInputFocusedRef.current) {
         scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
       }
     };
@@ -1431,6 +1432,8 @@ function BoardPage({ username }) {
           placeholder="Send a message..."
           value={text}
           onChange={e => setText(e.target.value)}
+          onFocus={() => { chatInputFocusedRef.current = true; }}
+          onBlur={() => { chatInputFocusedRef.current = false; }}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
           rows={1}
           style={{ flex:1, resize:"none", borderRadius:2, padding:"10px 14px", fontSize:16, minHeight:40, maxHeight:140, overflowY:"auto", lineHeight:1.5, opacity:1 }}
@@ -1512,6 +1515,8 @@ function BoardPage({ username }) {
             placeholder="Send a message..."
             value={text}
             onChange={e => setText(e.target.value)}
+            onFocus={() => { chatInputFocusedRef.current = true; }}
+            onBlur={() => { chatInputFocusedRef.current = false; }}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
             rows={1}
             style={{ flex:1, resize:"none", borderRadius:2, padding:"10px 14px", fontSize:14, minHeight:42, maxHeight:120, overflowY:"auto", lineHeight:1.5, opacity:1 }}
