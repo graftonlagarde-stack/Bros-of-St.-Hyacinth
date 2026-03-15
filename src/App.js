@@ -158,6 +158,21 @@ const EMOJI_CATEGORIES = [
 ];
 const EMOJI_REACTIONS = ["👍","💪","🔥","❤️","😂","🎯","👏","🤯"];
 
+// Searchable name index — [emoji, "space separated search terms"]
+// Covers the most commonly searched emoji names
+const EMOJI_NAMES = [
+  ["😀","grinning face happy smile"],["😃","big smile happy"],["😄","grin smile happy"],["😁","beaming smile grin"],["😆","laughing grinning squinting"],["😅","sweat smile nervous laugh"],["🤣","rolling floor laughing rofl"],["😂","tears joy laugh crying"],["🙂","slightly smiling face"],["🙃","upside down face silly"],["🫠","melting face dissolve"],["😉","winking face"],["😊","blush smile happy"],["😇","angel halo innocent"],["🥰","smiling hearts love"],["😍","heart eyes love"],["🤩","star struck excited"],["😘","kiss face love"],["😗","kissing face"],["😚","kissing closed eyes"],["😙","kissing smiling eyes"],["🥲","smiling tear happy cry"],["😋","yum face tongue"],["😛","tongue face"],["😜","winking tongue face"],["🤪","zany crazy face"],["😝","squinting tongue"],["🤑","money mouth face"],["🤗","hugging face"],["🤔","thinking face"],["🫡","saluting face"],["🤫","shushing quiet"],["🤐","zipper mouth sealed"],["😐","neutral face"],["😑","expressionless face"],["😶","no mouth face"],["😶‍🌫️","face clouds"],["😏","smirking face"],["😒","unamused face"],["🙄","eye roll face"],["😬","grimacing face"],["🤥","lying face pinocchio"],["😌","relieved face"],["😔","pensive sad"],["😪","sleepy face"],["🤤","drooling face"],["😴","sleeping face zzz"],["🥱","yawning face tired"],["😷","mask sick medical"],["🤒","thermometer sick"],["🤕","head bandage hurt"],["🤢","nauseated face sick"],["🤧","sneezing face sick"],["🥵","hot face overheated"],["🥶","cold face frozen"],["🥴","woozy face drunk dizzy"],["😵","dizzy face"],["😵‍💫","spiral eyes dizzy"],["🤯","exploding head mind blown"],["🤠","cowboy hat face"],["🥳","party hat face celebrate"],["🥸","disguise face"],["😎","sunglasses cool"],["🤓","nerd glasses"],["🧐","monocle curious"],["😕","confused face"],["🫤","diagonal mouth"],["😟","worried face"],["🙁","slightly frowning"],["☹️","frowning face sad"],["😮","open mouth surprised"],["😯","hushed face surprised"],["😲","astonished face"],["😳","flushed face embarrassed"],["🥺","pleading face puppy eyes"],["🥹","holding back tears"],["😦","frowning open mouth"],["😧","anguished face"],["😨","fearful afraid scared"],["😰","anxious sweat nervous"],["😥","sad relieved"],["😢","crying face tear sad"],["😭","loudly crying sob"],["😱","screaming fear scared"],["😖","confounded face"],["😣","persevering face"],["😞","disappointed face sad"],["😓","downcast sweat"],["😩","weary face tired"],["😫","tired face exhausted"],["😤","steam nose angry"],["😠","angry face"],["😡","red angry face"],["🤬","swearing symbols face"],["😈","devil smile"],["👿","angry devil"],["💀","skull death"],["☠️","skull crossbones pirate"],["💩","poop brown"],["🤡","clown face"],["👹","ogre monster"],["👺","goblin red demon"],["👻","ghost boo"],["👽","alien extraterrestrial"],["👾","alien monster space"],["🤖","robot"],
+  ["👋","wave hand hello goodbye"],["🤚","raised back hand"],["🖐️","hand spread fingers"],["✋","raised hand stop"],["🖖","vulcan salute spock"],["👌","ok hand"],["🤌","pinched fingers italian"],["🤏","pinching hand small"],["✌️","peace victory fingers"],["🤞","crossed fingers luck"],["🫰","hand index heart"],["🤟","love you gesture"],["🤘","sign horns rock metal"],["🤙","call me hang loose"],["👈","backhand left point"],["👉","backhand right point"],["👆","backhand up point"],["🖕","middle finger rude"],["👇","backhand down point"],["☝️","index up"],["🫵","point you"],["👍","thumbs up like good"],["👎","thumbs down dislike bad"],["✊","raised fist"],["👊","oncoming fist punch"],["🤛","left facing fist bump"],["🤜","right facing fist bump"],["👏","clapping hands applause"],["🫶","heart hands love"],["🙌","raising hands celebrate"],["👐","open hands"],["🤲","palms up together"],["🤝","handshake"],["🙏","folded hands pray thanks"],["✍️","writing hand"],["💅","nail polish"],["🤳","selfie"],["💪","flexed bicep strong muscle"],["🦾","mechanical arm"],["🦵","leg kick"],["🦶","foot"],["👂","ear listen"],["👃","nose smell"],["🧠","brain mind smart"],["👀","eyes look see"],["👅","tongue taste"],["👄","mouth lips"],["🫦","biting lip"],
+  ["❤️","red heart love"],["🧡","orange heart"],["💛","yellow heart"],["💚","green heart"],["💙","blue heart"],["🩵","light blue heart"],["💜","purple heart"],["🖤","black heart"],["🩶","grey heart"],["🤍","white heart"],["🤎","brown heart"],["💔","broken heart"],["❤️‍🔥","heart on fire love"],["❤️‍🩹","mending heart healing"],["💕","two hearts"],["💞","revolving hearts"],["💓","beating heart"],["💗","growing heart"],["💖","sparkling heart"],["💘","heart arrow"],["💝","heart ribbon"],["💟","heart decoration"],
+  ["🐶","dog puppy"],["🐱","cat kitten"],["🐭","mouse"],["🐹","hamster"],["🐰","rabbit bunny"],["🦊","fox"],["🐻","bear"],["🐼","panda"],["🐨","koala"],["🐯","tiger"],["🦁","lion"],["🐮","cow"],["🐷","pig"],["🐸","frog"],["🐵","monkey"],["🙈","see no evil monkey"],["🙉","hear no evil monkey"],["🙊","speak no evil monkey"],["🐔","chicken"],["🐧","penguin"],["🐦","bird"],["🦆","duck"],["🦅","eagle"],["🦉","owl"],["🦇","bat"],["🐺","wolf"],["🐗","boar pig wild"],["🐴","horse"],["🦄","unicorn"],["🐝","bee honeybee"],["🦋","butterfly"],["🐌","snail"],["🐞","ladybug lady beetle"],["🐜","ant"],["🦟","mosquito"],["🦗","cricket"],["🦂","scorpion"],["🐢","turtle"],["🐍","snake"],["🦎","lizard"],["🦕","sauropod dinosaur"],["🦖","t-rex dinosaur"],["🐙","octopus"],["🦑","squid"],["🦐","shrimp"],["🦞","lobster"],["🦀","crab"],["🐡","blowfish"],["🐠","tropical fish"],["🐟","fish"],["🐬","dolphin"],["🐳","whale"],["🦈","shark"],["🐊","crocodile"],["🐘","elephant"],["🦛","hippo hippopotamus"],["🦏","rhinoceros"],["🐪","camel"],["🦒","giraffe"],["🦘","kangaroo"],["🦬","bison buffalo"],["🐄","cow"],["🐎","horse racing"],["🐑","sheep"],["🐐","goat"],["🦌","deer"],["🐕","dog"],["🐩","poodle"],["🐈","cat"],["🐓","rooster"],["🦃","turkey"],["🦜","parrot"],["🕊️","dove peace"],["🐇","rabbit"],["🦔","hedgehog"],["🌵","cactus"],["🌲","evergreen tree"],["🌳","deciduous tree"],["🌴","palm tree"],["🌱","seedling plant"],["🌿","herb leaf"],["🍀","four leaf clover luck"],["🍃","leaves wind"],["🍂","fallen leaf autumn"],["🍁","maple leaf autumn"],["🍄","mushroom"],["🌾","sheaf rice wheat"],["💐","bouquet flowers"],["🌷","tulip flower"],["🌹","rose flower"],["🥀","wilted flower"],["🌺","hibiscus flower"],["🌸","cherry blossom flower"],["🌼","blossom daisy flower"],["🌻","sunflower"],["🌞","sun with face"],["🌙","crescent moon"],["⭐","star"],["🔥","fire flame hot"],["💧","droplet water"],["🌊","wave water ocean"],
+  ["🍏","green apple"],["🍎","red apple"],["🍐","pear"],["🍊","tangerine orange"],["🍋","lemon"],["🍌","banana"],["🍉","watermelon"],["🍇","grapes"],["🍓","strawberry"],["🫐","blueberry"],["🍒","cherries"],["🍑","peach"],["🥭","mango"],["🍍","pineapple"],["🥥","coconut"],["🥝","kiwi"],["🍅","tomato"],["🍆","eggplant aubergine"],["🥑","avocado"],["🥦","broccoli"],["🥬","leafy greens"],["🥒","cucumber"],["🌶️","hot pepper chili"],["🧄","garlic"],["🧅","onion"],["🥔","potato"],["🍠","roasted sweet potato"],["🥐","croissant"],["🍞","bread"],["🥖","baguette"],["🧀","cheese"],["🥚","egg"],["🍳","cooking fried egg"],["🧈","butter"],["🥞","pancakes"],["🧇","waffle"],["🥓","bacon"],["🥩","meat steak"],["🍗","poultry leg chicken"],["🍖","meat bone"],["🌭","hot dog"],["🍔","burger hamburger"],["🍟","fries"],["🍕","pizza"],["🥙","stuffed flatbread"],["🌮","taco"],["🌯","burrito wrap"],["🥗","salad"],["🍝","spaghetti pasta"],["🍜","noodles ramen"],["🍛","curry rice"],["🍣","sushi"],["🥟","dumpling"],["🍔","burger"],["🧁","cupcake"],["🍰","cake slice"],["🎂","birthday cake"],["🍭","lollipop candy"],["🍬","candy"],["🍫","chocolate"],["🍩","donut doughnut"],["🍪","cookie"],["☕","coffee hot"],["🍵","tea hot"],["🍺","beer"],["🍻","beers clinking"],["🥂","champagne glasses"],["🍷","wine"],["🍸","cocktail"],["🍹","tropical drink"],["🍾","champagne bottle"],["🧊","ice cube"],
+  ["⚽","soccer football"],["🏀","basketball"],["🏈","american football"],["⚾","baseball"],["🥎","softball"],["🎾","tennis"],["🏐","volleyball"],["🏉","rugby football"],["🎱","billiards pool 8ball"],["🏓","ping pong table tennis"],["🏸","badminton"],["🥊","boxing glove"],["🥋","martial arts"],["🎯","bullseye target dart"],["⛳","golf flag"],["🎮","video game controller"],["🎲","dice game"],["🏆","trophy winner"],["🥇","gold medal first"],["🥈","silver medal second"],["🥉","bronze medal third"],["🎸","guitar"],["🎹","piano keyboard"],["🎺","trumpet"],["🎻","violin"],["🥁","drums"],["🎷","saxophone"],["🎤","microphone"],["🎧","headphones"],["🎨","art palette"],["🎭","performing arts theater"],["🎬","clapper film"],["🎤","karaoke mic"],["🎡","ferris wheel"],["🎢","rollercoaster"],["🎠","carousel"],
+  ["🚗","car automobile"],["🚕","taxi cab"],["🚙","suv car"],["🚌","bus"],["🚎","trolleybus"],["🏎️","racing car"],["🚓","police car"],["🚑","ambulance"],["🚒","fire engine truck"],["🚐","minibus"],["🛻","pickup truck"],["🚚","truck delivery"],["🚛","semi truck"],["🚜","tractor farm"],["🏍️","motorcycle motorbike"],["🛵","scooter moped"],["🚲","bicycle bike"],["🛴","kick scooter"],["✈️","airplane plane flight"],["🚀","rocket space"],["🛸","ufo flying saucer"],["🚁","helicopter"],["⛵","sailboat"],["🚢","ship cruise"],["🚂","train locomotive"],["🚇","metro subway"],["🚉","station train"],["🚊","tram"],["🏠","house home"],["🏢","office building"],["🏥","hospital"],["🏦","bank"],["🏨","hotel"],["🏪","convenience store"],["🏫","school"],["🏛️","classical building"],["🗼","tokyo tower"],["🗽","statue liberty"],["🌉","bridge night"],["🏔️","mountain snow"],["🌋","volcano"],["🏖️","beach"],["🏝️","island"],["🌅","sunrise"],["🌄","sunrise mountains"],
+  ["💡","light bulb idea"],["🔦","flashlight torch"],["🕯️","candle"],["💻","laptop computer"],["📱","mobile phone"],["🖥️","desktop computer"],["⌨️","keyboard"],["🖱️","mouse computer"],["🖨️","printer"],["📷","camera photo"],["📸","camera flash"],["📹","video camera"],["🎥","movie camera"],["📺","television tv"],["📻","radio"],["📞","telephone call"],["☎️","phone telephone"],["📟","pager"],["🔋","battery"],["🔌","plug electric"],["💾","floppy disk"],["💿","cd disc"],["📀","dvd disc"],["📚","books stack"],["📖","open book read"],["📝","memo note write"],["✏️","pencil write"],["🖊️","pen write"],["📌","pushpin map"],["📍","round pushpin location"],["🔍","magnifying glass search"],["🔎","magnifying glass right"],["🔑","key lock"],["🗝️","key old"],["🔒","locked"],["🔓","unlocked"],["🔨","hammer"],["⚔️","crossed swords"],["🛡️","shield"],["🔧","wrench"],["🔩","nut bolt"],["⚙️","gear"],["🧲","magnet"],["💊","pill medicine"],["💉","syringe injection"],["🩺","stethoscope doctor"],["🔬","microscope science"],["🔭","telescope space"],["💰","money bag"],["💵","dollar banknote"],["💳","credit card"],["📈","chart increasing"],["📉","chart decreasing"],["📊","bar chart"],["📦","package box"],["📫","closed mailbox"],["📧","email"],["📬","open mailbox"],["📎","paperclip"],["✂️","scissors"],["🗑️","wastebasket trash"],
+  ["🎉","party popper celebration"],["🎊","confetti celebration"],["🎈","balloon party"],["🎁","gift present wrapped"],["🎀","ribbon bow"],["🎆","fireworks"],["🎇","sparkler"],["✨","sparkles stars glitter"],["🧨","firecracker"],["🪄","magic wand"],["🎃","jack-o-lantern halloween pumpkin"],["🎄","christmas tree"],["🎋","tanabata tree"],["🎍","pine decoration"],["🎎","japanese dolls"],["🎑","moon viewing ceremony"],["🧧","red envelope"],["🏮","red lantern"],["🎐","wind chime"],["🪅","pinata"],
+  ["🏁","chequered flag race"],["🚩","triangular flag"],["🎌","crossed flags japan"],["🏴","black flag"],["🏳️","white flag"],["🏳️‍🌈","rainbow flag pride"],["🏳️‍⚧️","transgender flag"],["🏴‍☠️","pirate flag jolly roger"],["🇺🇸","us usa america flag"],["🇬🇧","uk britain england flag"],["🇨🇦","canada flag"],["🇦🇺","australia flag"],["🇫🇷","france french flag"],["🇩🇪","germany german flag"],["🇮🇹","italy italian flag"],["🇯🇵","japan japanese flag"],["🇰🇷","korea korean flag"],["🇨🇳","china chinese flag"],["🇧🇷","brazil flag"],["🇮🇳","india flag"],["🇲🇽","mexico flag"],["🇷🇺","russia flag"],["🇪🇸","spain spanish flag"],["🇵🇹","portugal flag"],["🇸🇦","saudi arabia flag"],["🇮🇱","israel flag"],["🇺🇦","ukraine flag"],["🇵🇱","poland flag"],["🇿🇦","south africa flag"],["🇳🇬","nigeria flag"],["🇵🇭","philippines flag"],["🇮🇩","indonesia flag"],["🇵🇰","pakistan flag"],["🇧🇩","bangladesh flag"],["🇻🇳","vietnam flag"],["🇹🇷","turkey flag"],["🇪🇬","egypt flag"],["🇦🇷","argentina flag"],["🇨🇱","chile flag"],["🇨🇴","colombia flag"],["🇳🇿","new zealand flag"],["🇮🇪","ireland flag"],["🇸🇪","sweden flag"],["🇳🇴","norway flag"],["🇫🇮","finland flag"],["🇩🇰","denmark flag"],["🇨🇭","switzerland flag"],["🇦🇹","austria flag"],["🇧🇪","belgium flag"],["🇳🇱","netherlands flag"],["🇬🇷","greece flag"],["🇵🇱","poland flag"],["🇨🇿","czech republic flag"],["🇭🇺","hungary flag"],["🇷🇴","romania flag"],["🇧🇬","bulgaria flag"],["🇭🇷","croatia flag"],["🇸🇰","slovakia flag"],["🇸🇮","slovenia flag"],["🇱🇹","lithuania flag"],["🇱🇻","latvia flag"],["🇪🇪","estonia flag"],["🏴󠁧󠁢󠁥󠁮󠁧󠁿","england flag"],["🏴󠁧󠁢󠁳󠁣󠁴󠁿","scotland flag"],["🏴󠁧󠁢󠁷󠁬󠁳󠁿","wales flag"],
+];
+
 // ─── BACKEND DATA HOOKS ───────────────────────────────────────────────────────
 //
 // These hooks are the single integration points for the backend.
@@ -573,38 +588,33 @@ function BoardPage({ username }) {
   const [mediaFiles, setMediaFiles]     = useState([]);
   const [attachWarning, setAttachWarning] = useState(false);
   const [uploading, setUploading]       = useState(false);
-  const [emojiPickerFor, setEmojiPickerFor] = useState(null);
-  const [emojiCatIdx, setEmojiCatIdx] = useState(0);
+  const [emojiPickerFor, setEmojiPickerFor] = useState(null); // msgId of open quick bar
+  const [showFullPicker, setShowFullPicker] = useState(null);  // msgId of open full picker
+  const [emojiCatIdx, setEmojiCatIdx]       = useState(0);
+  const [emojiSearch, setEmojiSearch]       = useState("");
 
-  // Most-used emoji — stored in localStorage per user, shown as ⭐ tab at index 0
+  // ── Most-used emoji (localStorage per user) ────────────────────────────
   const MOST_USED_KEY = `emoji_usage_${username}`;
   const getMostUsed = () => {
-    try {
-      const raw = localStorage.getItem(MOST_USED_KEY);
-      return raw ? JSON.parse(raw) : {};
-    } catch { return {}; }
+    try { const r = localStorage.getItem(MOST_USED_KEY); return r ? JSON.parse(r) : {}; }
+    catch { return {}; }
   };
   const recordEmojiUse = (emoji) => {
     try {
-      const counts = getMostUsed();
-      counts[emoji] = (counts[emoji] || 0) + 1;
-      localStorage.setItem(MOST_USED_KEY, JSON.stringify(counts));
+      const c = getMostUsed(); c[emoji] = (c[emoji] || 0) + 1;
+      localStorage.setItem(MOST_USED_KEY, JSON.stringify(c));
     } catch {}
   };
-  const mostUsedEmojis = useMemo(() => {
+  // Quick-bar row: top N most-used, padded with defaults until 11 slots filled
+  const QUICK_DEFAULTS = ["👍","👎","👌","😢","🤔","🫡","💀","👀","🙏","🔥","💯"];
+  const quickBarEmojis = useMemo(() => {
     const counts = getMostUsed();
-    return Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 24)
-      .map(([e]) => e);
+    const used = Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([e])=>e);
+    const row = [...used];
+    for (const d of QUICK_DEFAULTS) { if (row.length >= 11) break; if (!row.includes(d)) row.push(d); }
+    return row.slice(0, 11);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [emojiPickerFor]); // recompute each time picker opens
-
-  // Full category list with most-used tab prepended (only shown if user has history)
-  const emojiCategories = useMemo(() => {
-    if (mostUsedEmojis.length === 0) return EMOJI_CATEGORIES;
-    return [{ label: "⭐", emojis: mostUsedEmojis }, ...EMOJI_CATEGORIES];
-  }, [mostUsedEmojis]);
+  }, [emojiPickerFor, showFullPicker]);
   const [lightboxSrc, setLightboxSrc]   = useState(null); // fullscreen media viewer
   const [lightboxType, setLightboxType] = useState(null); // "image" | "video"
   const scrollContainerRef = useRef(null);
@@ -615,22 +625,17 @@ function BoardPage({ username }) {
 
   useEffect(() => { fetchMessages(); }, []);
 
-  // Close emoji picker on outside click
+  // Close emoji pickers on outside click
   useEffect(() => {
-    if (!emojiPickerFor) return;
-    const close = (e) => {
-      // Don't close if the click is inside a picker (stopPropagation on picker divs handles this,
-      // but we also check the target isn't inside any open picker as a belt-and-suspenders guard)
-      setEmojiPickerFor(null);
-    };
-    // Use capture:false so stopPropagation on picker children can cancel this
+    if (!emojiPickerFor && !showFullPicker) return;
+    const close = () => { setEmojiPickerFor(null); setShowFullPicker(null); setEmojiSearch(""); };
     document.addEventListener("mousedown", close);
     document.addEventListener("touchstart", close);
     return () => {
       document.removeEventListener("mousedown", close);
       document.removeEventListener("touchstart", close);
     };
-  }, [emojiPickerFor]);
+  }, [emojiPickerFor, showFullPicker]);
 
   // Auto-grow textarea
   useEffect(() => {
@@ -746,13 +751,17 @@ function BoardPage({ username }) {
     setMediaFiles([]);
   };
 
-  const toggleReaction = (msgId, emoji) => {
+  const pickEmoji = (msgId, emoji) => {
     const msg = messages.find(m => m.id === msgId);
     const alreadyHas = msg?.reactions[emoji]?.includes(username);
     if (!alreadyHas) recordEmojiUse(emoji);
     saveReaction(msgId, alreadyHas ? null : emoji);
     setEmojiPickerFor(null);
+    setShowFullPicker(null);
+    setEmojiSearch("");
   };
+  // kept as alias for reaction bar taps
+  const toggleReaction = pickEmoji;
 
   // ── Lightbox (fullscreen media viewer) ──────────────────────────────────
   const openLightbox = (src, type) => { setLightboxSrc(src); setLightboxType(type); };
@@ -924,12 +933,20 @@ function BoardPage({ username }) {
           )}
 
           <div style={{ position:"relative" }}>
+            {/* Quick emoji button */}
             <button
               onMouseDown={e => e.preventDefault()}
-              onClick={() => { setEmojiCatIdx(0); setEmojiPickerFor(emojiPickerFor === msg.id ? null : msg.id); }}
+              onClick={() => {
+                if (emojiPickerFor === msg.id) { setEmojiPickerFor(null); return; }
+                setEmojiPickerFor(msg.id);
+                setShowFullPicker(null);
+                setEmojiSearch("");
+              }}
               style={{ background:"none", border:"none", cursor:"pointer", color:"var(--muted)", fontSize:12, padding:"3px 6px", opacity:0.5, marginTop:2 }}>
               😊 +
             </button>
+
+            {/* ── Quick-bar: single row of most-used + + button ── */}
             {emojiPickerFor === msg.id && (
               <div
                 onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
@@ -937,44 +954,140 @@ function BoardPage({ username }) {
                 style={{
                   position:"absolute", bottom:"calc(100% + 4px)", [isMe?"right":"left"]:0,
                   background:"#0a1a0e", border:"1px solid rgba(136,255,0,0.25)",
-                  borderRadius:8, zIndex:200,
-                  boxShadow:"0 8px 32px rgba(0,0,0,0.8), 0 0 24px rgba(136,255,0,0.08)",
-                  width:260, display:"flex", flexDirection:"column", overflow:"hidden",
+                  borderRadius:24, zIndex:200,
+                  boxShadow:"0 4px 24px rgba(0,0,0,0.8), 0 0 16px rgba(136,255,0,0.08)",
+                  display:"flex", alignItems:"center", padding:"4px 6px", gap:0,
+                  whiteSpace:"nowrap",
                 }}>
-                {/* Category tabs — horizontally scrollable to fit all categories + ⭐ */}
-                <div style={{ display:"flex", overflowX:"auto", borderBottom:"1px solid rgba(136,255,0,0.15)", background:"rgba(0,0,0,0.3)", scrollbarWidth:"none" }}>
-                  {emojiCategories.map((cat, ci) => (
-                    <button key={ci}
-                      onMouseDown={e => e.preventDefault()}
-                      onClick={() => setEmojiCatIdx(ci)}
-                      style={{
-                        flexShrink:0, border:"none", background:"none", cursor:"pointer",
-                        padding:"6px 8px", fontSize:14,
-                        borderBottom: ci === emojiCatIdx ? "2px solid rgba(136,255,0,0.7)" : "2px solid transparent",
-                        opacity: ci === emojiCatIdx ? 1 : 0.45,
-                      }}>
-                      {cat.label}
-                    </button>
-                  ))}
-                </div>
-                {/* Emoji grid */}
-                <div style={{ display:"flex", flexWrap:"wrap", gap:0, padding:4, maxHeight:180, overflowY:"auto" }}>
-                  {(emojiCategories[emojiCatIdx] ?? emojiCategories[0]).emojis.map(e => (
-                    <button key={e}
-                      onMouseDown={ev => ev.preventDefault()}
-                      onClick={() => { toggleReaction(msg.id, e); setEmojiPickerFor(null); }}
-                      style={{
-                        background: (msg.reactions[e]||[]).includes(username) ? "rgba(136,255,0,0.15)" : "none",
-                        border:"none", cursor:"pointer", fontSize:20,
-                        borderRadius:4, padding:"5px", lineHeight:1,
-                        transition:"background 0.1s", minWidth:36,
-                      }}>
-                      {e}
-                    </button>
-                  ))}
-                </div>
+                {quickBarEmojis.map(e => (
+                  <button key={e}
+                    onMouseDown={ev => ev.preventDefault()}
+                    onClick={() => pickEmoji(msg.id, e)}
+                    style={{
+                      background: (msg.reactions[e]||[]).includes(username) ? "rgba(136,255,0,0.2)" : "none",
+                      border:"none", cursor:"pointer", fontSize:22,
+                      borderRadius:"50%", width:36, height:36, lineHeight:1,
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      transition:"background 0.1s",
+                    }}>
+                    {e}
+                  </button>
+                ))}
+                {/* + opens full picker */}
+                <button
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={() => { setEmojiPickerFor(null); setShowFullPicker(msg.id); setEmojiCatIdx(0); setEmojiSearch(""); }}
+                  style={{
+                    background:"rgba(136,255,0,0.1)", border:"1px solid rgba(136,255,0,0.3)",
+                    cursor:"pointer", color:"rgba(136,255,0,0.9)", fontSize:16, fontWeight:700,
+                    borderRadius:"50%", width:30, height:30, lineHeight:1, marginLeft:4,
+                    display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
+                  }}>
+                  +
+                </button>
               </div>
             )}
+
+            {/* ── Full picker — portal so mobile can be a bottom sheet ── */}
+            {showFullPicker === msg.id && (() => {
+              const filteredEmojis = emojiSearch.trim()
+                ? EMOJI_NAMES.filter(([,n]) => n.includes(emojiSearch.toLowerCase())).map(([e])=>e)
+                : EMOJI_CATEGORIES[emojiCatIdx]?.emojis ?? [];
+
+              const pickerContent = (
+                <div
+                  onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
+                  onTouchStart={e => e.stopPropagation()}
+                  style={isMobile ? {
+                    position:"fixed", left:0, right:0, bottom:0,
+                    background:"#0a1a0e", borderTop:"1px solid rgba(136,255,0,0.25)",
+                    borderRadius:"16px 16px 0 0",
+                    boxShadow:"0 -8px 40px rgba(0,0,0,0.9)",
+                    zIndex:1000, display:"flex", flexDirection:"column",
+                    maxHeight:"62vh",
+                  } : {
+                    position:"absolute", bottom:"calc(100% + 4px)", [isMe?"right":"left"]:0,
+                    background:"#0a1a0e", border:"1px solid rgba(136,255,0,0.25)",
+                    borderRadius:12, zIndex:300,
+                    boxShadow:"0 8px 40px rgba(0,0,0,0.9), 0 0 24px rgba(136,255,0,0.08)",
+                    width:300, display:"flex", flexDirection:"column",
+                    maxHeight:420,
+                  }}>
+                  {/* Mobile drag handle */}
+                  {isMobile && (
+                    <div style={{ display:"flex", justifyContent:"center", padding:"10px 0 4px" }}>
+                      <div style={{ width:36, height:4, borderRadius:2, background:"rgba(255,255,255,0.2)" }} />
+                    </div>
+                  )}
+                  {/* Search bar — font-size 16px prevents iOS zoom */}
+                  <div style={{ padding:"8px 10px 6px", borderBottom:"1px solid rgba(136,255,0,0.12)" }}>
+                    <input
+                      type="text"
+                      placeholder="Search emoji…"
+                      value={emojiSearch}
+                      onChange={e => setEmojiSearch(e.target.value)}
+                      autoComplete="off"
+                      style={{
+                        width:"100%", boxSizing:"border-box",
+                        background:"rgba(255,255,255,0.07)", border:"1px solid rgba(136,255,0,0.2)",
+                        borderRadius:8, padding:"7px 10px", color:"#fff",
+                        fontSize:16, outline:"none",
+                      }}
+                    />
+                  </div>
+                  {/* Category tab bar — hidden when searching */}
+                  {!emojiSearch.trim() && (
+                    <div style={{ display:"flex", overflowX:"auto", borderBottom:"1px solid rgba(136,255,0,0.12)", background:"rgba(0,0,0,0.25)", scrollbarWidth:"none", flexShrink:0 }}>
+                      {EMOJI_CATEGORIES.map((cat, ci) => (
+                        <button key={ci}
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => setEmojiCatIdx(ci)}
+                          style={{
+                            flexShrink:0, border:"none", background:"none", cursor:"pointer",
+                            padding:"7px 9px", fontSize:16,
+                            borderBottom: ci === emojiCatIdx ? "2px solid rgba(136,255,0,0.8)" : "2px solid transparent",
+                            opacity: ci === emojiCatIdx ? 1 : 0.4,
+                          }}>
+                          {cat.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {/* Emoji grid */}
+                  <div style={{ display:"flex", flexWrap:"wrap", overflowY:"auto", padding:6, gap:0, flex:1 }}>
+                    {filteredEmojis.length === 0
+                      ? <div style={{ color:"var(--muted)", fontSize:13, padding:12 }}>No results</div>
+                      : filteredEmojis.map(e => (
+                        <button key={e}
+                          onMouseDown={ev => ev.preventDefault()}
+                          onClick={() => pickEmoji(msg.id, e)}
+                          style={{
+                            background: (msg.reactions[e]||[]).includes(username) ? "rgba(136,255,0,0.15)" : "none",
+                            border:"none", cursor:"pointer", fontSize:isMobile?26:22,
+                            borderRadius:6, padding:isMobile?"7px":"5px", lineHeight:1,
+                            transition:"background 0.1s",
+                            minWidth: isMobile ? 44 : 36,
+                          }}>
+                          {e}
+                        </button>
+                      ))
+                    }
+                  </div>
+                </div>
+              );
+
+              return isMobile
+                ? createPortal(
+                    <>
+                      {/* Backdrop */}
+                      <div onClick={() => { setShowFullPicker(null); setEmojiSearch(""); }}
+                        style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:999 }} />
+                      {pickerContent}
+                    </>,
+                    document.body
+                  )
+                : pickerContent;
+            })()}
           </div>
         </div>
       </div>
