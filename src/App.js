@@ -137,6 +137,7 @@ const api = {
   getMessages:   ()     => api.get("/api/board/messages"),
   postMessage:   (body) => api.post("/api/board/messages", body),
   postReaction:  (body) => api.post("/api/board/reactions", body),
+  deleteMessage: (id)   => api.delete(`/api/board/messages/${id}`),
 
   // Admin
   getAdminUsers:  ()          => api.get("/api/admin/users"),
@@ -521,7 +522,16 @@ function useBoardMessages() {
     }
   };
 
-  return { messages, loading, fetchMessages, saveMessage, saveReaction };
+  const deleteMessage = async (id) => {
+    try {
+      await api.deleteMessage(id);
+      setMessages(prev => prev.filter(m => m.id !== id));
+    } catch (err) {
+      console.warn("deleteMessage failed:", err);
+    }
+  };
+
+  return { messages, loading, fetchMessages, saveMessage, saveReaction, deleteMessage };
 }
 
 const SEED_MESSAGES = []; // removed — real messages come from useBoardMessages()
@@ -707,16 +717,17 @@ function AudioLightbox({ src, onClose }) {
   const seekFromEvent = (e, rect) => {
     const audio = audioRef.current;
     if (!audio || !duration) return;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientX = e.touches ? e.touches[0].clientX : e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
     audio.currentTime = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration;
   };
   const onScrubStart = (e) => {
     isDragging.current = true;
-    const rect = e.currentTarget.getBoundingClientRect();
+    const rect = scrubBarRef.current.getBoundingClientRect();
     seekFromEvent(e, rect);
   };
   const onScrubMove = (e) => {
     if (!isDragging.current || !scrubBarRef.current) return;
+    if (e.cancelable) e.preventDefault(); // prevent page scroll while scrubbing
     const rect = scrubBarRef.current.getBoundingClientRect();
     seekFromEvent(e, rect);
   };
@@ -750,7 +761,7 @@ function AudioLightbox({ src, onClose }) {
           <span style={{ fontSize:11, color:"rgba(0,255,140,0.7)", fontFamily:"'Orbitron',sans-serif", width:34, textAlign:"right" }}>{fmt(elapsed)}</span>
           <div ref={scrubBarRef}
                onMouseDown={onScrubStart} onTouchStart={onScrubStart}
-               style={{ flex:1, height:14, display:"flex", alignItems:"center", cursor:"pointer", position:"relative" }}>
+               style={{ flex:1, height:44, display:"flex", alignItems:"center", cursor:"pointer", position:"relative" }}>
             {/* Track */}
             <div style={{ position:"absolute", left:0, right:0, height:5, background:"rgba(0,255,140,0.1)", borderRadius:3 }}>
               <div style={{ width:`${pct}%`, height:"100%", background:"linear-gradient(90deg,#00cc77,#00ff99)", borderRadius:3, transition:"width 0.1s linear" }}/>
@@ -856,7 +867,7 @@ function LinkPreview({ url, onLoad }) {
 // ─── BOARD PAGE ───────────────────────────────────────────────────────────────
 function BoardPage({ username }) {
   const isMobile = useIsMobile();
-  const { messages, fetchMessages, saveMessage, saveReaction } = useBoardMessages();
+  const { messages, fetchMessages, saveMessage, saveReaction, deleteMessage } = useBoardMessages();
   const [text, setText]                 = useState("");
   const [mediaFiles, setMediaFiles]     = useState([]);
   const [attachWarning, setAttachWarning] = useState(false);
@@ -867,6 +878,8 @@ function BoardPage({ username }) {
   const [emojiCatIdx, setEmojiCatIdx]       = useState(0);
   const [emojiSearch, setEmojiSearch]       = useState("");
   const [reactionTooltip, setReactionTooltip] = useState(null); // { msgId, emoji, users, x, y }
+  const [deleteHover, setDeleteHover] = useState(null); // msgId of hovered message (for arch-admin delete)
+  const isArchAdmin = currentUser?.role === "arch_admin";
 
   // ── Most-used emoji (localStorage per user) ────────────────────────────
   const MOST_USED_KEY = `emoji_usage_${username}`;
@@ -1123,9 +1136,16 @@ function BoardPage({ username }) {
   // to keep chronological order (oldest top → newest bottom) visually correct.
   const messageList = [...messages].reverse().map((msg, i, arr) => {
     const isMe = msg.author === username;
-    // In the reversed array, the "previous" message is the one after in the array
-    const prevMsg = arr[i + 1];
-    const grouped = prevMsg && prevMsg.author === msg.author && (msg.ts - prevMsg.ts) < 300000;
+    // In the reversed array, the "previous" message is the one after in the array (older)
+    // and the "next" message is the one before (newer)
+    const prevMsg = arr[i + 1]; // older message
+    const nextMsg = arr[i - 1]; // newer message
+    const sameDay = (a, b) => {
+      const da = new Date(a), db = new Date(b);
+      return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+    };
+    const grouped = prevMsg && prevMsg.author === msg.author && sameDay(msg.ts, prevMsg.ts);
+    const isLastInGroup = !nextMsg || nextMsg.author !== msg.author || !sameDay(msg.ts, nextMsg.ts);
     const reactionEntries = Object.entries(msg.reactions).filter(([,users]) => users.length > 0);
 
     if (msg.isSystem) return (
@@ -1139,10 +1159,11 @@ function BoardPage({ username }) {
     return (
       <div key={msg.id}
         style={{ display:"flex", flexDirection: isMe ? "row-reverse" : "row", gap:8, alignItems:"flex-end", marginTop: grouped ? 1 : 8, position:"relative" }}
-        onMouseLeave={() => setEmojiPickerFor(null)}>
+        onMouseEnter={() => isArchAdmin && setDeleteHover(msg.id)}
+        onMouseLeave={() => { setEmojiPickerFor(null); setDeleteHover(null); }}>
 
         <div style={{ width:32, flexShrink:0 }}>
-          {!grouped && (
+          {isLastInGroup && (
             <div className="avatar sm" style={{ background: isMe ? "linear-gradient(135deg,#003322,#006644)" : "linear-gradient(135deg,#001a10,#002e1a)", color:"#88ff00" }}>
               {initials(msg.author)}
             </div>
@@ -1162,18 +1183,18 @@ function BoardPage({ username }) {
               ? `radial-gradient(ellipse 90% 50% at 50% -10%, rgba(255,255,255,0.22) 0%, transparent 60%),
                  radial-gradient(ellipse 60% 40% at 80% 90%, rgba(0,255,200,0.15) 0%, transparent 70%),
                  linear-gradient(160deg, rgba(0,80,70,0.92) 0%, rgba(0,30,25,0.97) 100%)`
-              : `radial-gradient(ellipse 90% 50% at 50% -10%, rgba(255,255,255,0.22) 0%, transparent 60%),
-                 radial-gradient(ellipse 60% 40% at 80% 90%, rgba(120,200,0,0.18) 0%, transparent 70%),
-                 linear-gradient(160deg, rgba(40,60,0,0.92) 0%, rgba(15,25,0,0.97) 100%)`,
+              : `radial-gradient(ellipse 90% 50% at 50% -10%, rgba(255,255,255,0.55) 0%, transparent 55%),
+                 radial-gradient(ellipse 60% 40% at 80% 90%, rgba(180,200,220,0.15) 0%, transparent 70%),
+                 linear-gradient(160deg, rgba(200,215,235,0.22) 0%, rgba(160,180,210,0.12) 100%)`,
             border: emojiPickerFor === msg.id
               ? "1px solid rgba(136,255,0,0.75)"
               : isMe
                 ? "1px solid rgba(0,255,204,0.25)"
-                : "1px solid rgba(150,220,0,0.25)",
+                : "1px solid rgba(200,215,240,0.22)",
             borderTop: emojiPickerFor === msg.id
               ? "1px solid rgba(136,255,0,0.75)"
-              : isMe ? "1.5px solid rgba(0,255,204,0.6)" : "1.5px solid rgba(180,255,80,0.55)",
-            borderLeft: isMe ? "1px solid rgba(0,255,204,0.35)" : "1px solid rgba(160,230,0,0.3)",
+              : isMe ? "1.5px solid rgba(0,255,204,0.6)" : "1.5px solid rgba(255,255,255,0.55)",
+            borderLeft: isMe ? "1px solid rgba(0,255,204,0.35)" : "1px solid rgba(220,230,245,0.3)",
             borderRadius: isMe ? "18px 3px 18px 18px" : "3px 18px 18px 18px",
             padding: msg.text ? "10px 14px" : (!msg.text && (msg.media || (msg.mediaExtra||[]).length > 0)) ? "0" : "4px",
             maxWidth: (!msg.text && (msg.media || (msg.mediaExtra||[]).length > 0)) ? 240 : undefined,
@@ -1183,8 +1204,8 @@ function BoardPage({ username }) {
               ? "0 0 0 2px rgba(136,255,0,0.15), 0 2px 16px rgba(136,255,0,0.2)"
               : isMe
                 ? "inset 0 2px 0 rgba(0,255,204,0.15), inset 0 -3px 8px rgba(0,60,50,0.4), 0 12px 32px rgba(0,0,0,0.65), 0 3px 8px rgba(0,60,40,0.4), 0 0 0 0.5px rgba(0,0,0,0.6)"
-                : "inset 0 2px 0 rgba(160,255,80,0.15), inset 0 -3px 8px rgba(30,50,0,0.4), 0 12px 32px rgba(0,0,0,0.65), 0 3px 8px rgba(40,60,0,0.35), 0 0 0 0.5px rgba(0,0,0,0.55)",
-            color: isMe ? "#b0fff0" : "#d8ffaa",
+                : "inset 0 2px 0 rgba(255,255,255,0.3), inset 0 -3px 8px rgba(100,130,180,0.18), 0 12px 32px rgba(0,0,0,0.65), 0 3px 8px rgba(60,80,120,0.35), 0 0 0 0.5px rgba(0,0,0,0.55)",
+            color: isMe ? "#b0fff0" : "#ddeeff",
             transition: "border 0.15s, box-shadow 0.15s",
           }}>
             {msg.text && <div style={{whiteSpace:"pre-wrap"}}>{msg.text}</div>}
@@ -1287,7 +1308,7 @@ function BoardPage({ username }) {
             </div>
           )}
 
-          <div style={{ position:"relative" }}>
+          <div style={{ position:"relative", display:"flex", alignItems:"center", gap:2 }}>
             {/* Quick emoji button */}
             <button
               onMouseDown={e => e.preventDefault()}
@@ -1300,6 +1321,16 @@ function BoardPage({ username }) {
               style={{ background:"none", border:"none", cursor:"pointer", color:"var(--muted)", fontSize:12, padding:"3px 6px", opacity:0.5, marginTop:2 }}>
               😊 +
             </button>
+            {/* Arch-admin delete — only visible on hover, never shown for own messages */}
+            {isArchAdmin && deleteHover === msg.id && (
+              <button
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => { if (window.confirm("Delete this message?")) deleteMessage(msg.id); }}
+                style={{ background:"none", border:"none", cursor:"pointer", color:"rgba(255,60,60,0.5)", fontSize:11, padding:"3px 4px", lineHeight:1, opacity:0.7, marginTop:2 }}
+                title="Delete message">
+                ✕
+              </button>
+            )}
 
             {/* ── Quick-bar: single row of most-used + + button ── */}
             {emojiPickerFor === msg.id && (() => {
