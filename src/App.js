@@ -3296,49 +3296,46 @@ function RulePage({ user }) {
       ))}
 
       <style>{`
-        [contenteditable="true"] p    { margin:0 0 10px; }
-        [contenteditable="true"] h2   { font-size:16px; font-weight:700; color:var(--accent); margin:14px 0 8px; letter-spacing:2px; text-transform:uppercase; }
-        [contenteditable="true"] h3   { font-size:13px; font-weight:700; color:var(--chrome); margin:10px 0 6px; letter-spacing:1px; }
-        [contenteditable="true"] ul,
-        [contenteditable="true"] ol   { margin:0 0 10px !important; padding-left:28px !important; }
-        [contenteditable="true"] ul   { list-style-type: disc !important; }
-        [contenteditable="true"] ol   { list-style-type: decimal !important; }
-        [contenteditable="true"] li   { margin-bottom:4px !important; display:list-item !important; }
-        [contenteditable="true"] ul ul { list-style-type: circle !important; padding-left:22px !important; }
-        [contenteditable="true"] ol ol { list-style-type: lower-alpha !important; padding-left:22px !important; }
-        [contenteditable="true"] blockquote {
-          margin:12px 0; padding:10px 16px;
-          border-left:2px solid rgba(136,255,0,0.4);
-          background:rgba(136,255,0,0.04);
-          color:var(--chrome); font-style:italic;
-          border-radius:0 3px 3px 0;
+        [contenteditable="true"],
+        .rule-card {
+          color: #f4ffe8 !important;
         }
-        [contenteditable="true"] hr   { border:none; border-top:1px solid rgba(136,255,0,0.2); margin:12px 0; }
-        [contenteditable="true"] img  { max-width:100%; border-radius:4px; margin:8px 0; display:block; }
-        [contenteditable="true"] strong { color:var(--accent); }
-        [contenteditable="true"] em   { color:var(--chrome); font-style:italic; }
-        /* Read-only styles */
-        .rule-card p    { margin:0 0 10px; }
-        .rule-card h2   { font-size:16px; font-weight:700; color:var(--accent); margin:14px 0 8px; letter-spacing:2px; text-transform:uppercase; }
-        .rule-card h3   { font-size:13px; font-weight:700; color:var(--chrome); margin:10px 0 6px; letter-spacing:1px; }
+        [contenteditable="true"] p,
+        .rule-card p    { margin:0 0 10px; color:#f4ffe8 !important; }
+        [contenteditable="true"] h2,
+        .rule-card h2   { font-size:16px; font-weight:700; color:#88ff00 !important; margin:14px 0 8px; letter-spacing:2px; text-transform:uppercase; }
+        [contenteditable="true"] h3,
+        .rule-card h3   { font-size:13px; font-weight:700; color:#f4ffe8 !important; margin:10px 0 6px; letter-spacing:1px; }
+        [contenteditable="true"] ul,
+        [contenteditable="true"] ol,
         .rule-card ul,
         .rule-card ol   { margin:0 0 10px !important; padding-left:28px !important; }
+        [contenteditable="true"] ul,
         .rule-card ul   { list-style-type: disc !important; }
+        [contenteditable="true"] ol,
         .rule-card ol   { list-style-type: decimal !important; }
-        .rule-card li   { margin-bottom:4px !important; display:list-item !important; }
+        [contenteditable="true"] li,
+        .rule-card li   { margin-bottom:4px !important; display:list-item !important; color:#f4ffe8 !important; }
+        [contenteditable="true"] ul ul,
         .rule-card ul ul { list-style-type: circle !important; padding-left:22px !important; }
+        [contenteditable="true"] ol ol,
         .rule-card ol ol { list-style-type: lower-alpha !important; padding-left:22px !important; }
+        [contenteditable="true"] blockquote,
         .rule-card blockquote {
           margin:12px 0; padding:10px 16px;
           border-left:2px solid rgba(136,255,0,0.4);
           background:rgba(136,255,0,0.04);
-          color:var(--chrome); font-style:italic;
+          color:#f4ffe8 !important; font-style:italic;
           border-radius:0 3px 3px 0;
         }
+        [contenteditable="true"] hr,
         .rule-card hr   { border:none; border-top:1px solid rgba(136,255,0,0.2); margin:12px 0; }
+        [contenteditable="true"] img,
         .rule-card img  { max-width:100%; border-radius:4px; margin:8px 0; display:block; }
-        .rule-card strong { color:var(--accent); }
-        .rule-card em   { color:var(--chrome); font-style:italic; }
+        [contenteditable="true"] strong,
+        .rule-card strong { color:#88ff00 !important; }
+        [contenteditable="true"] em,
+        .rule-card em   { color:#f4ffe8 !important; font-style:italic; }
       `}</style>
 
       {/* Arch-admin toolbar — bottom of page */}
@@ -6463,7 +6460,8 @@ export default function App() {
             }
           </div>
           {/* Orb — click to toggle nav */}
-          <div ref={orbWrapRef} className="xbox-orb-wrap" onClick={() => setNavExpanded(v => !v)}>
+          <div ref={orbWrapRef} className="xbox-orb-wrap" onClick={() => setNavExpanded(v => !v)}
+            style={(!isMobile && (user.role === "arch_admin" || user.role === "admin")) ? { top:"calc(50% - 30px)" } : {}}>
             <div className="xbox-orb" />
             <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(circle at 50% 55%, transparent 30%, rgba(0,5,0,0.5) 62%, rgba(0,0,0,0.80) 100%)",zIndex:1,pointerEvents:"none"}} />
             <canvas ref={glbCanvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",borderRadius:"50%",pointerEvents:"none",zIndex:2,filter:"blur(0.5px) drop-shadow(0 0 10px #aaff00cc) drop-shadow(0 0 25px #88ff0099) drop-shadow(0 0 55px #55dd0066) drop-shadow(0 0 90px #33aa0033)"}} />
@@ -6474,7 +6472,8 @@ export default function App() {
             <div className="xbox-bubble" />
           </div>
           {/* Blade nav */}
-          <div ref={navWrapRef} className={`nav-wrap${navExpanded ? "" : " retracted"}`}>
+          <div ref={navWrapRef} className={`nav-wrap${navExpanded ? "" : " retracted"}`}
+            style={(!isMobile && (user.role === "arch_admin" || user.role === "admin")) ? { top:"calc(50% - 30px)" } : {}}>
             {navItems.map(n => {
               const isActive = (pressedId ?? page) === n.id;
               return (
