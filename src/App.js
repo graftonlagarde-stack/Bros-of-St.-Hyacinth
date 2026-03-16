@@ -2508,13 +2508,19 @@ const css = `
     filter: drop-shadow(0 0 4px rgba(0,255,140,0.6));
   }
   .progress-bar {
-    flex: 1; height: 3px;
-    background: rgba(0,255,140,0.12);
+    flex: 1; height: 44px;
+    background: transparent;
     border-radius: 999px;
     cursor: pointer; position: relative;
+    display: flex; align-items: center;
+  }
+  .progress-bar::before {
+    content: ''; position: absolute; left: 0; right: 0;
+    height: 3px; border-radius: 999px;
+    background: rgba(0,255,140,0.12);
   }
   .progress-fill {
-    height: 100%; border-radius: 999px;
+    position: absolute; left: 0; height: 3px; border-radius: 999px;
     background: linear-gradient(90deg, #00ff99, #88ff00);
     box-shadow: 0 0 8px #00ff88, 0 0 18px rgba(0,255,140,0.5);
     transition: width 0.25s linear;
@@ -4631,7 +4637,7 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack, navExpand
               <div style={{
                 position:"absolute", top:"50%", left:`${progress}%`,
                 transform:"translate(-50%,-50%)",
-                width:10, height:10, borderRadius:"50%",
+                width:16, height:16, borderRadius:"50%",
                 background:"#00ff99", boxShadow:"0 0 8px #00ff99, 0 0 16px rgba(0,255,140,0.6)",
                 pointerEvents:"none",
               }} />
