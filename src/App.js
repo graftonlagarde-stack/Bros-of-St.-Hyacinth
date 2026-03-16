@@ -3081,15 +3081,6 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
 // ─── AUDIO FIGURE BACKDROP ──────────────────────────────────────────────────────────────────────────────
 
 // ─── RULE PAGE ────────────────────────────────────────────────────────────────
-const RULE_SECTIONS = [
-  { id: "introduction",       label: "Introduction" },
-  { id: "guiding_principles", label: "Guiding Principles" },
-  { id: "exercise_plan",      label: "Exercise Plan" },
-  { id: "prayer",             label: "Prayer" },
-  { id: "discipline",         label: "Discipline" },
-  { id: "monastic_habit",     label: "Monastic Habit" },
-];
-
 const RULE_DEFAULTS = {
   introduction: `<p>The Bros. of St. Hyacinth constitutes a holy order of alarmingly right-wing young men aiming to pursue virtue and excellence through the process of becoming yolked.</p>
 <p>The soul is, after all, the form of the body. The average modern man's body takes the form of an amorphous blob. It is no wonder, then, that we observe the rapidly deteriorating character of men's souls. Therefore, to improve the soul, we must improve the form of the body.</p>
@@ -3099,101 +3090,138 @@ const RULE_DEFAULTS = {
 <p>Bros of St. Hyacinth must continually and at all times contemplate the meaning of the word <em>excellence</em>. Each member will set unrealistic expectations for himself and then surpass those expectations. He will come to despise mediocrity with an implacable rage. He will seek to guide his actions by the following virtues, in addition to all others:</p>
 <ul><li>Charity</li><li>Humility</li><li>Discipline</li><li>Magnanimity</li><li>Courage</li><li>Sexism</li><li>Assertiveness</li><li>Prudence</li></ul>
 <p>Finally, any member who is not 🅱️ased will submit to verbal harassment and creative disciplinary correction from his brothers until he amends his ways.</p>`,
-
   guiding_principles: `<p>The Bros of St. Hyacinth will operate by three general guiding principles. These are the tenets of Neo-Gastonism. They go as follows:</p>
 <ol><li>Women aren't allowed to read</li><li>Eat lots of raw eggs</li><li>Beat up furries</li></ol>`,
-
   exercise_plan: `<p>No man can seek holy gains on his own merits. He cannot boast of his strength, for all his strength comes from God.</p>
-<p>For the Apostle says,</p>
 <blockquote>"I can do all these things in Him who strengtheneth me." (Philippians 4:13)</blockquote>
-<p>Likewise Moses:</p>
 <blockquote>"The Lord is my strength and my praise: and he is become salvation to me. He is my God and I will glorify him: the God of my father, and I will exalt him." (Exodus 15:2)</blockquote>
 <p>Therefore, Bros of St. Hyacinth lift not in vain glory, but pray constantly to the Lord, that He will strengthen us in our endeavors.</p>
-<p>For this cause, Bros of St. Hyacinth seek to grow in the wisdom of God. While in the gym, Bros of St. Hyacinth will listen to readings of Holy Scripture, so that the soul may suffer purification, and exercise be made into a holy act, rather than a worldly one.</p>`,
-
+<p>While in the gym, Bros of St. Hyacinth will listen to readings of Holy Scripture, so that the soul may suffer purification, and exercise be made into a holy act, rather than a worldly one.</p>`,
   prayer: `<p><strong>Opening Prayer</strong></p>
 <ul><li>Pater Noster</li><li>Ave Maria</li><li>Gloria Patri</li><li>Invoke the Intercession of St. Hyacinth of Poland</li></ul>
 <p><strong>Prayer Before Each Set of Reps</strong></p>
 <ul><li>Pray "Non nobis, Domine, non nobis, sed nomini tuo da gloriam"</li><li>Pray for the intercession of:<ul><li>St. Hyacinth of Poland, patron saint of weight lifters</li><li>St. Christopher, a great pioneer of hallowed swolness</li><li>St. Joseph, in order that you might develop in your strength as a man of virtue</li></ul></li></ul>
 <p><strong>Daily Rosary</strong></p>
-<ul><li>At some time outside of the meeting, either by yourself or in a group, pray the Holy Rosary of the Blessed Virgin Mary. Bonus points if it's in Latin.</li></ul>
-<p><strong>Pray for the wisdom to grow greater in virtue</strong></p>
-<ul><li>Your guardian angel is ya' boy here</li></ul>`,
-
-  discipline: `<ul>
-<li>Wake up every day at 6:15</li>
-<li>Only take cold showers (as cold as the water will get)</li>
-<li>Never waste time on the internet</li>
-<li>Drink raw eggs every day (creatine recommended)</li>
-<li>Prefer hunger to unhealthy food</li>
-<li>Weekly confession</li>
-<li>Daily Mass</li>
-<li>Daily Rosary</li>
-</ul>`,
-
-  monastic_habit: `<ul>
-<li>Repeal 19 Shirt</li>
-<li>Cargo Shorts</li>
-<li>Hawaiian Shirt</li>
-<li>Pit Vipers</li>
-</ul>`,
+<ul><li>At some time outside of the meeting, pray the Holy Rosary. Bonus points if it's in Latin.</li></ul>`,
+  discipline: `<ul><li>Wake up every day at 6:15</li><li>Only take cold showers (as cold as the water will get)</li><li>Never waste time on the internet</li><li>Drink raw eggs every day (creatine recommended)</li><li>Prefer hunger to unhealthy food</li><li>Weekly confession</li><li>Daily Mass</li><li>Daily Rosary</li></ul>`,
+  monastic_habit: `<ul><li>Repeal 19 Shirt</li><li>Cargo Shorts</li><li>Hawaiian Shirt</li><li>Pit Vipers</li></ul>`,
 };
+
+const DEFAULT_SECTION_INDEX = [
+  { id: "introduction",       label: "Introduction" },
+  { id: "guiding_principles", label: "Guiding Principles" },
+  { id: "exercise_plan",      label: "Exercise Plan" },
+  { id: "prayer",             label: "Prayer" },
+  { id: "discipline",         label: "Discipline" },
+  { id: "monastic_habit",     label: "Monastic Habit" },
+];
 
 function RulePage({ user }) {
   const isArchAdmin = user?.role === "arch_admin";
-  const [sections, setSections] = useState(RULE_DEFAULTS);
-  const [editMode, setEditMode] = useState(false);
-  const [saving, setSaving]     = useState(null);
-  const editorRefs  = useRef({});
+  const [sectionIndex, setSectionIndex] = useState(DEFAULT_SECTION_INDEX); // ordered list of {id, label}
+  const [contents, setContents]         = useState(RULE_DEFAULTS);          // { id: html }
+  const [editMode, setEditMode]         = useState(false);
+  const [saving, setSaving]             = useState(false);
+  const editorRefs   = useRef({});
   const fileInputRef = useRef(null);
-  const [imgTarget, setImgTarget] = useState(null);
+  const [imgTarget, setImgTarget]       = useState(null);
+  const [renamingId, setRenamingId]     = useState(null); // id of section being renamed
+  const [renameVal, setRenameVal]       = useState("");
 
-  // Load saved content
+  // ── Load all data from server ───────────────────────────────────────────────
   useEffect(() => {
     const token = localStorage.getItem("auth_token");
     fetch(`${API_BASE}/api/rule`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(data => {
+        // __index__ is a special key storing the section list as JSON
+        if (data.__index__) {
+          try { setSectionIndex(JSON.parse(data.__index__)); } catch (_) {}
+        }
         const merged = { ...RULE_DEFAULTS };
-        Object.entries(data).forEach(([k, v]) => { if (v) merged[k] = v; });
-        setSections(merged);
+        Object.entries(data).forEach(([k, v]) => { if (v && k !== "__index__") merged[k] = v; });
+        setContents(merged);
       })
       .catch(() => {});
   }, []);
 
-  // When entering edit mode, populate contentEditable with current HTML
+  // Populate editors when entering edit mode
   useEffect(() => {
     if (editMode) {
-      RULE_SECTIONS.forEach(sec => {
+      sectionIndex.forEach(sec => {
         const el = editorRefs.current[sec.id];
-        if (el) el.innerHTML = sections[sec.id];
+        if (el) el.innerHTML = contents[sec.id] ?? "";
       });
     }
   }, [editMode]);
 
-  const saveSection = async (id) => {
-    const html = editorRefs.current[id]?.innerHTML ?? sections[id];
-    setSaving(id);
+  // ── Persist helpers ─────────────────────────────────────────────────────────
+  const apiPut = async (id, content) => {
     const token = localStorage.getItem("auth_token");
-    try {
-      await fetch(`${API_BASE}/api/rule/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ content: html }),
-      });
-      setSections(prev => ({ ...prev, [id]: html }));
-    } catch (_) {}
-    setSaving(null);
+    await fetch(`${API_BASE}/api/rule/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ content }),
+    });
   };
 
   const saveAll = async () => {
-    for (const sec of RULE_SECTIONS) await saveSection(sec.id);
+    setSaving(true);
+    // Save section index
+    await apiPut("__index__", JSON.stringify(sectionIndex));
+    // Save each section content
+    for (const sec of sectionIndex) {
+      const html = editorRefs.current[sec.id]?.innerHTML ?? contents[sec.id] ?? "";
+      await apiPut(sec.id, html);
+      setContents(prev => ({ ...prev, [sec.id]: html }));
+    }
+    setSaving(false);
   };
 
-  const exec = (cmd, val = null) => {
-    document.execCommand(cmd, false, val);
+  // ── Section management ──────────────────────────────────────────────────────
+  const addSection = () => {
+    const id    = "section_" + Date.now();
+    const label = "New Section";
+    setSectionIndex(prev => [...prev, { id, label }]);
+    setContents(prev => ({ ...prev, [id]: "<p>Enter text here.</p>" }));
+    // Scroll to bottom after render
+    setTimeout(() => {
+      const el = editorRefs.current[id];
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
   };
 
+  const removeSection = async (id) => {
+    if (!window.confirm("Delete this section? This cannot be undone.")) return;
+    setSectionIndex(prev => prev.filter(s => s.id !== id));
+    setContents(prev => { const n = { ...prev }; delete n[id]; return n; });
+    // Also remove from DB
+    await apiPut(id, "");
+    await apiPut("__index__", JSON.stringify(sectionIndex.filter(s => s.id !== id)));
+  };
+
+  const moveSection = (id, dir) => {
+    setSectionIndex(prev => {
+      const idx  = prev.findIndex(s => s.id === id);
+      const next = idx + dir;
+      if (next < 0 || next >= prev.length) return prev;
+      const arr = [...prev];
+      [arr[idx], arr[next]] = [arr[next], arr[idx]];
+      return arr;
+    });
+  };
+
+  const startRename = (id, label) => { setRenamingId(id); setRenameVal(label); };
+  const commitRename = () => {
+    if (!renameVal.trim()) { setRenamingId(null); return; }
+    setSectionIndex(prev => prev.map(s => s.id === renamingId ? { ...s, label: renameVal.trim() } : s));
+    setRenamingId(null);
+  };
+
+  // ── execCommand wrapper ─────────────────────────────────────────────────────
+  const exec = (cmd, val = null) => document.execCommand(cmd, false, val);
+
+  // ── Image insertion ─────────────────────────────────────────────────────────
   const insertImage = (e) => {
     const file = e.target.files?.[0];
     if (!file || !imgTarget) return;
@@ -3203,56 +3231,48 @@ function RulePage({ user }) {
       if (!el) return;
       el.focus();
       exec("insertImage", ev.target.result);
-      // Style the image after insertion
-      const imgs = el.querySelectorAll("img");
-      imgs.forEach(img => { img.style.cssText = "max-width:100%;border-radius:4px;margin:8px 0;display:block;"; });
+      el.querySelectorAll("img").forEach(img => {
+        img.style.cssText = "max-width:100%;border-radius:4px;margin:8px 0;display:block;";
+      });
     };
     reader.readAsDataURL(file);
     e.target.value = "";
     setImgTarget(null);
   };
 
-  // Toolbar button style
-  const TB = { cursor:"pointer", background:"rgba(136,255,0,0.07)", border:"1px solid rgba(136,255,0,0.2)",
+  // ── Toolbar ─────────────────────────────────────────────────────────────────
+  const TB = {
+    cursor:"pointer", background:"rgba(136,255,0,0.07)", border:"1px solid rgba(136,255,0,0.2)",
     color:"var(--chrome)", borderRadius:3, padding:"3px 8px", fontSize:12,
-    fontFamily:"'Orbitron',sans-serif", letterSpacing:0.5, transition:"all 0.15s" };
-  const TBActive = { ...TB, background:"rgba(136,255,0,0.2)", color:"var(--accent)", borderColor:"rgba(136,255,0,0.5)" };
+    fontFamily:"'Orbitron',sans-serif", letterSpacing:0.5, transition:"all 0.15s",
+  };
 
   const Toolbar = ({ secId }) => (
     <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:8,
       padding:"8px", background:"rgba(0,0,0,0.3)",
       border:"1px solid rgba(136,255,0,0.15)", borderRadius:"4px 4px 0 0" }}>
-      {/* Text style */}
       <button style={TB} title="Bold"          onMouseDown={e=>{e.preventDefault();exec("bold");}}>𝗕</button>
       <button style={TB} title="Italic"        onMouseDown={e=>{e.preventDefault();exec("italic");}}>𝘐</button>
       <button style={TB} title="Underline"     onMouseDown={e=>{e.preventDefault();exec("underline");}}>U̲</button>
       <button style={TB} title="Strikethrough" onMouseDown={e=>{e.preventDefault();exec("strikeThrough");}}>S̶</button>
-      <div style={{width:1, background:"rgba(136,255,0,0.2)", margin:"0 2px"}}/>
-      {/* Block format */}
+      <div style={{width:1,background:"rgba(136,255,0,0.2)",margin:"0 2px"}}/>
       <button style={TB} title="Paragraph"     onMouseDown={e=>{e.preventDefault();exec("formatBlock","<p>");}}>¶</button>
       <button style={TB} title="Heading 1"     onMouseDown={e=>{e.preventDefault();exec("formatBlock","<h2>");}}>H1</button>
       <button style={TB} title="Heading 2"     onMouseDown={e=>{e.preventDefault();exec("formatBlock","<h3>");}}>H2</button>
       <button style={TB} title="Blockquote"    onMouseDown={e=>{e.preventDefault();exec("formatBlock","<blockquote>");}}>&ldquo;</button>
-      <div style={{width:1, background:"rgba(136,255,0,0.2)", margin:"0 2px"}}/>
-      {/* Lists */}
+      <div style={{width:1,background:"rgba(136,255,0,0.2)",margin:"0 2px"}}/>
       <button style={TB} title="Bullet list"   onMouseDown={e=>{e.preventDefault();exec("insertUnorderedList");}}>• —</button>
       <button style={TB} title="Numbered list" onMouseDown={e=>{e.preventDefault();exec("insertOrderedList");}}>1. —</button>
       <button style={TB} title="Indent"        onMouseDown={e=>{e.preventDefault();exec("indent");}}>→</button>
       <button style={TB} title="Outdent"       onMouseDown={e=>{e.preventDefault();exec("outdent");}}>←</button>
-      <div style={{width:1, background:"rgba(136,255,0,0.2)", margin:"0 2px"}}/>
-      {/* Insert */}
+      <div style={{width:1,background:"rgba(136,255,0,0.2)",margin:"0 2px"}}/>
       <button style={TB} title="Insert image"
         onMouseDown={e=>{e.preventDefault();setImgTarget(secId);fileInputRef.current.click();}}>🖼</button>
       <button style={TB} title="Horizontal rule" onMouseDown={e=>{e.preventDefault();exec("insertHorizontalRule");}}>—</button>
-      <div style={{width:1, background:"rgba(136,255,0,0.2)", margin:"0 2px"}}/>
-      {/* Save this section */}
-      <button style={{...TB, marginLeft:"auto", color:"var(--accent)", borderColor:"rgba(136,255,0,0.4)"}}
-        onMouseDown={e=>{e.preventDefault();saveSection(secId);}}>
-        {saving === secId ? "…" : "💾 Save"}
-      </button>
     </div>
   );
 
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="page" style={{ position:"relative" }}>
       <div className="page-title">RULE OF THE <span className="accentText">BROS</span></div>
@@ -3260,98 +3280,117 @@ function RulePage({ user }) {
 
       <input ref={fileInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={insertImage} />
 
-      {RULE_SECTIONS.map(sec => (
+      {sectionIndex.map((sec, idx) => (
         <div key={sec.id} className="card" style={{ overflow: editMode && isArchAdmin ? "visible" : "hidden" }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: editMode && isArchAdmin ? 4 : 16 }}>
-            <div className="card-title" style={{ marginBottom:0 }}>{sec.label}</div>
+
+          {/* Section header */}
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom: editMode && isArchAdmin ? 4 : 16, flexWrap:"wrap" }}>
+            {/* Label — editable inline when renaming */}
+            {isArchAdmin && editMode && renamingId === sec.id ? (
+              <input
+                value={renameVal}
+                onChange={e => setRenameVal(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") commitRename(); if (e.key === "Escape") setRenamingId(null); }}
+                onBlur={commitRename}
+                autoFocus
+                style={{ flex:1, background:"rgba(0,0,0,0.4)", border:"1px solid rgba(136,255,0,0.5)",
+                  color:"var(--accent)", fontFamily:"'Orbitron',sans-serif", fontSize:11, fontWeight:700,
+                  letterSpacing:2, textTransform:"uppercase", padding:"4px 8px", borderRadius:3, outline:"none" }}
+              />
+            ) : (
+              <div className="card-title" style={{ marginBottom:0, flex:1,
+                cursor: isArchAdmin && editMode ? "pointer" : "default" }}
+                onDoubleClick={() => isArchAdmin && editMode && startRename(sec.id, sec.label)}
+                title={isArchAdmin && editMode ? "Double-click to rename" : undefined}>
+                {sec.label}
+                {isArchAdmin && editMode && (
+                  <span style={{ marginLeft:8, fontSize:9, color:"var(--muted)", fontWeight:400, letterSpacing:1 }}>
+                    dbl-click to rename
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Section controls in edit mode */}
+            {isArchAdmin && editMode && (
+              <div style={{ display:"flex", gap:4, flexShrink:0 }}>
+                <button style={{...TB, padding:"2px 7px", fontSize:11}} title="Move up"
+                  onMouseDown={e=>{e.preventDefault();moveSection(sec.id,-1);}}>↑</button>
+                <button style={{...TB, padding:"2px 7px", fontSize:11}} title="Move down"
+                  onMouseDown={e=>{e.preventDefault();moveSection(sec.id,1);}}>↓</button>
+                <button style={{...TB, padding:"2px 7px", fontSize:11,
+                  color:"rgba(255,80,80,0.8)", borderColor:"rgba(255,80,80,0.3)"}}
+                  title="Delete section"
+                  onMouseDown={e=>{e.preventDefault();removeSection(sec.id);}}>✕</button>
+              </div>
+            )}
           </div>
 
-          {/* Toolbar — only in edit mode */}
           {isArchAdmin && editMode && <Toolbar secId={sec.id} />}
 
-          {/* Content area */}
           <div
             ref={el => { editorRefs.current[sec.id] = el; }}
             contentEditable={isArchAdmin && editMode}
             suppressContentEditableWarning
+            className={(!editMode || !isArchAdmin) ? "rule-card" : ""}
             style={{
-              fontSize:13, lineHeight:1.75, color:"var(--chrome)",
+              fontSize:13, lineHeight:1.75, color:"#f4ffe8",
               fontFamily:"'Orbitron',sans-serif", letterSpacing:"0.3px",
               outline:"none",
               padding: isArchAdmin && editMode ? "10px 12px" : "0",
               borderRadius: isArchAdmin && editMode ? "0 0 4px 4px" : 3,
               border: isArchAdmin && editMode ? "1px solid rgba(136,255,0,0.2)" : "none",
-              borderTop: "none",
+              borderTop:"none",
               minHeight: isArchAdmin && editMode ? 80 : 0,
               background: isArchAdmin && editMode ? "rgba(0,0,0,0.15)" : "transparent",
               userSelect: (!isArchAdmin || !editMode) ? "none" : "text",
               WebkitUserSelect: (!isArchAdmin || !editMode) ? "none" : "text",
             }}
-            className={(!editMode || !isArchAdmin) ? "rule-card" : ""}
             {...(!editMode || !isArchAdmin
-              ? { dangerouslySetInnerHTML: { __html: sections[sec.id] } }
+              ? { dangerouslySetInnerHTML: { __html: contents[sec.id] ?? "" } }
               : {})}
           />
         </div>
       ))}
 
       <style>{`
-        [contenteditable="true"],
-        .rule-card {
-          color: #f4ffe8 !important;
-        }
-        [contenteditable="true"] p,
-        .rule-card p    { margin:0 0 10px; color:#f4ffe8 !important; }
-        [contenteditable="true"] h2,
-        .rule-card h2   { font-size:16px; font-weight:700; color:#88ff00 !important; margin:14px 0 8px; letter-spacing:2px; text-transform:uppercase; }
-        [contenteditable="true"] h3,
-        .rule-card h3   { font-size:13px; font-weight:700; color:#f4ffe8 !important; margin:10px 0 6px; letter-spacing:1px; }
-        [contenteditable="true"] ul,
-        [contenteditable="true"] ol,
-        .rule-card ul,
-        .rule-card ol   { margin:0 0 10px !important; padding-left:28px !important; }
-        [contenteditable="true"] ul,
-        .rule-card ul   { list-style-type: disc !important; }
-        [contenteditable="true"] ol,
-        .rule-card ol   { list-style-type: decimal !important; }
-        [contenteditable="true"] li,
-        .rule-card li   { margin-bottom:4px !important; display:list-item !important; color:#f4ffe8 !important; }
-        [contenteditable="true"] ul ul,
-        .rule-card ul ul { list-style-type: circle !important; padding-left:22px !important; }
-        [contenteditable="true"] ol ol,
-        .rule-card ol ol { list-style-type: lower-alpha !important; padding-left:22px !important; }
-        [contenteditable="true"] blockquote,
-        .rule-card blockquote {
-          margin:12px 0; padding:10px 16px;
-          border-left:2px solid rgba(136,255,0,0.4);
-          background:rgba(136,255,0,0.04);
-          color:#f4ffe8 !important; font-style:italic;
-          border-radius:0 3px 3px 0;
-        }
-        [contenteditable="true"] hr,
-        .rule-card hr   { border:none; border-top:1px solid rgba(136,255,0,0.2); margin:12px 0; }
-        [contenteditable="true"] img,
-        .rule-card img  { max-width:100%; border-radius:4px; margin:8px 0; display:block; }
-        [contenteditable="true"] strong,
-        .rule-card strong { color:#88ff00 !important; }
-        [contenteditable="true"] em,
-        .rule-card em   { color:#f4ffe8 !important; font-style:italic; }
+        [contenteditable="true"], .rule-card { color:#f4ffe8 !important; }
+        [contenteditable="true"] p, .rule-card p { margin:0 0 10px; color:#f4ffe8 !important; }
+        [contenteditable="true"] h2, .rule-card h2 { font-size:16px; font-weight:700; color:#88ff00 !important; margin:14px 0 8px; letter-spacing:2px; text-transform:uppercase; }
+        [contenteditable="true"] h3, .rule-card h3 { font-size:13px; font-weight:700; color:#f4ffe8 !important; margin:10px 0 6px; letter-spacing:1px; }
+        [contenteditable="true"] ul, [contenteditable="true"] ol, .rule-card ul, .rule-card ol { margin:0 0 10px !important; padding-left:28px !important; }
+        [contenteditable="true"] ul, .rule-card ul { list-style-type:disc !important; }
+        [contenteditable="true"] ol, .rule-card ol { list-style-type:decimal !important; }
+        [contenteditable="true"] li, .rule-card li { margin-bottom:4px !important; display:list-item !important; color:#f4ffe8 !important; }
+        [contenteditable="true"] ul ul, .rule-card ul ul { list-style-type:circle !important; padding-left:22px !important; }
+        [contenteditable="true"] ol ol, .rule-card ol ol { list-style-type:lower-alpha !important; padding-left:22px !important; }
+        [contenteditable="true"] blockquote, .rule-card blockquote { margin:12px 0; padding:10px 16px; border-left:2px solid rgba(136,255,0,0.4); background:rgba(136,255,0,0.04); color:#f4ffe8 !important; font-style:italic; border-radius:0 3px 3px 0; }
+        [contenteditable="true"] hr, .rule-card hr { border:none; border-top:1px solid rgba(136,255,0,0.2); margin:12px 0; }
+        [contenteditable="true"] img, .rule-card img { max-width:100%; border-radius:4px; margin:8px 0; display:block; }
+        [contenteditable="true"] strong, .rule-card strong { color:#88ff00 !important; }
+        [contenteditable="true"] em, .rule-card em { color:#f4ffe8 !important; font-style:italic; }
       `}</style>
 
-      {/* Arch-admin toolbar — bottom of page */}
+      {/* Bottom toolbar */}
       {isArchAdmin && (
         <div style={{ display:"flex", gap:10, marginTop:8, marginBottom:8, alignItems:"center", flexWrap:"wrap" }}>
           <button className="btn btn-primary btn-sm"
-            onClick={() => {
-              if (editMode) saveAll();
-              setEditMode(v => !v);
-            }}>
-            {editMode ? "💾 Save All & Exit" : "✏️ Edit Rule"}
+            onClick={() => { if (editMode) saveAll(); setEditMode(v => !v); }}>
+            {editMode ? (saving ? "Saving…" : "💾 Save All & Exit") : "✏️ Edit Rule"}
           </button>
           {editMode && (
-            <span style={{ fontSize:10, color:"var(--muted)", fontFamily:"'Orbitron',sans-serif", letterSpacing:1 }}>
-              EDIT MODE ACTIVE
-            </span>
+            <>
+              <button className="btn btn-sm"
+                style={{ fontSize:10, padding:"6px 14px", background:"rgba(136,255,0,0.08)",
+                  border:"1px solid rgba(136,255,0,0.3)", color:"var(--accent)",
+                  fontFamily:"'Orbitron',sans-serif", letterSpacing:1, cursor:"pointer", borderRadius:3 }}
+                onClick={addSection}>
+                + Add Section
+              </button>
+              <span style={{ fontSize:10, color:"var(--muted)", fontFamily:"'Orbitron',sans-serif", letterSpacing:1 }}>
+                EDIT MODE ACTIVE
+              </span>
+            </>
           )}
         </div>
       )}
