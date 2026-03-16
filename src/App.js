@@ -865,7 +865,7 @@ function LinkPreview({ url, onLoad }) {
 }
 
 // ─── BOARD PAGE ───────────────────────────────────────────────────────────────
-function BoardPage({ username }) {
+function BoardPage({ username, currentUser }) {
   const isMobile = useIsMobile();
   const { messages, fetchMessages, saveMessage, saveReaction, deleteMessage } = useBoardMessages();
   const [text, setText]                 = useState("");
@@ -913,7 +913,17 @@ function BoardPage({ username }) {
 
   useEffect(() => { fetchMessages(); }, []);
 
-  // Close emoji pickers on outside click.
+  // Close reaction tooltip on any click or touch outside
+  useEffect(() => {
+    if (!reactionTooltip) return;
+    const close = () => setReactionTooltip(null);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("touchstart", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("touchstart", close);
+    };
+  }, [reactionTooltip]);
   // Only listen to mousedown (not touchstart) — on mobile, iOS fires a synthetic
   // touchstart on the document when the keyboard opens, which would close the picker.
   // The mobile full picker is dismissed via its backdrop overlay instead.
@@ -1283,9 +1293,7 @@ function BoardPage({ username }) {
                     {/* Reactor names tooltip */}
                     {isOpen && (
                       <div
-                        onMouseDown={e => e.stopPropagation()}
-                        onTouchStart={e => e.stopPropagation()}
-                        onClick={() => setReactionTooltip(null)}
+                        onClick={e => { e.stopPropagation(); setReactionTooltip(null); }}
                         style={{
                           position:"absolute", bottom:"calc(100% + 6px)",
                           [isMe ? "right" : "left"]: 0,
@@ -5739,7 +5747,7 @@ export default function App() {
         <div ref={mainRef} className={`main${isMobile ? (navExpanded ? " nav-open" : " nav-closed") : ""}${isMobile && page === "boards" ? " chat-active" : ""}`} style={{display:"flex", flexDirection:"column"}}>
           {page === "workout" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><WorkoutPage username={username} /></div>}
           {page === "topcharts" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><TopChartsPage username={username} /></div>}
-          {page === "boards" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><BoardPage username={username} /></div>}
+          {page === "boards" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><BoardPage username={username} currentUser={user} /></div>}
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
         </div>
         <FigureBackdrop variant="boards"    visible={page === "boards"}    isMobile={isMobile} />
