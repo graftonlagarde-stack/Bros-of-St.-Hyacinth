@@ -1158,17 +1158,31 @@ function BoardPage({ username }) {
           )}
 
           <div style={{
-            background: isMe ? "linear-gradient(135deg,rgba(0,102,170,0.65),rgba(0,51,102,0.65))" : "linear-gradient(135deg,rgba(0,14,6,0.65),rgba(0,8,3,0.65))",
+            background: isMe
+              ? `radial-gradient(ellipse 90% 50% at 50% -10%, rgba(255,255,255,0.28) 0%, transparent 60%),
+                 radial-gradient(ellipse 60% 40% at 80% 90%, rgba(0,60,200,0.3) 0%, transparent 70%),
+                 linear-gradient(160deg, rgba(20,80,200,0.95) 0%, rgba(5,30,110,0.98) 100%)`
+              : `radial-gradient(ellipse 90% 50% at 50% -10%, rgba(255,255,255,0.55) 0%, transparent 55%),
+                 radial-gradient(ellipse 60% 40% at 80% 90%, rgba(180,200,220,0.15) 0%, transparent 70%),
+                 linear-gradient(160deg, rgba(200,215,235,0.22) 0%, rgba(160,180,210,0.12) 100%)`,
             border: emojiPickerFor === msg.id
               ? "1px solid rgba(136,255,0,0.75)"
-              : `1px solid ${isMe ? "rgba(140,255,0,0.3)" : "var(--border)"}`,
-            borderRadius: isMe ? "8px 2px 8px 8px" : "2px 8px 8px 8px",
+              : isMe
+                ? "1px solid rgba(100,160,255,0.28)"
+                : "1px solid rgba(200,215,240,0.22)",
+            borderTop: emojiPickerFor === msg.id
+              ? "1px solid rgba(136,255,0,0.75)"
+              : isMe ? "1.5px solid rgba(180,210,255,0.7)" : "1.5px solid rgba(255,255,255,0.55)",
+            borderLeft: isMe ? "1px solid rgba(140,190,255,0.38)" : "1px solid rgba(220,230,245,0.3)",
+            borderRadius: isMe ? "18px 3px 18px 18px" : "3px 18px 18px 18px",
             padding: msg.text ? "10px 14px" : "4px",
             fontSize:14, lineHeight:1.5, wordBreak:"break-word",
             boxShadow: emojiPickerFor === msg.id
               ? "0 0 0 2px rgba(136,255,0,0.15), 0 2px 16px rgba(136,255,0,0.2)"
-              : isMe ? "0 2px 12px rgba(0,100,200,0.3)" : "0 2px 8px rgba(0,0,0,0.4)",
-            color: "#ffffff",
+              : isMe
+                ? "inset 0 2px 0 rgba(200,225,255,0.22), inset 0 -3px 8px rgba(0,20,100,0.45), 0 12px 32px rgba(0,0,0,0.65), 0 3px 8px rgba(0,20,120,0.4), 0 0 0 0.5px rgba(0,0,0,0.6)"
+                : "inset 0 2px 0 rgba(255,255,255,0.3), inset 0 -3px 8px rgba(100,130,180,0.18), 0 12px 32px rgba(0,0,0,0.65), 0 3px 8px rgba(60,80,120,0.35), 0 0 0 0.5px rgba(0,0,0,0.55)",
+            color: isMe ? "#deeeff" : "#ddeeff",
             transition: "border 0.15s, box-shadow 0.15s",
           }}>
             {msg.text && <div style={{whiteSpace:"pre-wrap"}}>{msg.text}</div>}
