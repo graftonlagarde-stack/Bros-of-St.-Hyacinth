@@ -4551,14 +4551,17 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack, navExpand
     setElapsed(audio.currentTime);
   };
 
-  // Progress bar: click to seek + drag to scrub
+  // Progress bar: click to seek + drag to scrub (mouse + touch)
   const barRef = useRef(null);
+  const durationRef = useRef(duration);
+  useEffect(() => { durationRef.current = duration; }, [duration]);
   const seekTo = (clientX) => {
     const audio = audioRef.current;
-    if (!audio || !duration || !barRef.current) return;
+    const dur = durationRef.current;
+    if (!audio || !dur || !barRef.current) return;
     const rect = barRef.current.getBoundingClientRect();
     const pct  = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    const t    = pct * duration;
+    const t    = pct * dur;
     audio.currentTime = t;
     setElapsed(t);
   };
@@ -4570,6 +4573,33 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack, navExpand
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup",   onUp);
   };
+  // Native touch listeners on the bar — passive:false on touchstart claims the
+  // gesture immediately so iOS cannot reassign it to page scroll
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const onTouchStart = (e) => {
+      e.preventDefault();
+      scrubbing.current = true;
+      seekTo(e.touches[0].clientX);
+    };
+    const onTouchMove = (e) => {
+      if (!scrubbing.current) return;
+      e.preventDefault();
+      seekTo(e.touches[0].clientX);
+    };
+    const onTouchEnd = () => { scrubbing.current = false; };
+    el.addEventListener("touchstart", onTouchStart, { passive: false });
+    el.addEventListener("touchmove",  onTouchMove,  { passive: false });
+    el.addEventListener("touchend",   onTouchEnd,   { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove",  onTouchMove);
+      el.removeEventListener("touchend",   onTouchEnd);
+    };
+  // seekTo reads via durationRef so it's stable; re-run only if barRef changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const progress = duration > 0 ? (elapsed / duration) * 100 : 0;
   const noSrc    = !track?.src;
