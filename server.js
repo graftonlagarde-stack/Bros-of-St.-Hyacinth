@@ -626,15 +626,44 @@ async function sendPushToUser(userId, payload) {
 app.get("/api/link-preview", requireAuth, async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: "url is required" });
-  try {
-    new URL(url); // validate
-  } catch {
-    return res.status(400).json({ error: "Invalid URL" });
+  try { new URL(url); } catch { return res.status(400).json({ error: "Invalid URL" }); }
+
+  const domain = new URL(url).hostname.replace(/^www\./, "");
+
+  // YouTube: use oEmbed which reliably returns title + thumbnail regardless of bot detection
+  if (/youtube\.com|youtu\.be/.test(url)) {
+    try {
+      const r = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`, { signal: AbortSignal.timeout(5000) });
+      if (r.ok) {
+        const d = await r.json();
+        const vidMatch = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+        const image = vidMatch ? `https://img.youtube.com/vi/${vidMatch[1]}/hqdefault.jpg` : (d.thumbnail_url || null);
+        return res.json({ title: d.title || null, description: d.author_name ? `by ${d.author_name}` : null, image, siteName: "YouTube", domain: "youtube.com", url });
+      }
+    } catch (_) {}
   }
+
+  // Twitter/X: use publish.twitter.com/oembed
+  if (/twitter\.com|x\.com/.test(url)) {
+    try {
+      const r = await fetch(`https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(5000) });
+      if (r.ok) {
+        const d = await r.json();
+        const text = d.html ? d.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : null;
+        return res.json({ title: d.author_name ? `@${d.author_name}` : "Twitter", description: text ? text.slice(0, 200) : null, image: null, siteName: "Twitter", domain, url });
+      }
+    } catch (_) {}
+  }
+
+  // General: scrape OG tags with a realistic browser User-Agent
   try {
     const response = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; BrosBot/1.0)" },
-      signal: AbortSignal.timeout(5000),
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      signal: AbortSignal.timeout(8000),
     });
     const html = await response.text();
     const get = (prop) => {
@@ -647,7 +676,6 @@ app.get("/api/link-preview", requireAuth, async (req, res) => {
     const description = get("og:description") || get("description");
     const image       = get("og:image");
     const siteName    = get("og:site_name");
-    const domain      = new URL(url).hostname.replace(/^www\./, "");
     return res.json({ title, description, image, siteName, domain, url });
   } catch (err) {
     return res.status(502).json({ error: "Could not fetch preview: " + err.message });
