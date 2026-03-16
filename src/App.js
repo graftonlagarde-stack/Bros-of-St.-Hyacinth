@@ -3079,6 +3079,612 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
 
 
 // ─── AUDIO FIGURE BACKDROP ──────────────────────────────────────────────────────────────────────────────
+
+// ─── RULE PAGE ────────────────────────────────────────────────────────────────
+const RULE_SECTIONS = [
+  { id: "introduction",       label: "Introduction" },
+  { id: "guiding_principles", label: "Guiding Principles" },
+  { id: "exercise_plan",      label: "Exercise Plan" },
+  { id: "prayer",             label: "Prayer" },
+  { id: "discipline",         label: "Discipline" },
+  { id: "monastic_habit",     label: "Monastic Habit" },
+];
+
+const RULE_DEFAULTS = {
+  introduction: `<p>The Bros. of St. Hyacinth constitutes a holy order of alarmingly right-wing young men aiming to pursue virtue and excellence through the process of becoming yolked.</p>
+<p>The soul is, after all, the form of the body. The average modern man's body takes the form of an amorphous blob. It is no wonder, then, that we observe the rapidly deteriorating character of men's souls. Therefore, to improve the soul, we must improve the form of the body.</p>
+<p>Such a pursuit of excellence requires the engagement of all man's faculties. No one can expect to profit from weightlifting if in other respects he remains degenerate, uncivilized, undisciplined, impure, intemperate, or if he in any other respect maintains the vicious barbarism to which Adam's sin inclines him. Strength in body avails nothing without strength in virtue.</p>
+<blockquote>"But avoid foolish and old wives' fables: and exercise thyself unto godliness. For bodily exercise is profitable to little: but godliness is profitable to all things, having promise of the life that now is, and of that which is to come."<br/>— I Timothy IV: VII–VIII</blockquote>
+<p>Accordingly, the Bros of St. Hyacinth, not content with anything only "profitable to little," seek to sanctify and elevate the act of physical exercise by the grace of God. We will exercise ourselves unto Godliness.</p>
+<p>Bros of St. Hyacinth must continually and at all times contemplate the meaning of the word <em>excellence</em>. Each member will set unrealistic expectations for himself and then surpass those expectations. He will come to despise mediocrity with an implacable rage. He will seek to guide his actions by the following virtues, in addition to all others:</p>
+<ul><li>Charity</li><li>Humility</li><li>Discipline</li><li>Magnanimity</li><li>Courage</li><li>Sexism</li><li>Assertiveness</li><li>Prudence</li></ul>
+<p>Finally, any member who is not 🅱️ased will submit to verbal harassment and creative disciplinary correction from his brothers until he amends his ways.</p>`,
+
+  guiding_principles: `<p>The Bros of St. Hyacinth will operate by three general guiding principles. These are the tenets of Neo-Gastonism. They go as follows:</p>
+<ol><li>Women aren't allowed to read</li><li>Eat lots of raw eggs</li><li>Beat up furries</li></ol>`,
+
+  exercise_plan: `<p>No man can seek holy gains on his own merits. He cannot boast of his strength, for all his strength comes from God.</p>
+<p>For the Apostle says,</p>
+<blockquote>"I can do all these things in Him who strengtheneth me." (Philippians 4:13)</blockquote>
+<p>Likewise Moses:</p>
+<blockquote>"The Lord is my strength and my praise: and he is become salvation to me. He is my God and I will glorify him: the God of my father, and I will exalt him." (Exodus 15:2)</blockquote>
+<p>Therefore, Bros of St. Hyacinth lift not in vain glory, but pray constantly to the Lord, that He will strengthen us in our endeavors.</p>
+<p>For this cause, Bros of St. Hyacinth seek to grow in the wisdom of God. While in the gym, Bros of St. Hyacinth will listen to readings of Holy Scripture, so that the soul may suffer purification, and exercise be made into a holy act, rather than a worldly one.</p>`,
+
+  prayer: `<p><strong>Opening Prayer</strong></p>
+<ul><li>Pater Noster</li><li>Ave Maria</li><li>Gloria Patri</li><li>Invoke the Intercession of St. Hyacinth of Poland</li></ul>
+<p><strong>Prayer Before Each Set of Reps</strong></p>
+<ul><li>Pray "Non nobis, Domine, non nobis, sed nomini tuo da gloriam"</li><li>Pray for the intercession of:<ul><li>St. Hyacinth of Poland, patron saint of weight lifters</li><li>St. Christopher, a great pioneer of hallowed swolness</li><li>St. Joseph, in order that you might develop in your strength as a man of virtue</li></ul></li></ul>
+<p><strong>Daily Rosary</strong></p>
+<ul><li>At some time outside of the meeting, either by yourself or in a group, pray the Holy Rosary of the Blessed Virgin Mary. Bonus points if it's in Latin.</li></ul>
+<p><strong>Pray for the wisdom to grow greater in virtue</strong></p>
+<ul><li>Your guardian angel is ya' boy here</li></ul>`,
+
+  discipline: `<ul>
+<li>Wake up every day at 6:15</li>
+<li>Only take cold showers (as cold as the water will get)</li>
+<li>Never waste time on the internet</li>
+<li>Drink raw eggs every day (creatine recommended)</li>
+<li>Prefer hunger to unhealthy food</li>
+<li>Weekly confession</li>
+<li>Daily Mass</li>
+<li>Daily Rosary</li>
+</ul>`,
+
+  monastic_habit: `<ul>
+<li>Repeal 19 Shirt</li>
+<li>Cargo Shorts</li>
+<li>Hawaiian Shirt</li>
+<li>Pit Vipers</li>
+</ul>`,
+};
+
+function RulePage({ user }) {
+  const isArchAdmin = user?.role === "arch_admin";
+  const [sections, setSections]   = useState(RULE_DEFAULTS);
+  const [editMode, setEditMode]   = useState(false);
+  const [saving, setSaving]       = useState(null); // section id being saved
+  const [dirty, setDirty]         = useState({});   // { sectionId: html }
+  const editorRefs = useRef({});
+  const fileInputRef = useRef(null);
+  const [imgTarget, setImgTarget] = useState(null); // section id awaiting image
+
+  // Load saved content from server
+  useEffect(() => {
+    const token = localStorage.getItem("auth_token");
+    fetch(`${API_BASE}/api/rule`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => {
+        const merged = { ...RULE_DEFAULTS };
+        Object.entries(data).forEach(([k, v]) => { if (v) merged[k] = v; });
+        setSections(merged);
+      })
+      .catch(() => {});
+  }, []);
+
+  const saveSection = async (id) => {
+    const html = editorRefs.current[id]?.innerHTML ?? dirty[id] ?? sections[id];
+    setSaving(id);
+    const token = localStorage.getItem("auth_token");
+    try {
+      await fetch(`${API_BASE}/api/rule/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ content: html }),
+      });
+      setSections(prev => ({ ...prev, [id]: html }));
+      setDirty(prev => { const n = { ...prev }; delete n[id]; return n; });
+    } catch (_) {}
+    setSaving(null);
+  };
+
+  const saveAll = async () => {
+    for (const sec of RULE_SECTIONS) {
+      await saveSection(sec.id);
+    }
+  };
+
+  const insertImage = (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !imgTarget) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const el = editorRefs.current[imgTarget];
+      if (!el) return;
+      el.focus();
+      const img = document.createElement("img");
+      img.src = ev.target.result;
+      img.style.cssText = "max-width:100%;border-radius:4px;margin:8px 0;display:block;";
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        range.insertNode(img);
+        range.collapse(false);
+      } else {
+        el.appendChild(img);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+    setImgTarget(null);
+  };
+
+  return (
+    <div className="page" style={{ position: "relative" }}>
+      <div className="page-title">RULE OF THE <span className="accentText">BROS</span></div>
+      <div className="page-sub">&ldquo;Idleness is the enemy of the soul.&rdquo; &mdash; St. Benedict</div>
+
+      {/* Hidden file input for image insertion */}
+      <input ref={fileInputRef} type="file" accept="image/*"
+        style={{ display:"none" }} onChange={insertImage} />
+
+      {RULE_SECTIONS.map(sec => (
+        <div key={sec.id} className="card">
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+            <div className="card-title" style={{ marginBottom:0 }}>{sec.label}</div>
+            {isArchAdmin && editMode && (
+              <div style={{ display:"flex", gap:8 }}>
+                <button className="btn btn-sm"
+                  style={{ fontSize:10, padding:"4px 10px", background:"rgba(0,255,204,0.08)", border:"1px solid rgba(0,255,204,0.3)", color:"var(--chrome)", fontFamily:"'Orbitron',sans-serif", letterSpacing:1, cursor:"pointer", borderRadius:3 }}
+                  onClick={() => { setImgTarget(sec.id); fileInputRef.current.click(); }}>
+                  🖼 Image
+                </button>
+                <button className="btn btn-sm"
+                  style={{ fontSize:10, padding:"4px 10px", background:"rgba(136,255,0,0.08)", border:"1px solid rgba(136,255,0,0.3)", color:"var(--accent)", fontFamily:"'Orbitron',sans-serif", letterSpacing:1, cursor:"pointer", borderRadius:3 }}
+                  onClick={() => saveSection(sec.id)}>
+                  {saving === sec.id ? "…" : "Save"}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Content — editable for arch-admin in edit mode, read-only for everyone else */}
+          <div
+            ref={el => { editorRefs.current[sec.id] = el; }}
+            contentEditable={isArchAdmin && editMode}
+            suppressContentEditableWarning
+            onInput={() => {
+              const html = editorRefs.current[sec.id]?.innerHTML ?? "";
+              setDirty(prev => ({ ...prev, [sec.id]: html }));
+            }}
+            dangerouslySetInnerHTML={(!editMode || !isArchAdmin) ? { __html: sections[sec.id] } : undefined}
+            style={{
+              fontSize: 13,
+              lineHeight: 1.75,
+              color: "var(--chrome)",
+              fontFamily: "'Orbitron', sans-serif",
+              letterSpacing: "0.3px",
+              outline: (isArchAdmin && editMode) ? "1px solid rgba(136,255,0,0.25)" : "none",
+              padding: (isArchAdmin && editMode) ? "8px" : "0",
+              borderRadius: 3,
+              minHeight: (isArchAdmin && editMode) ? 60 : 0,
+              // Prevent text selection for non-editors
+              userSelect: (!isArchAdmin || !editMode) ? "none" : "text",
+              WebkitUserSelect: (!isArchAdmin || !editMode) ? "none" : "text",
+            }}
+          />
+        </div>
+      ))}
+
+      {/* Global rule content styles */}
+      <style>{`
+        .rule-content p { margin: 0 0 10px; }
+        .rule-content ul, .rule-content ol { margin: 0 0 10px; padding-left: 22px; }
+        .rule-content li { margin-bottom: 4px; }
+        .rule-content blockquote {
+          margin: 12px 0; padding: 10px 16px;
+          border-left: 2px solid rgba(136,255,0,0.4);
+          background: rgba(136,255,0,0.04);
+          color: var(--muted); font-style: italic;
+          border-radius: 0 3px 3px 0;
+        }
+        .rule-content strong { color: var(--accent); font-weight: 700; }
+        .rule-content em { color: var(--chrome); font-style: italic; }
+        [contenteditable="true"] p { margin: 0 0 10px; }
+        [contenteditable="true"] ul, [contenteditable="true"] ol { margin: 0 0 10px; padding-left: 22px; }
+        [contenteditable="true"] blockquote {
+          margin: 12px 0; padding: 10px 16px;
+          border-left: 2px solid rgba(136,255,0,0.4);
+          background: rgba(136,255,0,0.04);
+          color: var(--muted); font-style: italic;
+        }
+      `}</style>
+
+      {/* Arch-admin toolbar — bottom of page */}
+      {isArchAdmin && (
+        <div style={{ display:"flex", gap:10, marginTop:8, marginBottom:8, alignItems:"center", flexWrap:"wrap" }}>
+          <button className="btn btn-primary btn-sm"
+            onClick={() => { setEditMode(v => !v); if (editMode) saveAll(); }}>
+            {editMode ? "💾 Save All" : "✏️ Edit Rule"}
+          </button>
+          {editMode && (
+            <span style={{ fontSize:10, color:"var(--muted)", fontFamily:"'Orbitron',sans-serif", letterSpacing:1 }}>
+              EDIT MODE — click any section to type · use image button to insert photos
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RuleBackdrop({ visible = false, isMobile = false }) {
+  const mountRef   = useRef(null);
+  const visibleRef = useRef(visible);
+  const [opacity, setOpacity] = useState(0);
+
+  useEffect(() => {
+    visibleRef.current = visible;
+    if (!visible) { setOpacity(0); return; }
+    const t = setTimeout(() => setOpacity(0.85), 250);
+    return () => clearTimeout(t);
+  }, [visible]);
+
+  useEffect(() => {
+    const el = mountRef.current;
+    if (!el) return;
+    let animId = null;
+    let rendererInst = null;
+    let cancelled = false;
+
+    Promise.all([
+      import("three"),
+      import("three/examples/jsm/loaders/FBXLoader"),
+      import("three/examples/jsm/environments/RoomEnvironment"),
+    ]).then(([THREE, { FBXLoader }, { RoomEnvironment }]) => {
+      if (cancelled) return;
+
+      const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
+      const h = window.innerHeight; // full height so bubbles exit at screen bottom
+
+      const scene  = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 5000);
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
+      camera.lookAt(0, 160, 0);
+
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      renderer.setPixelRatio(1);
+      renderer.setSize(w, h);
+      renderer.setClearColor(0x000000, 0);
+      el.appendChild(renderer.domElement);
+      rendererInst = renderer;
+
+      const pmrem  = new THREE.PMREMGenerator(renderer);
+      pmrem.compileEquirectangularShader();
+      const envTex = pmrem.fromScene(new RoomEnvironment()).texture;
+      scene.environment = envTex;
+      pmrem.dispose();
+
+      // ── Lighting ────────────────────────────────────────────────────────────
+      const keyLight = new THREE.DirectionalLight(0x99ccff, 4.5);
+      keyLight.position.set(0, 800, 300);
+      scene.add(keyLight);
+      const keyLight2 = new THREE.DirectionalLight(0xaaddff, 3.0);
+      keyLight2.position.set(200, 600, 100);
+      scene.add(keyLight2);
+      const fillLight = new THREE.DirectionalLight(0x4488cc, 1.2);
+      fillLight.position.set(-400, 200, 400);
+      scene.add(fillLight);
+      const rimLight = new THREE.DirectionalLight(0x002244, 0.4);
+      rimLight.position.set(200, 100, -500);
+      scene.add(rimLight);
+      scene.add(new THREE.AmbientLight(0x112233, 0.8));
+
+      // ── Dual caustic planes ──────────────────────────────────────────────────
+      const makeCausticLayer = (phaseOffset, speedMult) => {
+        const SIZE = 256;
+        const cvs  = document.createElement("canvas");
+        cvs.width = cvs.height = SIZE;
+        const ctx  = cvs.getContext("2d");
+        const tex  = new THREE.CanvasTexture(cvs);
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(2.2, 2.2);
+        const update = (t) => {
+          ctx.clearRect(0, 0, SIZE, SIZE);
+          const tt = t * speedMult;
+          for (let i = 0; i < 10; i++) {
+            const phase = (i / 10) * Math.PI * 2 + phaseOffset;
+            const cx = SIZE * (0.5 + 0.4  * Math.sin(tt * 0.65 + phase) * Math.cos(tt * 0.28 + phase * 0.6));
+            const cy = SIZE * (0.5 + 0.25 * Math.cos(tt * 0.48 + phase * 1.2));
+            const rx = Math.max(1, 16 + 13 * Math.sin(tt * 0.85 + phase * 0.55));
+            const ry = Math.max(0.5, 7 + 5 * Math.cos(tt * 0.58 + phase * 0.75));
+            const al = 0.28 + 0.16 * Math.sin(tt * 1.05 + phase);
+            const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, rx);
+            grd.addColorStop(0,   `rgba(200,230,255,${al})`);
+            grd.addColorStop(0.4, `rgba(160,210,255,${al * 0.55})`);
+            grd.addColorStop(1,   "rgba(0,0,0,0)");
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.scale(1, ry / rx);
+            ctx.translate(-cx, -cy);
+            ctx.beginPath();
+            ctx.arc(cx, cy, rx, 0, Math.PI * 2);
+            ctx.fillStyle = grd;
+            ctx.fill();
+            ctx.restore();
+          }
+          tex.needsUpdate = true;
+        };
+        const mat  = new THREE.MeshBasicMaterial({
+          map: tex, transparent: true, opacity: 0.13,
+          blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+        });
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), mat);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.y = 420;
+        scene.add(mesh);
+        return { update, mat, mesh };
+      };
+      const causticA = makeCausticLayer(0, 1.0);
+      const causticB = makeCausticLayer(Math.PI * 0.7, 0.65);
+      causticB.mesh.rotation.z = Math.PI * 0.08;
+
+      // ── Bubbles — custom shader: Frutiger Aero soap bubble look ─────────────
+      // MeshPhysicalMaterial transmission needs a background to refract, which we
+      // don't have (transparent canvas). Instead we fake the classic bubble look
+      // with a ShaderMaterial: bright specular highlight, iridescent rim, inner shadow.
+      const bubbleVert = `
+        varying vec3 vNormal;
+        varying vec3 vViewDir;
+        void main() {
+          vec4 worldPos = modelMatrix * vec4(position, 1.0);
+          vNormal   = normalize(normalMatrix * normal);
+          vViewDir  = normalize(cameraPosition - worldPos.xyz);
+          gl_Position = projectionMatrix * viewMatrix * worldPos;
+        }
+      `;
+      const bubbleFrag = `
+        varying vec3 vNormal;
+        varying vec3 vViewDir;
+        uniform float uTime;
+        uniform float uPhase;
+        uniform vec3  uLightDir;
+
+        // Iridescence biased to app colors: cyan (#00ffcc) to green (#88ff00)
+        vec3 iridescence(float f) {
+          // Map f to 0.33–0.54 hue range (green → cyan), oscillating
+          float h = 0.33 + 0.21 * fract(f * 1.4 + uPhase * 0.12);
+          // hue to rgb
+          vec3 c = clamp(abs(mod(h*6.0 + vec3(0,4,2), 6.0)-3.0)-1.0, 0.0, 1.0);
+          return c;
+        }
+
+        void main() {
+          float NdotV  = max(dot(vNormal, vViewDir), 0.0);
+          float fresnel = pow(1.0 - NdotV, 3.5); // strong at edges
+
+          // Primary specular highlight — sun spot
+          vec3 halfV = normalize(uLightDir + vViewDir);
+          float spec = pow(max(dot(vNormal, halfV), 0.0), 80.0);
+          vec3  specColor = vec3(0.88, 1.0, 0.96) * spec * 2.5; // cyan-white
+
+          // Secondary softer highlight
+          float spec2 = pow(max(dot(vNormal, halfV), 0.0), 18.0) * 0.35;
+          vec3 specColor2 = vec3(0.72, 1.0, 0.88) * spec2; // green-cyan tint
+
+          // Iridescent rim — rainbow at edges
+          vec3 iriColor = iridescence(fresnel) * fresnel * 1.4;
+
+          // Inner shadow crescent (opposite to light)
+          float shadow = pow(max(-dot(vNormal, uLightDir), 0.0), 2.0) * 0.25;
+
+          // Combine: mostly transparent, rim + specular visible
+          vec3  color   = specColor + specColor2 + iriColor * 0.9;
+          float alpha   = fresnel * 0.55 + spec * 0.8 + spec2 * 0.3 + shadow * 0.15;
+          alpha = clamp(alpha, 0.0, 0.92);
+
+          gl_FragColor = vec4(color, alpha);
+        }
+      `;
+
+      const bubbleGeo = new THREE.SphereGeometry(1, 32, 24);
+      const bubbles = [];
+      const bubbleLightDir = new THREE.Vector3(-0.4, 0.8, 0.6).normalize();
+
+      for (let i = 0; i < 14; i++) {
+        const r      = 6 + Math.random() * 18;
+        const behind = i >= 7;
+        const mat = new THREE.ShaderMaterial({
+          vertexShader:   bubbleVert,
+          fragmentShader: bubbleFrag,
+          uniforms: {
+            uTime:     { value: 0 },
+            uPhase:    { value: Math.random() * Math.PI * 2 },
+            uLightDir: { value: bubbleLightDir },
+          },
+          transparent: true,
+          depthWrite:  false,
+          side:        THREE.FrontSide,
+        });
+        const mesh = new THREE.Mesh(bubbleGeo, mat);
+        mesh.scale.setScalar(r);
+        const zBase = behind ? -(80 + Math.random() * 160) : (20 + Math.random() * 140);
+        // Spawn across the full vertical range including off-screen above and below
+        const spawnY = -80 + Math.random() * 710; // -80 (screen bottom) to 630 (above)
+        mesh.position.set(
+          40 + (Math.random() - 0.5) * 420,
+          spawnY,
+          zBase
+        );
+        mesh.userData.speed   = 8 + Math.random() * 12;
+        mesh.userData.driftX  = (Math.random() - 0.5) * 0.9;
+        mesh.userData.driftZ  = (Math.random() - 0.5) * 0.5;
+        mesh.userData.wobble  = 0.3 + Math.random() * 0.5;
+        mesh.userData.phase   = Math.random() * Math.PI * 2;
+        mesh.userData.phaseZ  = Math.random() * Math.PI * 2;
+        mesh.userData.resetY  = -90 - Math.random() * 20;  // reset at screen bottom
+        mesh.userData.topY    = 640 + Math.random() * 80;  // disappear well above screen
+        scene.add(mesh);
+        bubbles.push(mesh);
+      }
+
+      // ── Statue ───────────────────────────────────────────────────────────────
+      const glassMat = new THREE.MeshPhysicalMaterial({
+        color:            new THREE.Color(0x00ffcc),
+        metalness:        0.0,
+        roughness:        0.04,
+        transmission:     0.98,
+        thickness:        4.0,
+        envMap:           envTex,
+        envMapIntensity:  4.0,
+        transparent:      true,
+        opacity:          0.97,
+        emissive:         new THREE.Color(0x00ffcc),
+        emissiveIntensity: 0.06,
+        side:             THREE.FrontSide,
+      });
+
+      new FBXLoader().load("/Mary_Statue.fbx", (obj) => {
+        if (cancelled) return;
+        obj.traverse(c => {
+          if (c.isMesh) { c.material = glassMat; c.castShadow = c.receiveShadow = false; }
+        });
+        const box    = new THREE.Box3().setFromObject(obj);
+        const size   = box.getSize(new THREE.Vector3());
+        const fovRad = (40 * Math.PI) / 180;
+        const worldH = 2 * Math.tan(fovRad / 2) * 600;
+        const scale  = (worldH * 0.65) / size.y;
+        const newScale = scale * 1.495;
+        obj.scale.setScalar(newScale);
+        const box2  = new THREE.Box3().setFromObject(obj);
+        const extraH = size.y * (newScale - scale);
+        obj.position.set(110, -box2.min.y - extraH + 70, 0);
+        obj.rotation.y = -(Math.PI * 30 / 180); // -30° (5° more clockwise from -25°)
+        scene.add(obj);
+
+        const clock    = new THREE.Clock();
+        const FRAME_MS = 1000 / 30;
+        let lastFrame  = 0;
+        let wasVisible = visibleRef.current;
+        let hiddenAt   = wasVisible ? Infinity : 0;
+        const FADE_MS  = 500;
+
+        const animate = (now) => {
+          animId = requestAnimationFrame(animate);
+          const isVisible = visibleRef.current;
+          if (isVisible && !wasVisible) { lastFrame = now; hiddenAt = Infinity; }
+          if (!isVisible && wasVisible) hiddenAt = now;
+          wasVisible = isVisible;
+          const fadingOut = !isVisible && (now - hiddenAt < FADE_MS);
+          if (!isVisible && !fadingOut) return;
+          if (now - lastFrame < FRAME_MS) return;
+          lastFrame = now - ((now - lastFrame) % FRAME_MS);
+
+          const t  = clock.getElapsedTime();
+          const dt = clock.getDelta();
+
+          causticA.update(t);
+          causticB.update(t);
+          const baseOp = 0.11 + 0.05 * Math.sin(t * 0.75);
+          causticA.mat.opacity = baseOp;
+          causticB.mat.opacity = baseOp * 0.85;
+          causticB.mesh.rotation.z = Math.PI * 0.08 + t * 0.015;
+
+          // Dancing light — faster frequencies, wider swings
+          keyLight.position.x  = Math.sin(t * 0.4) * 450 + Math.sin(t * 1.1) * 120;
+          keyLight.position.z  = 300 + Math.cos(t * 0.35) * 300 + Math.cos(t * 0.9) * 80;
+          // Math.abs() ensures each term only adds light, never subtracts — no dark flicker
+          keyLight.intensity    = 2.5
+                                + 5.0 * Math.abs(Math.sin(t * 1.1))
+                                + 4.5 * Math.abs(Math.sin(t * 3.7))
+                                + 4.0 * Math.abs(Math.sin(t * 7.3))
+                                + 3.5 * Math.abs(Math.sin(t * 13.1))
+                                + 3.0 * Math.abs(Math.sin(t * 23.7))
+                                + 2.5 * Math.abs(Math.sin(t * 41.9))
+                                + 2.0 * Math.abs(Math.sin(t * 67.3))
+                                + 1.5 * Math.abs(Math.sin(t * 103.7))
+                                + 1.1 * Math.abs(Math.sin(t * 157.3))
+                                + 0.8 * Math.abs(Math.sin(t * 229.1))
+                                + 0.5 * Math.abs(Math.sin(t * 331.7))
+                                + 0.3 * Math.abs(Math.sin(t * 479.3))
+                                + 0.2 * Math.abs(Math.sin(t * 691.1))
+                                + 0.1 * Math.abs(Math.sin(t * 997.3))
+                                + 0.05 * Math.abs(Math.sin(t * 1439.7));
+          keyLight2.position.x = Math.sin(t * 0.38 + 1.4) * 380 + Math.cos(t * 1.0) * 100;
+          keyLight2.position.z = 100 + Math.cos(t * 0.31 + 0.8) * 280 + Math.sin(t * 0.85) * 70;
+          keyLight2.intensity   = 2.0
+                                + 4.8 * Math.abs(Math.cos(t * 0.95 + 0.6))
+                                + 4.2 * Math.abs(Math.cos(t * 4.2  + 0.9))
+                                + 3.7 * Math.abs(Math.sin(t * 8.7  + 0.4))
+                                + 3.2 * Math.abs(Math.sin(t * 16.4 + 1.1))
+                                + 2.7 * Math.abs(Math.sin(t * 29.8 + 0.7))
+                                + 2.2 * Math.abs(Math.cos(t * 53.1 + 1.5))
+                                + 1.7 * Math.abs(Math.sin(t * 89.4 + 0.3))
+                                + 1.3 * Math.abs(Math.cos(t * 131.7 + 0.9))
+                                + 1.0 * Math.abs(Math.sin(t * 199.3 + 1.7))
+                                + 0.7 * Math.abs(Math.cos(t * 283.1 + 0.5))
+                                + 0.5 * Math.abs(Math.sin(t * 409.7 + 1.3))
+                                + 0.3 * Math.abs(Math.cos(t * 593.3 + 0.8))
+                                + 0.2 * Math.abs(Math.sin(t * 857.9 + 2.1))
+                                + 0.1 * Math.abs(Math.cos(t * 1237.1 + 1.6))
+                                + 0.05 * Math.abs(Math.sin(t * 1783.3 + 0.4));
+          fillLight.intensity   = 1.2
+                                + 2.0 * Math.abs(Math.sin(t * 2.3  + 0.5))
+                                + 1.8 * Math.abs(Math.sin(t * 7.8  + 1.8))
+                                + 1.5 * Math.abs(Math.sin(t * 19.2 + 0.9))
+                                + 1.2 * Math.abs(Math.cos(t * 38.5 + 1.2))
+                                + 0.9 * Math.abs(Math.sin(t * 71.3 + 0.4))
+                                + 0.6 * Math.abs(Math.cos(t * 113.9 + 2.1))
+                                + 0.4 * Math.abs(Math.sin(t * 173.7 + 0.7))
+                                + 0.2 * Math.abs(Math.cos(t * 251.3 + 1.4))
+                                + 0.1 * Math.abs(Math.sin(t * 367.1 + 0.9));
+
+          // Update bubble shader time + animate positions
+          for (const b of bubbles) {
+            b.material.uniforms.uTime.value = t;
+            b.position.y += b.userData.speed * dt
+                          + Math.sin(t * 0.4  + b.userData.phase)  * b.userData.wobble * 0.3
+                          + Math.sin(t * 0.9  + b.userData.phaseZ) * b.userData.wobble * 0.15;
+            b.position.x += Math.sin(t * 0.22 + b.userData.phase)   * b.userData.driftX
+                          + Math.cos(t * 0.37 + b.userData.phase)   * b.userData.wobble * 0.35
+                          + Math.sin(t * 0.61 + b.userData.phaseZ)  * b.userData.driftX * 0.2;
+            b.position.z += Math.cos(t * 0.18 + b.userData.phaseZ) * b.userData.driftZ
+                          + Math.sin(t * 0.31 + b.userData.phaseZ)  * b.userData.wobble * 0.2;
+            if (b.position.y > b.userData.topY) {
+              b.position.y = b.userData.resetY; // reset below screen, not mid-view
+              // Randomise X/Z on reset so they don't retrace the same path
+              b.userData.phase  = Math.random() * Math.PI * 2;
+              b.userData.phaseZ = Math.random() * Math.PI * 2;
+            }
+          }
+
+          renderer.render(scene, camera);
+        };
+        animate(0);
+      }, undefined, e => console.warn("RuleBackdrop FBX error:", e));
+    }).catch(e => console.warn("RuleBackdrop import error:", e));
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(animId);
+      if (rendererInst) {
+        rendererInst.dispose();
+        if (el.contains(rendererInst.domElement)) el.removeChild(rendererInst.domElement);
+      }
+    };
+  }, []);
+
+  return (
+    <div ref={mountRef} style={{
+      position: "fixed",
+      left: isMobile ? 0 : 224,
+      top: 0, right: 0,
+      bottom: 0,
+      pointerEvents: "none",
+      zIndex: -1,
+      opacity,
+      transition: "opacity 0.5s ease",
+      filter: [
+        "drop-shadow(0 0 8px rgba(0,255,204,0.6))",
+        "drop-shadow(0 0 22px rgba(0,255,204,0.38))",
+        "drop-shadow(0 0 50px rgba(0,220,180,0.22))",
+        "drop-shadow(0 0 100px rgba(0,180,150,0.1))",
+      ].join(" "),
+    }} />
+  );
+}
+
+
 function AudioFigureBackdrop({ visible = false, isMobile = false }) {
   const crossMountRef  = useRef(null);
   const figureMountRef = useRef(null);
@@ -5763,6 +6369,7 @@ export default function App() {
     { id: "topcharts", label: "Top Charts" },
     { id: "boards",    label: "Chat" },
     { id: "audio",     label: "Bible" },
+    { id: "rule",      label: "Rule" },
   ];
 
   return (
@@ -5838,10 +6445,12 @@ export default function App() {
           {page === "topcharts" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><TopChartsPage username={username} /></div>}
           {page === "boards" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><BoardPage username={username} currentUser={user} /></div>}
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
+          {page === "rule" && <RulePage user={user} />}
         </div>
         <FigureBackdrop variant="boards"    visible={page === "boards"}    isMobile={isMobile} />
         <AudioFigureBackdrop               visible={page === "audio"}     isMobile={isMobile} />
         <FigureBackdrop variant="topcharts" visible={page === "topcharts"} isMobile={isMobile} />
+        <RuleBackdrop visible={page === "rule"} isMobile={isMobile} />
         <WorkoutFigureBackdrop             visible={page === "workout"}   isMobile={isMobile} />
       </div>
       {currentTrack && (
