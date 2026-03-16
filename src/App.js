@@ -1657,7 +1657,7 @@ function BoardPage({ username, currentUser }) {
       <>
         {lightbox}
         <div ref={chatRootRef} className="chat-mobile-root">
-          <div ref={scrollContainerRef} className="chat-mobile-messages" style={{ padding: "80px 14px 20px", display: "flex", flexDirection: "column-reverse" }}>
+          <div ref={scrollContainerRef} className="chat-mobile-messages" style={{ padding: "80px 14px 20px", display: "flex", flexDirection: "column-reverse", willChange: "transform" }}>
             {messageList}
           </div>
           <div className="chat-mobile-input">
@@ -1673,7 +1673,7 @@ function BoardPage({ username, currentUser }) {
     <>
       {lightbox}
       <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 0px)", overflow:"hidden", position:"relative" }}>
-        <div ref={scrollContainerRef} style={{ flex:1, overflowY:"scroll", overscrollBehavior:"none", WebkitOverflowScrolling:"auto", padding:"120px 28px 130px", display:"flex", flexDirection:"column-reverse", gap:4 }}>
+        <div ref={scrollContainerRef} style={{ flex:1, overflowY:"scroll", overscrollBehavior:"none", WebkitOverflowScrolling:"auto", padding:"120px 28px 130px", display:"flex", flexDirection:"column-reverse", gap:4, willChange:"transform" }}>
           {messageList}
         </div>
 
