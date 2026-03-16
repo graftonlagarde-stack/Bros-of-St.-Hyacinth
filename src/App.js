@@ -1201,8 +1201,11 @@ function BoardPage({ username }) {
                 {m.type?.startsWith("video/") && (
                   <div onClick={() => openLightbox(m.dataUrl, "video")} style={{ cursor:"pointer", position:"relative" }}>
                     <VideoPlayer src={m.dataUrl} mt={0} />
-                    <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.1)", borderRadius:4 }}>
-                      <div style={{ fontSize:28, color:"rgba(255,255,255,0.8)", pointerEvents:"none" }}>⏵</div>
+                    <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.25)", borderRadius:4 }}>
+                      <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg" style={{pointerEvents:"none"}}>
+                        <circle cx="22" cy="22" r="22" fill="rgba(0,0,0,0.45)"/>
+                        <polygon points="17,13 34,22 17,31" fill="rgba(255,255,255,0.9)"/>
+                      </svg>
                     </div>
                   </div>
                 )}
