@@ -298,6 +298,20 @@ async function initDb() {
     WHERE LOWER(email) = LOWER('graftonlagarde@protonmail.com');
   `);
 
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS rule_sections (
+      id      TEXT PRIMARY KEY,  -- e.g. 'introduction'
+      content TEXT NOT NULL DEFAULT ''
+    );
+  `);
+  // Seed default empty rows for each section
+  const sections = ['introduction','guiding_principles','exercise_plan','prayer','discipline','monastic_habit'];
+  for (const id of sections) {
+    await db.query(
+      "INSERT INTO rule_sections (id, content) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
+      [id, '']
+    );
+  }
   console.log("✅ Database tables ready.");
 }
 
@@ -1110,6 +1124,44 @@ app.post("/api/admin/users/:id/role", requireAuth, async (req, res) => {
 });
 
 // Catch-all: serve React app for any non-API route
+
+// ═════════════════════════════════════════════════════════════════════════════
+// RULE ROUTES
+// ═════════════════════════════════════════════════════════════════════════════
+
+// GET /api/rule — returns all section content
+app.get("/api/rule", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await db.query("SELECT id, content FROM rule_sections ORDER BY id");
+    const data = {};
+    rows.forEach(r => { data[r.id] = r.content; });
+    return res.json(data);
+  } catch (err) {
+    console.error("rule GET:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// PUT /api/rule/:section — arch_admin only, saves HTML content for a section
+app.put("/api/rule/:section", requireAuth, async (req, res) => {
+  try {
+    const { rows: userRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    if (!userRows[0] || userRows[0].role !== "arch_admin")
+      return res.status(403).json({ error: "Forbidden" });
+    const { section } = req.params;
+    const { content } = req.body;
+    if (typeof content !== "string") return res.status(400).json({ error: "content required" });
+    await db.query(
+      "INSERT INTO rule_sections (id, content) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET content = $2",
+      [section, content]
+    );
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("rule PUT:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
 app.get("*", (req, res) => {
   const index = path.join(__dirname, "build", "index.html");
   if (fs.existsSync(index)) {
