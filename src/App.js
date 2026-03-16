@@ -569,7 +569,7 @@ function VideoPlayer({ src, mt }) {
   }, [src]);
 
   return (
-    <video ref={videoRef} controls playsInline
+    <video ref={videoRef} playsInline
       style={{ maxWidth:280, borderRadius:10, marginTop: mt || 0, display:"block", background:"#000" }} />
   );
 }
@@ -1199,7 +1199,15 @@ function BoardPage({ username }) {
                     style={{ display:"block", cursor:"pointer", width:"100%", maxWidth:240, maxHeight:240, objectFit:"cover", borderRadius: msg.text ? 4 : "inherit" }} />
                 )}
                 {m.type?.startsWith("video/") && (
-                  <VideoPlayer src={m.dataUrl} mt={0} />
+                  <div onClick={() => openLightbox(m.dataUrl, "video")} style={{ cursor:"pointer", position:"relative", display:"inline-block" }}>
+                    <VideoPlayer src={m.dataUrl} mt={0} />
+                    <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
+                      <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="24" cy="24" r="24" fill="rgba(0,0,0,0.45)"/>
+                        <polygon points="19,14 37,24 19,34" fill="rgba(255,255,255,0.92)"/>
+                      </svg>
+                    </div>
+                  </div>
                 )}
                 {m.type?.startsWith("audio/") && (
                   <div onClick={() => openLightbox(m.dataUrl, "audio")}
