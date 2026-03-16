@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 
 const useIsMobile = () => {
@@ -1229,12 +1229,12 @@ function BoardPage({ username, currentUser }) {
           <div
             onDoubleClick={() => isArchAdmin && setDeleteHover(deleteHover === msg.id ? null : msg.id)}
             onMouseDown={e => { if (isArchAdmin && deleteHover === msg.id) e.stopPropagation(); }}
-            onTouchEnd={(e) => {
+            onTouchStart={(e) => {
               if (!isArchAdmin) return;
               const now = Date.now();
               const last = lastTapRef.current[msg.id] || 0;
-              if (now - last < 300) {
-                e.preventDefault();
+              if (now - last < 500) {
+                e.preventDefault(); // block text selection on confirming tap only
                 e.stopPropagation();
                 setDeleteHover(deleteHover === msg.id ? null : msg.id);
               }
@@ -1242,21 +1242,21 @@ function BoardPage({ username, currentUser }) {
             }}
             style={{
             background: isMe
-              ? `radial-gradient(ellipse 90% 50% at 50% -10%, rgba(255,255,255,0.22) 0%, transparent 60%),
+              ? `radial-gradient(ellipse 90% 50% at 50% -10%, rgba(255,255,255,0.35) 0%, transparent 60%),
                  radial-gradient(ellipse 60% 40% at 80% 90%, rgba(0,255,200,0.15) 0%, transparent 70%),
-                 linear-gradient(160deg, rgba(0,80,70,0.92) 0%, rgba(0,30,25,0.97) 100%)`
-              : `radial-gradient(ellipse 90% 50% at 50% -10%, rgba(255,255,255,0.55) 0%, transparent 55%),
-                 radial-gradient(ellipse 60% 40% at 80% 90%, rgba(180,200,220,0.15) 0%, transparent 70%),
-                 linear-gradient(160deg, rgba(200,215,235,0.22) 0%, rgba(160,180,210,0.12) 100%)`,
+                 linear-gradient(160deg, rgba(0,180,140,0.22) 0%, rgba(0,80,60,0.12) 100%)`
+              : `radial-gradient(ellipse 90% 50% at 50% -10%, rgba(255,255,255,0.35) 0%, transparent 55%),
+                 radial-gradient(ellipse 60% 40% at 80% 90%, rgba(80,200,0,0.15) 0%, transparent 70%),
+                 linear-gradient(160deg, rgba(100,180,0,0.22) 0%, rgba(60,120,0,0.12) 100%)`,
             border: emojiPickerFor === msg.id
               ? "1px solid rgba(136,255,0,0.75)"
               : isMe
                 ? "1px solid rgba(0,255,204,0.25)"
-                : "1px solid rgba(200,215,240,0.22)",
+                : "1px solid rgba(120,220,0,0.25)",
             borderTop: emojiPickerFor === msg.id
               ? "1px solid rgba(136,255,0,0.75)"
-              : isMe ? "1.5px solid rgba(0,255,204,0.6)" : "1.5px solid rgba(255,255,255,0.55)",
-            borderLeft: isMe ? "1px solid rgba(0,255,204,0.35)" : "1px solid rgba(220,230,245,0.3)",
+              : isMe ? "1.5px solid rgba(0,255,204,0.6)" : "1.5px solid rgba(160,255,60,0.5)",
+            borderLeft: isMe ? "1px solid rgba(0,255,204,0.35)" : "1px solid rgba(120,220,0,0.2)",
             borderRadius: isMe ? "18px 3px 18px 18px" : "3px 18px 18px 18px",
             padding: msg.text ? "10px 14px" : (!msg.text && (msg.media || (msg.mediaExtra||[]).length > 0)) ? "0" : "4px",
             maxWidth: (!msg.text && (msg.media || (msg.mediaExtra||[]).length > 0)) ? 240 : undefined,
@@ -1266,8 +1266,8 @@ function BoardPage({ username, currentUser }) {
               ? "0 0 0 2px rgba(136,255,0,0.15), 0 2px 16px rgba(136,255,0,0.2)"
               : isMe
                 ? "inset 0 2px 0 rgba(0,255,204,0.15), inset 0 -3px 8px rgba(0,60,50,0.4), 0 12px 32px rgba(0,0,0,0.65), 0 3px 8px rgba(0,60,40,0.4), 0 0 0 0.5px rgba(0,0,0,0.6)"
-                : "inset 0 2px 0 rgba(255,255,255,0.3), inset 0 -3px 8px rgba(100,130,180,0.18), 0 12px 32px rgba(0,0,0,0.65), 0 3px 8px rgba(60,80,120,0.35), 0 0 0 0.5px rgba(0,0,0,0.55)",
-            color: isMe ? "#b0fff0" : "#ddeeff",
+                : "inset 0 2px 0 rgba(160,255,80,0.2), inset 0 -3px 8px rgba(20,60,0,0.25), 0 12px 32px rgba(0,0,0,0.65), 0 3px 8px rgba(20,60,0,0.3), 0 0 0 0.5px rgba(0,0,0,0.55)",
+            color: isMe ? "#b0fff0" : "#d8ffaa",
             transition: "border 0.15s, box-shadow 0.15s",
           }}>
             {msg.text && <div style={{whiteSpace:"pre-wrap"}}>{msg.text}</div>}
