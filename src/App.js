@@ -1176,6 +1176,7 @@ function BoardPage({ username }) {
             borderLeft: isMe ? "1px solid rgba(0,255,204,0.35)" : "1px solid rgba(160,230,0,0.3)",
             borderRadius: isMe ? "18px 3px 18px 18px" : "3px 18px 18px 18px",
             padding: msg.text ? "10px 14px" : (!msg.text && (msg.media || (msg.mediaExtra||[]).length > 0)) ? "0" : "4px",
+            maxWidth: (!msg.text && (msg.media || (msg.mediaExtra||[]).length > 0)) ? 240 : undefined,
             overflow: "hidden",
             fontSize:14, lineHeight:1.5, wordBreak:"break-word",
             boxShadow: emojiPickerFor === msg.id
@@ -1195,7 +1196,7 @@ function BoardPage({ username }) {
                 {m.type?.startsWith("image/") && (
                   <img src={m.dataUrl} alt="attachment"
                     onClick={() => openLightbox(m.dataUrl, "image")}
-                    style={{ width:"100%", maxWidth:"100%", display:"block", cursor:"pointer", borderRadius: msg.text ? 4 : "inherit" }} />
+                    style={{ display:"block", cursor:"pointer", width:"100%", maxWidth:240, maxHeight:240, objectFit:"cover", borderRadius: msg.text ? 4 : "inherit" }} />
                 )}
                 {m.type?.startsWith("video/") && (
                   <div onClick={() => openLightbox(m.dataUrl, "video")} style={{ cursor:"pointer", position:"relative" }}>
