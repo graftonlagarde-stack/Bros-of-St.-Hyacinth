@@ -1230,7 +1230,7 @@ function BoardPage({ username, currentUser }) {
             borderRadius: isMe ? "18px 3px 18px 18px" : "3px 18px 18px 18px",
             padding: msg.text ? "10px 14px" : (!msg.text && (msg.media || (msg.mediaExtra||[]).length > 0)) ? "0" : "4px",
             maxWidth: (!msg.text && (msg.media || (msg.mediaExtra||[]).length > 0)) ? 240 : undefined,
-            overflow: "hidden",
+            overflow: (!msg.text && (msg.media || (msg.mediaExtra||[]).length > 0)) ? "hidden" : "visible",
             fontSize:14, lineHeight:1.5, wordBreak:"break-word",
             boxShadow: emojiPickerFor === msg.id
               ? "0 0 0 2px rgba(136,255,0,0.15), 0 2px 16px rgba(136,255,0,0.2)"
