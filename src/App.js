@@ -397,9 +397,13 @@ const EMOJI_CAT_ICONS = [
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="9"/><path d="M8.5 14s1 2 3.5 2 3.5-2 3.5-2"/><circle cx="9.5" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="14.5" cy="10" r="1" fill="currentColor" stroke="none"/>
   </svg>`,
-  // Animals & Nature — leaf
-  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 2C6 2 3 8 3 13c0 4 2.5 7 6 8"/><path d="M21 4c0 0-2 8-9 13"/><path d="M3 21l8-8"/>
+  // Animals & Nature — paw print
+  `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <ellipse cx="6" cy="7.5" rx="2" ry="2.8"/>
+    <ellipse cx="11" cy="5" rx="2" ry="2.8"/>
+    <ellipse cx="16" cy="5" rx="2" ry="2.8"/>
+    <ellipse cx="20.5" cy="7.5" rx="2" ry="2.8"/>
+    <path d="M13.5 10.5c-2.5-1.5-6.5-.5-7.5 3s1 6 3.5 7.5c1 .6 2 .5 3 0 .5-.3 1-.3 1.5 0 1 .5 2 .6 3 0 2.5-1.5 4.5-4.5 3.5-7.5s-4.5-4.5-7-3z"/>
   </svg>`,
   // Food & Drink — fork & knife
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1402,16 +1406,16 @@ function BoardPage({ username }) {
                       }}
                     />
                   </div>
-                  {/* Category tab bar — SVG icons, hidden when searching */}
+                  {/* Category tab bar — icons evenly spaced across full width */}
                   {!emojiSearch.trim() && (
-                    <div style={{ display:"flex", overflowX:"auto", borderBottom:"1px solid rgba(136,255,0,0.12)", background:"rgba(0,0,0,0.25)", scrollbarWidth:"none", flexShrink:0 }}>
+                    <div style={{ display:"flex", borderBottom:"1px solid rgba(136,255,0,0.12)", background:"rgba(0,0,0,0.25)", flexShrink:0 }}>
                       {EMOJI_CATEGORIES.map((cat, ci) => (
                         <button key={ci}
                           onMouseDown={e => e.preventDefault()}
                           onClick={() => setEmojiCatIdx(ci)}
                           style={{
-                            flexShrink:0, border:"none", background:"none", cursor:"pointer",
-                            padding:"8px 10px", display:"flex", alignItems:"center", justifyContent:"center",
+                            flex:1, border:"none", background:"none", cursor:"pointer",
+                            padding:"8px 0", display:"flex", alignItems:"center", justifyContent:"center",
                             borderBottom: ci === emojiCatIdx ? "2px solid rgba(136,255,0,0.8)" : "2px solid transparent",
                             opacity: ci === emojiCatIdx ? 1 : 0.4,
                             color: ci === emojiCatIdx ? "rgba(136,255,0,0.9)" : "#fff",
