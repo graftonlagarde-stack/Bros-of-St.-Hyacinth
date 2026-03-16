@@ -570,7 +570,7 @@ function VideoPlayer({ src, mt }) {
 
   return (
     <video ref={videoRef} playsInline
-      style={{ maxWidth:280, borderRadius:10, marginTop: mt || 0, display:"block", background:"#000" }} />
+      style={{ maxWidth:280, borderRadius:10, marginTop: mt || 0, display:"block", background:"#000", verticalAlign:"top" }} />
   );
 }
 
@@ -1199,9 +1199,9 @@ function BoardPage({ username }) {
                     style={{ display:"block", cursor:"pointer", width:"100%", maxWidth:240, maxHeight:240, objectFit:"cover", borderRadius: msg.text ? 4 : "inherit" }} />
                 )}
                 {m.type?.startsWith("video/") && (
-                  <div onClick={() => openLightbox(m.dataUrl, "video")} style={{ cursor:"pointer", position:"relative", display:"inline-block" }}>
+                  <div onClick={() => openLightbox(m.dataUrl, "video")} style={{ cursor:"pointer", position:"relative", lineHeight:0 }}>
                     <VideoPlayer src={m.dataUrl} mt={0} />
-                    <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
+                    <div style={{ position:"absolute", top:0, left:0, right:0, bottom:0, display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
                       <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <circle cx="24" cy="24" r="24" fill="rgba(0,0,0,0.45)"/>
                         <polygon points="19,14 37,24 19,34" fill="rgba(255,255,255,0.92)"/>
