@@ -391,6 +391,42 @@ const EMOJI_CATEGORIES = [
 ];
 const EMOJI_REACTIONS = ["👍","💪","🔥","❤️","😂","🎯","👏","🤯"];
 
+// SVG icon paths for each emoji category tab (same order as EMOJI_CATEGORIES)
+const EMOJI_CAT_ICONS = [
+  // Smileys & People — smiley face
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="9"/><path d="M8.5 14s1 2 3.5 2 3.5-2 3.5-2"/><circle cx="9.5" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="14.5" cy="10" r="1" fill="currentColor" stroke="none"/>
+  </svg>`,
+  // Animals & Nature — leaf
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2C6 2 3 8 3 13c0 4 2.5 7 6 8"/><path d="M21 4c0 0-2 8-9 13"/><path d="M3 21l8-8"/>
+  </svg>`,
+  // Food & Drink — fork & knife
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 2v7c0 1.7 1.3 3 3 3s3-1.3 3-3V2"/><path d="M6 2v20"/><path d="M21 2v20"/><path d="M21 7c0-2.8-2-5-2-5v9h4V2s-2 2.2-2 5z"/>
+  </svg>`,
+  // Activity — trophy
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6 2h12v10a6 6 0 0 1-12 0V2z"/><path d="M6 7H3a2 2 0 0 0 0 4h3"/><path d="M18 7h3a2 2 0 0 1 0 4h-3"/><path d="M9 22h6"/><path d="M12 17v5"/>
+  </svg>`,
+  // Travel & Places — airplane
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17.8 19.2L16 11l3.5-3.5A2 2 0 0 0 17 4.5L13.5 8 5 6l-1.5 1.5 7 3.5L8 13H5l-1 2 4 1 1 4 2-1V16l3.5-2.5 3.5 7L17.8 19.2z"/>
+  </svg>`,
+  // Objects — light bulb
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4.5-3 5.7V17H8v-2.3A7 7 0 0 1 5 9a7 7 0 0 1 7-7z"/><path d="M9 21h6"/><path d="M10 17v4"/><path d="M14 17v4"/>
+  </svg>`,
+  // Symbols — heart
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/>
+  </svg>`,
+  // Flags — flag
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
+  </svg>`,
+];
+
 // Searchable name index — [emoji, "space separated search terms"]
 // Covers the most commonly searched emoji names
 const EMOJI_NAMES = [
@@ -823,8 +859,10 @@ function BoardPage({ username }) {
   const [uploading, setUploading]       = useState(false);
   const [emojiPickerFor, setEmojiPickerFor] = useState(null); // msgId of open quick bar
   const [showFullPicker, setShowFullPicker] = useState(null);  // msgId of open full picker
+  const [pickerClosing, setPickerClosing]   = useState(false); // drives slide-out animation
   const [emojiCatIdx, setEmojiCatIdx]       = useState(0);
   const [emojiSearch, setEmojiSearch]       = useState("");
+  const [reactionTooltip, setReactionTooltip] = useState(null); // { msgId, emoji, users, x, y }
 
   // ── Most-used emoji (localStorage per user) ────────────────────────────
   const MOST_USED_KEY = `emoji_usage_${username}`;
@@ -864,7 +902,7 @@ function BoardPage({ username }) {
   // The mobile full picker is dismissed via its backdrop overlay instead.
   useEffect(() => {
     if (!emojiPickerFor && !showFullPicker) return;
-    const close = (e) => { setEmojiPickerFor(null); setShowFullPicker(null); showFullPickerRef.current = null; setEmojiSearch(""); };
+    const close = (e) => { setEmojiPickerFor(null); dismissFullPicker(); setReactionTooltip(null); };
     document.addEventListener("mousedown", close);
     // touchstart only for the quick bar (not full picker — handled by backdrop on mobile)
     const closeTouchQuickBar = (e) => { if (!showFullPicker) close(); };
@@ -993,14 +1031,23 @@ function BoardPage({ username }) {
     setMediaFiles([]);
   };
 
+  const dismissFullPicker = () => {
+    if (!showFullPicker) return;
+    setPickerClosing(true);
+    setTimeout(() => {
+      setShowFullPicker(null); showFullPickerRef.current = null;
+      setPickerClosing(false);
+      setEmojiSearch("");
+    }, 240);
+  };
+
   const pickEmoji = (msgId, emoji) => {
     const msg = messages.find(m => m.id === msgId);
     const alreadyHas = msg?.reactions[emoji]?.includes(username);
     if (!alreadyHas) recordEmojiUse(emoji);
     saveReaction(msgId, alreadyHas ? null : emoji);
     setEmojiPickerFor(null);
-    setShowFullPicker(null); showFullPickerRef.current = null;
-    setEmojiSearch("");
+    dismissFullPicker();
   };
   // kept as alias for reaction bar taps
   const toggleReaction = pickEmoji;
@@ -1163,19 +1210,57 @@ function BoardPage({ username }) {
 
           {reactionEntries.length > 0 && (
             <div style={{ display:"flex", gap:4, marginTop:4, flexWrap:"wrap", justifyContent: isMe ? "flex-end" : "flex-start" }}>
-              {reactionEntries.map(([emoji, users]) => (
-                <div key={emoji} onClick={() => toggleReaction(msg.id, emoji)}
-                  style={{ display:"flex", alignItems:"center", gap:3,
-                    background: users.includes(username) ? "rgba(140,255,0,0.12)" : "rgba(0,20,50,0.8)",
-                    border:`1px solid ${users.includes(username) ? "var(--accent)" : "var(--border)"}`,
-                    borderRadius:2, padding:"2px 8px", cursor:"pointer", fontSize:12, fontWeight:700,
-                    color: users.includes(username) ? "var(--accent)" : "var(--muted)",
-                    fontFamily:"'Orbitron',sans-serif", letterSpacing:1,
-                    boxShadow: users.includes(username) ? "var(--glow-sm)" : "none",
-                    transition:"all 0.15s" }}>
-                  {emoji} {users.length}
-                </div>
-              ))}
+              {reactionEntries.map(([emoji, users]) => {
+                const isMine = users.includes(username);
+                const tooltipKey = `${msg.id}-${emoji}`;
+                const isOpen = reactionTooltip?.key === tooltipKey;
+                return (
+                  <div key={emoji} style={{ position:"relative" }}>
+                    <div
+                      onClick={() => {
+                        if (isMine) {
+                          // Own reaction — toggle it off
+                          toggleReaction(msg.id, emoji);
+                        } else {
+                          // Others' reaction — show who reacted
+                          setReactionTooltip(isOpen ? null : { key: tooltipKey, users });
+                        }
+                      }}
+                      style={{ display:"flex", alignItems:"center", gap:3,
+                        background: isMine ? "rgba(140,255,0,0.12)" : "rgba(0,20,50,0.8)",
+                        border:`1px solid ${isMine ? "var(--accent)" : "var(--border)"}`,
+                        borderRadius:2, padding:"2px 8px", cursor:"pointer", fontSize:12, fontWeight:700,
+                        color: isMine ? "var(--accent)" : "var(--muted)",
+                        fontFamily:"'Orbitron',sans-serif", letterSpacing:1,
+                        boxShadow: isMine ? "var(--glow-sm)" : "none",
+                        transition:"all 0.15s" }}>
+                      {emoji} {users.length}
+                    </div>
+                    {/* Reactor names tooltip */}
+                    {isOpen && (
+                      <div
+                        onMouseDown={e => e.stopPropagation()}
+                        onTouchStart={e => e.stopPropagation()}
+                        onClick={() => setReactionTooltip(null)}
+                        style={{
+                          position:"absolute", bottom:"calc(100% + 6px)",
+                          [isMe ? "right" : "left"]: 0,
+                          background:"#0a1a0e", border:"1px solid rgba(136,255,0,0.25)",
+                          borderRadius:6, padding:"6px 10px", zIndex:250, whiteSpace:"nowrap",
+                          boxShadow:"0 4px 20px rgba(0,0,0,0.8)",
+                          fontSize:11, color:"var(--chrome)", fontFamily:"'Orbitron',sans-serif",
+                          letterSpacing:0.5, lineHeight:1.8,
+                        }}>
+                        {users.map(u => (
+                          <div key={u} style={{ color: u === username ? "var(--accent)" : "var(--chrome)" }}>
+                            {u === username ? "You" : u}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -1270,7 +1355,7 @@ function BoardPage({ username }) {
                   const dx = Math.abs(e.changedTouches[0].clientX - swipeStartX);
                   swipeStartY = null; swipeStartX = null;
                   // Only dismiss if clearly downward and not a horizontal scroll
-                  if (dy > 50 && dy > dx * 1.5) { setShowFullPicker(null); showFullPickerRef.current = null; setEmojiSearch(""); }
+                  if (dy > 50 && dy > dx * 1.5) { dismissFullPicker(); }
                 };
                 return (
                 <div
@@ -1284,6 +1369,7 @@ function BoardPage({ username }) {
                     boxShadow:"0 -8px 40px rgba(0,0,0,0.9)",
                     zIndex:1000, display:"flex", flexDirection:"column",
                     maxHeight:"62vh",
+                    animation: `${pickerClosing ? "emojiPickerSlideOut" : "emojiPickerSlideIn"} 0.24s cubic-bezier(0.32,0,0.67,0) both`,
                   } : {
                     position:"absolute", bottom:"calc(100% + 4px)", [isMe?"right":"left"]:0,
                     background:"#0a1a0e", border:"1px solid rgba(136,255,0,0.25)",
@@ -1316,7 +1402,7 @@ function BoardPage({ username }) {
                       }}
                     />
                   </div>
-                  {/* Category tab bar — hidden when searching */}
+                  {/* Category tab bar — SVG icons, hidden when searching */}
                   {!emojiSearch.trim() && (
                     <div style={{ display:"flex", overflowX:"auto", borderBottom:"1px solid rgba(136,255,0,0.12)", background:"rgba(0,0,0,0.25)", scrollbarWidth:"none", flexShrink:0 }}>
                       {EMOJI_CATEGORIES.map((cat, ci) => (
@@ -1325,11 +1411,14 @@ function BoardPage({ username }) {
                           onClick={() => setEmojiCatIdx(ci)}
                           style={{
                             flexShrink:0, border:"none", background:"none", cursor:"pointer",
-                            padding:"7px 9px", fontSize:16,
+                            padding:"8px 10px", display:"flex", alignItems:"center", justifyContent:"center",
                             borderBottom: ci === emojiCatIdx ? "2px solid rgba(136,255,0,0.8)" : "2px solid transparent",
                             opacity: ci === emojiCatIdx ? 1 : 0.4,
+                            color: ci === emojiCatIdx ? "rgba(136,255,0,0.9)" : "#fff",
+                            transition:"opacity 0.15s, color 0.15s",
                           }}>
-                          {cat.label}
+                          <span style={{ width:18, height:18, display:"block" }}
+                            dangerouslySetInnerHTML={{ __html: EMOJI_CAT_ICONS[ci] }} />
                         </button>
                       ))}
                     </div>
@@ -1365,7 +1454,7 @@ function BoardPage({ username }) {
                 ? createPortal(
                     <>
                       {/* Backdrop */}
-                      <div onClick={() => { setShowFullPicker(null); showFullPickerRef.current = null; setEmojiSearch(""); }}
+                      <div onClick={() => dismissFullPicker()}
                         style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:999 }} />
                       {pickerContent}
                     </>,
@@ -1609,6 +1698,14 @@ const css = `
     0%   { opacity: 0.82; filter: brightness(1.0) drop-shadow(0 0 8px rgba(220,235,255,0.7)); }
     50%  { opacity: 1.0;  filter: brightness(1.3) drop-shadow(0 0 20px rgba(255,255,255,0.9)); }
     100% { opacity: 0.88; filter: brightness(1.1) drop-shadow(0 0 12px rgba(200,220,255,0.75)); }
+  }
+  @keyframes emojiPickerSlideIn {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+  @keyframes emojiPickerSlideOut {
+    from { transform: translateY(0); }
+    to   { transform: translateY(100%); }
   }
   @keyframes crossBloom {
     0%   {
