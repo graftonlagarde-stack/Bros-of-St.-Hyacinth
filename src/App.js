@@ -3287,6 +3287,7 @@ function RulePage({ user }) {
               userSelect: (!isArchAdmin || !editMode) ? "none" : "text",
               WebkitUserSelect: (!isArchAdmin || !editMode) ? "none" : "text",
             }}
+            className={(!editMode || !isArchAdmin) ? "rule-card" : ""}
             {...(!editMode || !isArchAdmin
               ? { dangerouslySetInnerHTML: { __html: sections[sec.id] } }
               : {})}
@@ -3299,8 +3300,12 @@ function RulePage({ user }) {
         [contenteditable="true"] h2   { font-size:16px; font-weight:700; color:var(--accent); margin:14px 0 8px; letter-spacing:2px; text-transform:uppercase; }
         [contenteditable="true"] h3   { font-size:13px; font-weight:700; color:var(--chrome); margin:10px 0 6px; letter-spacing:1px; }
         [contenteditable="true"] ul,
-        [contenteditable="true"] ol   { margin:0 0 10px; padding-left:22px; }
-        [contenteditable="true"] li   { margin-bottom:4px; }
+        [contenteditable="true"] ol   { margin:0 0 10px !important; padding-left:28px !important; }
+        [contenteditable="true"] ul   { list-style-type: disc !important; }
+        [contenteditable="true"] ol   { list-style-type: decimal !important; }
+        [contenteditable="true"] li   { margin-bottom:4px !important; display:list-item !important; }
+        [contenteditable="true"] ul ul { list-style-type: circle !important; padding-left:22px !important; }
+        [contenteditable="true"] ol ol { list-style-type: lower-alpha !important; padding-left:22px !important; }
         [contenteditable="true"] blockquote {
           margin:12px 0; padding:10px 16px;
           border-left:2px solid rgba(136,255,0,0.4);
@@ -3317,8 +3322,12 @@ function RulePage({ user }) {
         .rule-card h2   { font-size:16px; font-weight:700; color:var(--accent); margin:14px 0 8px; letter-spacing:2px; text-transform:uppercase; }
         .rule-card h3   { font-size:13px; font-weight:700; color:var(--chrome); margin:10px 0 6px; letter-spacing:1px; }
         .rule-card ul,
-        .rule-card ol   { margin:0 0 10px; padding-left:22px; }
-        .rule-card li   { margin-bottom:4px; }
+        .rule-card ol   { margin:0 0 10px !important; padding-left:28px !important; }
+        .rule-card ul   { list-style-type: disc !important; }
+        .rule-card ol   { list-style-type: decimal !important; }
+        .rule-card li   { margin-bottom:4px !important; display:list-item !important; }
+        .rule-card ul ul { list-style-type: circle !important; padding-left:22px !important; }
+        .rule-card ol ol { list-style-type: lower-alpha !important; padding-left:22px !important; }
         .rule-card blockquote {
           margin:12px 0; padding:10px 16px;
           border-left:2px solid rgba(136,255,0,0.4);
@@ -3595,7 +3604,7 @@ function RuleBackdrop({ visible = false, isMobile = false }) {
         const box2  = new THREE.Box3().setFromObject(obj);
         const extraH = size.y * (newScale - scale);
         obj.position.set(110, -box2.min.y - extraH + 70, 0);
-        obj.rotation.y = isMobile ? -(Math.PI * 20 / 180) : -(Math.PI * 30 / 180);
+        obj.rotation.y = isMobile ? -(Math.PI * 10 / 180) : -(Math.PI * 30 / 180);
         scene.add(obj);
 
         const clock    = new THREE.Clock();
