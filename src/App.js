@@ -730,6 +730,7 @@ function AudioLightbox({ src, onClose }) {
     const el = scrubBarRef.current;
     if (!el) return;
     const onTouchStart = (e) => {
+      e.preventDefault(); // claim gesture immediately — prevents iOS scroll takeover
       e.stopPropagation();
       isDragging.current = true;
       seekFromClientX(e.touches[0].clientX);
@@ -940,13 +941,9 @@ function BoardPage({ username, currentUser }) {
   useEffect(() => {
     if (!deleteHover) return;
     const close = () => setDeleteHover(null);
-    // Small delay so the double-tap that opened it doesn't immediately close it
-    const t = setTimeout(() => {
-      document.addEventListener("mousedown", close);
-      document.addEventListener("touchstart", close);
-    }, 50);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("touchstart", close);
     return () => {
-      clearTimeout(t);
       document.removeEventListener("mousedown", close);
       document.removeEventListener("touchstart", close);
     };
@@ -1231,14 +1228,18 @@ function BoardPage({ username, currentUser }) {
             onMouseDown={e => { if (isArchAdmin && deleteHover === msg.id) e.stopPropagation(); }}
             onTouchStart={(e) => {
               if (!isArchAdmin) return;
-              const now = Date.now();
-              const last = lastTapRef.current[msg.id] || 0;
-              if (now - last < 500) {
-                e.preventDefault(); // block text selection on confirming tap only
-                e.stopPropagation();
-                setDeleteHover(deleteHover === msg.id ? null : msg.id);
-              }
-              lastTapRef.current[msg.id] = now;
+              const id = msg.id;
+              lastTapRef.current[id] = setTimeout(() => {
+                setDeleteHover(prev => prev === id ? null : id);
+              }, 600);
+            }}
+            onTouchEnd={() => {
+              if (!isArchAdmin) return;
+              clearTimeout(lastTapRef.current[msg.id]);
+            }}
+            onTouchMove={() => {
+              if (!isArchAdmin) return;
+              clearTimeout(lastTapRef.current[msg.id]); // cancel if finger moves
             }}
             style={{
             background: isMe
