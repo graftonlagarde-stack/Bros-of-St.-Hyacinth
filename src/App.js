@@ -3595,7 +3595,7 @@ function RuleBackdrop({ visible = false, isMobile = false }) {
         const box2  = new THREE.Box3().setFromObject(obj);
         const extraH = size.y * (newScale - scale);
         obj.position.set(110, -box2.min.y - extraH + 70, 0);
-        obj.rotation.y = -(Math.PI * 30 / 180); // -30° (5° more clockwise from -25°)
+        obj.rotation.y = isMobile ? -(Math.PI * 20 / 180) : -(Math.PI * 30 / 180);
         scene.add(obj);
 
         const clock    = new THREE.Clock();
