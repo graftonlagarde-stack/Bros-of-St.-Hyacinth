@@ -711,27 +711,49 @@ function AudioLightbox({ src, onClose }) {
     audio.currentTime = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration;
   };
 
-  // Drag-to-scrub: track pointer down state and seek on move
+  // Drag-to-scrub: native touch listeners on the bar element for reliable iOS scrubbing
   const scrubBarRef = useRef(null);
   const isDragging  = useRef(false);
-  const seekFromEvent = (e, rect) => {
+  const seekFromClientX = (clientX) => {
     const audio = audioRef.current;
-    if (!audio || !duration) return;
-    const clientX = e.touches ? e.touches[0].clientX : e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+    if (!audio || !duration || !scrubBarRef.current) return;
+    const rect = scrubBarRef.current.getBoundingClientRect();
     audio.currentTime = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration;
   };
-  const onScrubStart = (e) => {
+  // Attach native (non-passive) touch listeners directly to the scrub bar element
+  useEffect(() => {
+    const el = scrubBarRef.current;
+    if (!el) return;
+    const onTouchStart = (e) => {
+      isDragging.current = true;
+      seekFromClientX(e.touches[0].clientX);
+    };
+    const onTouchMove = (e) => {
+      if (!isDragging.current) return;
+      e.preventDefault(); // blocks page scroll — only works with passive:false
+      seekFromClientX(e.touches[0].clientX);
+    };
+    const onTouchEnd = () => { isDragging.current = false; };
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove",  onTouchMove,  { passive: false });
+    el.addEventListener("touchend",   onTouchEnd,   { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove",  onTouchMove);
+      el.removeEventListener("touchend",   onTouchEnd);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duration]); // re-attach when duration changes so seekFromClientX closure is fresh
+  // Mouse scrub (desktop)
+  const onScrubMouseDown = (e) => {
     isDragging.current = true;
-    const rect = scrubBarRef.current.getBoundingClientRect();
-    seekFromEvent(e, rect);
+    seekFromClientX(e.clientX);
   };
-  const onScrubMove = (e) => {
-    if (!isDragging.current || !scrubBarRef.current) return;
-    if (e.cancelable) e.preventDefault(); // prevent page scroll while scrubbing
-    const rect = scrubBarRef.current.getBoundingClientRect();
-    seekFromEvent(e, rect);
+  const onScrubMouseMove = (e) => {
+    if (!isDragging.current) return;
+    seekFromClientX(e.clientX);
   };
-  const onScrubEnd = () => { isDragging.current = false; };
+  const onScrubMouseUp = () => { isDragging.current = false; };
 
   const fmt = (s) => !s || isNaN(s) ? "0:00"
     : `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,"0")}`;
@@ -754,13 +776,13 @@ function AudioLightbox({ src, onClose }) {
       }}>✕</button>
 
       <div onClick={e => { e.stopPropagation(); try { initAudioContext(); } catch(_){} }} style={{ width:"100%", maxWidth:420, display:"flex", flexDirection:"column", alignItems:"center", gap:28 }}
-           onMouseMove={onScrubMove} onMouseUp={onScrubEnd} onTouchMove={onScrubMove} onTouchEnd={onScrubEnd}>
+           onMouseMove={onScrubMouseMove} onMouseUp={onScrubMouseUp}>
         <canvas ref={canvasRef} width={360} height={100} style={{ width:"100%", height:100 }} />
 
         <div style={{ width:"100%", display:"flex", alignItems:"center", gap:10 }}>
           <span style={{ fontSize:11, color:"rgba(0,255,140,0.7)", fontFamily:"'Orbitron',sans-serif", width:34, textAlign:"right" }}>{fmt(elapsed)}</span>
           <div ref={scrubBarRef}
-               onMouseDown={onScrubStart} onTouchStart={onScrubStart}
+               onMouseDown={onScrubMouseDown}
                style={{ flex:1, height:44, display:"flex", alignItems:"center", cursor:"pointer", position:"relative" }}>
             {/* Track */}
             <div style={{ position:"absolute", left:0, right:0, height:5, background:"rgba(0,255,140,0.1)", borderRadius:3 }}>
@@ -1334,7 +1356,7 @@ function BoardPage({ username, currentUser }) {
               <button
                 onMouseDown={e => e.preventDefault()}
                 onClick={() => { if (window.confirm("Delete this message?")) deleteMessage(msg.id); }}
-                style={{ background:"none", border:"none", cursor:"pointer", color:"rgba(255,60,60,0.5)", fontSize:11, padding:"3px 4px", lineHeight:1, opacity:0.7, marginTop:2 }}
+                style={{ background:"rgba(255,40,40,0.15)", border:"1px solid rgba(255,80,80,0.4)", borderRadius:3, cursor:"pointer", color:"rgba(255,100,100,0.9)", fontSize:11, padding:"2px 6px", lineHeight:1, marginTop:2 }}
                 title="Delete message">
                 ✕
               </button>
