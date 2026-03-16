@@ -275,6 +275,20 @@ async function initDb() {
     );
   `);
   await db.query(`
+    CREATE TABLE IF NOT EXISTS unread_counts (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      count   INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS password_resets (
+      id         SERIAL PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token      TEXT NOT NULL UNIQUE,
+      expires_at BIGINT NOT NULL
+    );
+  `);
+  await db.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
   `);
 
@@ -476,6 +490,97 @@ app.delete("/api/auth/account", requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/auth/forgot-password — send a reset link via Resend API (no SMTP needed)
+// Required env var: RESEND_API_KEY (from resend.com)
+app.post("/api/auth/forgot-password", async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: "Email is required." });
+  try {
+    const { rows } = await db.query("SELECT id FROM users WHERE LOWER(email) = LOWER($1)", [email]);
+    // Always return 200 — don't reveal whether email exists
+    if (!rows.length) return res.json({ ok: true });
+    const userId = rows[0].id;
+
+    // Generate a secure random token, expires in 1 hour
+    const token     = require("crypto").randomBytes(32).toString("hex");
+    const expiresAt = Date.now() + 60 * 60 * 1000;
+
+    // Delete any existing reset token for this user, then insert fresh one
+    await db.query("DELETE FROM password_resets WHERE user_id = $1", [userId]);
+    await db.query(
+      "INSERT INTO password_resets (user_id, token, expires_at) VALUES ($1, $2, $3)",
+      [userId, token, expiresAt]
+    );
+
+    const appUrl   = process.env.APP_URL || "https://bros-of-st-hyacinth.vercel.app";
+    const resetUrl = `${appUrl}?reset=${token}`;
+
+    if (!process.env.RESEND_API_KEY) {
+      console.warn("forgot-password: RESEND_API_KEY not set — reset URL:", resetUrl);
+      return res.status(500).json({ error: "Email sending is not configured on this server." });
+    }
+
+    // Send via Resend REST API — no SMTP, no extra packages
+    try {
+      const mailRes = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type":  "application/json",
+        },
+        body: JSON.stringify({
+          from:    process.env.RESEND_FROM || "Bros of St. Hyacinth <onboarding@resend.dev>",
+          to:      [email],
+          subject: "Password Reset — Bros of St. Hyacinth",
+          text:    `You requested a password reset. Click the link below to set a new password (expires in 1 hour):\n\n${resetUrl}\n\nIf you did not request this, you can safely ignore this email.`,
+          html:    `<p>You requested a password reset.</p>
+                    <p>Click the link below to set a new password (expires in 1 hour):</p>
+                    <p><a href="${resetUrl}">${resetUrl}</a></p>
+                    <p>If you did not request this, you can safely ignore this email.</p>`,
+        }),
+      });
+      if (!mailRes.ok) {
+        const errBody = await mailRes.text();
+        console.error("forgot-password Resend error:", mailRes.status, errBody);
+        return res.status(500).json({ error: "Failed to send reset email." });
+      }
+    } catch (mailErr) {
+      console.error("forgot-password mail error:", mailErr.message);
+      return res.status(500).json({ error: "Failed to send reset email." });
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("forgot-password:", err);
+    return res.status(500).json({ error: "Server error." });
+  }
+});
+
+// POST /api/auth/reset-password — validate token and update password
+app.post("/api/auth/reset-password", async (req, res) => {
+  const { token, password } = req.body;
+  if (!token || !password) return res.status(400).json({ error: "Token and password are required." });
+  if (password.length < 8)  return res.status(400).json({ error: "Password must be at least 8 characters." });
+  try {
+    const { rows } = await db.query(
+      "SELECT user_id, expires_at FROM password_resets WHERE token = $1",
+      [token]
+    );
+    if (!rows.length)               return res.status(400).json({ error: "Invalid or expired reset link." });
+    if (Date.now() > rows[0].expires_at) {
+      await db.query("DELETE FROM password_resets WHERE token = $1", [token]);
+      return res.status(400).json({ error: "Reset link has expired. Please request a new one." });
+    }
+    const hashed = await bcrypt.hash(password, 12);
+    await db.query("UPDATE users SET password = $1 WHERE id = $2", [hashed, rows[0].user_id]);
+    await db.query("DELETE FROM password_resets WHERE token = $1", [token]);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("reset-password:", err);
+    return res.status(500).json({ error: "Server error." });
+  }
+});
+
 // ═════════════════════════════════════════════════════════════════════════════
 // LIFT LOG ROUTES
 // ═════════════════════════════════════════════════════════════════════════════
@@ -590,9 +695,23 @@ app.post("/api/upload", requireAuth, upload.single("file"), async (req, res) => 
 });
 
 // ── Push notification helper ───────────────────────────────────────────────────
+// Increment unread count for a user and return the new total
+async function incrementUnread(userId) {
+  const { rows } = await db.query(`
+    INSERT INTO unread_counts (user_id, count) VALUES ($1, 1)
+    ON CONFLICT (user_id) DO UPDATE SET count = unread_counts.count + 1
+    RETURNING count
+  `, [userId]);
+  return rows[0]?.count ?? 1;
+}
+
 async function sendPushToUser(userId, payload) {
   if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
   try {
+    // Increment unread count and attach to payload so service worker can set badge
+    const badge = await incrementUnread(userId);
+    const fullPayload = { ...payload, badge };
+
     const { rows } = await db.query(
       "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1",
       [userId]
@@ -601,7 +720,7 @@ async function sendPushToUser(userId, payload) {
       try {
         await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          JSON.stringify(payload)
+          JSON.stringify(fullPayload)
         );
       } catch (err) {
         // 410 Gone = subscription expired/revoked — remove it
@@ -621,62 +740,107 @@ async function sendPushToUser(userId, payload) {
 // LINK PREVIEW ROUTE
 // ═════════════════════════════════════════════════════════════════════════════
 
-// GET /api/link-preview?url=... — fetches Open Graph / meta tags from a URL
-// Proxied server-side to avoid CORS issues in the browser.
+// GET /api/link-preview?url=... — fetches rich preview data for any URL.
+// Strategy:
+//   1. Try oEmbed (YouTube, Vimeo, Twitter/X support it natively — returns title+thumbnail)
+//   2. Fall back to scraping Open Graph / Twitter Card meta tags from the HTML
 app.get("/api/link-preview", requireAuth, async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: "url is required" });
-  try { new URL(url); } catch { return res.status(400).json({ error: "Invalid URL" }); }
+  let parsed;
+  try { parsed = new URL(url); } catch { return res.status(400).json({ error: "Invalid URL" }); }
 
-  const domain = new URL(url).hostname.replace(/^www\./, "");
+  const domain = parsed.hostname.replace(/^www\./, "");
+  const signal = AbortSignal.timeout(7000);
+  const browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
-  // YouTube: use oEmbed which reliably returns title + thumbnail regardless of bot detection
-  if (/youtube\.com|youtu\.be/.test(url)) {
+  // ── Step 1: oEmbed ─────────────────────────────────────────────────────────
+  // These providers expose a JSON endpoint with title, author, thumbnail — no scraping needed.
+  const oEmbedEndpoint = (() => {
+    const enc = encodeURIComponent(url);
+    if (/youtube\.com|youtu\.be/.test(parsed.hostname))
+      return `https://www.youtube.com/oembed?url=${enc}&format=json`;
+    if (/vimeo\.com/.test(parsed.hostname))
+      return `https://vimeo.com/api/oembed.json?url=${enc}`;
+    if (/twitter\.com|x\.com/.test(parsed.hostname))
+      return `https://publish.twitter.com/oembed?url=${enc}&omit_script=true`;
+    if (/reddit\.com/.test(parsed.hostname))
+      return `https://www.reddit.com/oembed?url=${enc}`;
+    return null;
+  })();
+
+  if (oEmbedEndpoint) {
     try {
-      const r = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`, { signal: AbortSignal.timeout(5000) });
+      const r = await fetch(oEmbedEndpoint, {
+        headers: { "User-Agent": browserUA },
+        signal,
+        redirect: "follow",
+      });
       if (r.ok) {
         const d = await r.json();
-        const vidMatch = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-        const image = vidMatch ? `https://img.youtube.com/vi/${vidMatch[1]}/hqdefault.jpg` : (d.thumbnail_url || null);
-        return res.json({ title: d.title || null, description: d.author_name ? `by ${d.author_name}` : null, image, siteName: "YouTube", domain: "youtube.com", url });
+        // oEmbed gives us: title, author_name, thumbnail_url, provider_name
+        if (d.title) {
+          return res.json({
+            title:       d.title,
+            description: d.author_name ? `By ${d.author_name}` : null,
+            image:       d.thumbnail_url || null,
+            siteName:    d.provider_name || null,
+            domain,
+            url,
+          });
+        }
       }
-    } catch (_) {}
+    } catch (_) { /* fall through to OG scrape */ }
   }
 
-  // Twitter/X: use publish.twitter.com/oembed
-  if (/twitter\.com|x\.com/.test(url)) {
-    try {
-      const r = await fetch(`https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(5000) });
-      if (r.ok) {
-        const d = await r.json();
-        const text = d.html ? d.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : null;
-        return res.json({ title: d.author_name ? `@${d.author_name}` : "Twitter", description: text ? text.slice(0, 200) : null, image: null, siteName: "Twitter", domain, url });
-      }
-    } catch (_) {}
-  }
-
-  // General: scrape OG tags with a realistic browser User-Agent
+  // ── Step 2: OG / Twitter Card scrape ──────────────────────────────────────
+  // Extract every <meta> tag as a raw string so multi-line tags work (YouTube,
+  // Instagram etc. put property= and content= on separate lines).
   try {
-    const response = await fetch(url, {
+    const r = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "User-Agent": browserUA,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Language": "en-US,en;q=0.5",
       },
-      signal: AbortSignal.timeout(8000),
+      signal,
+      redirect: "follow",
     });
-    const html = await response.text();
-    const get = (prop) => {
-      const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']+)["']`, "i"))
-               || html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${prop}["']`, "i"));
-      return m ? m[1] : null;
+    const buf  = await r.arrayBuffer();
+    const html = new TextDecoder().decode(buf.slice(0, 262144));
+
+    const metaTags = [];
+    const metaRe   = /<meta[\s\S]*?>/gi;
+    let m;
+    while ((m = metaRe.exec(html)) !== null) metaTags.push(m[0]);
+
+    const getAttr = (tag, attr) => {
+      const rx = new RegExp(`\\b${attr}\\s*=\\s*(?:"([^"]*?)"|'([^']*?)'|([^\\s/>]+))`, "i");
+      const x  = rx.exec(tag);
+      return x ? (x[1] ?? x[2] ?? x[3] ?? "").trim() : null;
     };
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-    const title       = get("og:title")       || (titleMatch ? titleMatch[1].trim() : null);
-    const description = get("og:description") || get("description");
-    const image       = get("og:image");
-    const siteName    = get("og:site_name");
-    return res.json({ title, description, image, siteName, domain, url });
+    const getMeta = (...names) => {
+      for (const name of names) {
+        const lc = name.toLowerCase();
+        for (const tag of metaTags) {
+          const prop = (getAttr(tag, "property") || getAttr(tag, "name") || "").toLowerCase();
+          if (prop === lc) { const v = getAttr(tag, "content"); if (v) return v; }
+        }
+      }
+      return null;
+    };
+
+    const titleMatch = html.match(/<title[^>]*>([\s\S]{1,300}?)<\/title>/i);
+    const rawTitle   = titleMatch ? titleMatch[1].replace(/\s+/g, " ").trim() : null;
+
+    const title       = getMeta("og:title", "twitter:title") || rawTitle;
+    const description = getMeta("og:description", "twitter:description", "description");
+    const image       = getMeta("og:image", "og:image:url", "twitter:image", "twitter:image:src");
+    const siteName    = getMeta("og:site_name");
+
+    if (!title && !description && !image)
+      return res.status(422).json({ error: "No preview data found" });
+    return res.json({ title: title || domain, description, image, siteName, domain, url });
   } catch (err) {
     return res.status(502).json({ error: "Could not fetch preview: " + err.message });
   }
@@ -724,6 +888,20 @@ app.delete("/api/push/subscribe", requireAuth, async (req, res) => {
     return res.json({ ok: true });
   } catch (err) {
     console.error("push/unsubscribe:", err);
+    return res.status(500).json({ error: "Server error." });
+  }
+});
+
+// POST /api/badge/clear — user has viewed the chat; reset their unread count to 0
+app.post("/api/badge/clear", requireAuth, async (req, res) => {
+  try {
+    await db.query(
+      "INSERT INTO unread_counts (user_id, count) VALUES ($1, 0) ON CONFLICT (user_id) DO UPDATE SET count = 0",
+      [req.userId]
+    );
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("badge/clear:", err);
     return res.status(500).json({ error: "Server error." });
   }
 });
@@ -795,10 +973,12 @@ app.post("/api/board/messages", requireAuth, async (req, res) => {
   }
 });
 
+// DELETE /api/board/messages/:id — arch_admin only
 app.delete("/api/board/messages/:id", requireAuth, async (req, res) => {
   try {
     const { rows: userRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
-    if (!userRows[0] || userRows[0].role !== "arch_admin") return res.status(403).json({ error: "Forbidden" });
+    if (!userRows[0] || userRows[0].role !== "arch_admin")
+      return res.status(403).json({ error: "Forbidden" });
     const { id } = req.params;
     const { rows } = await db.query("SELECT media_public_id FROM messages WHERE id = $1", [id]);
     if (!rows[0]) return res.status(404).json({ error: "Not found" });
@@ -806,10 +986,10 @@ app.delete("/api/board/messages/:id", requireAuth, async (req, res) => {
       try { await cloudinary.uploader.destroy(rows[0].media_public_id, { resource_type: "auto" }); } catch (_) {}
     }
     await db.query("DELETE FROM messages WHERE id = $1", [id]);
-    res.json({ ok: true });
+    return res.json({ ok: true });
   } catch (err) {
     console.error("deleteMessage:", err);
-    res.status(500).json({ error: "Server error" });
+    return res.status(500).json({ error: "Server error." });
   }
 });
 
