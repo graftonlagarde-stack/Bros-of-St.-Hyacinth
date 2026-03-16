@@ -711,30 +711,36 @@ function AudioLightbox({ src, onClose }) {
     audio.currentTime = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration;
   };
 
-  // Drag-to-scrub: native touch listeners on the bar element for reliable iOS scrubbing
-  const scrubBarRef = useRef(null);
-  const isDragging  = useRef(false);
-  const seekFromClientX = (clientX) => {
+  // Drag-to-scrub — native touch listeners with passive:false for iOS
+  const scrubBarRef  = useRef(null);
+  const isDragging   = useRef(false);
+  const durationRef  = useRef(duration);
+  useEffect(() => { durationRef.current = duration; }, [duration]);
+
+  const seekFromClientX = useCallback((clientX) => {
     const audio = audioRef.current;
-    if (!audio || !duration || !scrubBarRef.current) return;
+    const dur   = durationRef.current;
+    if (!audio || !dur || !scrubBarRef.current) return;
     const rect = scrubBarRef.current.getBoundingClientRect();
-    audio.currentTime = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration;
-  };
-  // Attach native (non-passive) touch listeners directly to the scrub bar element
+    audio.currentTime = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * dur;
+  }, []); // stable — reads via refs, never stale
+
+  // Attach once on mount; seekFromClientX always reads latest duration via ref
   useEffect(() => {
     const el = scrubBarRef.current;
     if (!el) return;
     const onTouchStart = (e) => {
+      e.stopPropagation();
       isDragging.current = true;
       seekFromClientX(e.touches[0].clientX);
     };
     const onTouchMove = (e) => {
       if (!isDragging.current) return;
-      e.preventDefault(); // blocks page scroll — only works with passive:false
+      e.preventDefault();
       seekFromClientX(e.touches[0].clientX);
     };
     const onTouchEnd = () => { isDragging.current = false; };
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchstart", onTouchStart, { passive: false });
     el.addEventListener("touchmove",  onTouchMove,  { passive: false });
     el.addEventListener("touchend",   onTouchEnd,   { passive: true });
     return () => {
@@ -742,18 +748,12 @@ function AudioLightbox({ src, onClose }) {
       el.removeEventListener("touchmove",  onTouchMove);
       el.removeEventListener("touchend",   onTouchEnd);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [duration]); // re-attach when duration changes so seekFromClientX closure is fresh
+  }, [seekFromClientX]); // stable — runs once
+
   // Mouse scrub (desktop)
-  const onScrubMouseDown = (e) => {
-    isDragging.current = true;
-    seekFromClientX(e.clientX);
-  };
-  const onScrubMouseMove = (e) => {
-    if (!isDragging.current) return;
-    seekFromClientX(e.clientX);
-  };
-  const onScrubMouseUp = () => { isDragging.current = false; };
+  const onScrubMouseDown = (e) => { isDragging.current = true;  seekFromClientX(e.clientX); };
+  const onScrubMouseMove = (e) => { if (isDragging.current) seekFromClientX(e.clientX); };
+  const onScrubMouseUp   = ()  => { isDragging.current = false; };
 
   const fmt = (s) => !s || isNaN(s) ? "0:00"
     : `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,"0")}`;
@@ -900,7 +900,8 @@ function BoardPage({ username, currentUser }) {
   const [emojiCatIdx, setEmojiCatIdx]       = useState(0);
   const [emojiSearch, setEmojiSearch]       = useState("");
   const [reactionTooltip, setReactionTooltip] = useState(null); // { msgId, emoji, users, x, y }
-  const [deleteHover, setDeleteHover] = useState(null); // msgId of hovered message (for arch-admin delete)
+  const [deleteHover, setDeleteHover] = useState(null); // msgId shown delete button
+  const lastTapRef = useRef({}); // { [msgId]: timestamp } for double-tap detection
   const isArchAdmin = currentUser?.role === "arch_admin";
 
   // ── Most-used emoji (localStorage per user) ────────────────────────────
@@ -934,6 +935,22 @@ function BoardPage({ username, currentUser }) {
   const emojiTargetRef = useRef(null);  // message id currently being reacted to
 
   useEffect(() => { fetchMessages(); }, []);
+
+  // Close delete button on any click/tap outside the bubble
+  useEffect(() => {
+    if (!deleteHover) return;
+    const close = () => setDeleteHover(null);
+    // Small delay so the double-tap that opened it doesn't immediately close it
+    const t = setTimeout(() => {
+      document.addEventListener("mousedown", close);
+      document.addEventListener("touchstart", close);
+    }, 50);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("touchstart", close);
+    };
+  }, [deleteHover]);
 
   // Close reaction tooltip on any click or touch outside
   useEffect(() => {
@@ -1191,8 +1208,7 @@ function BoardPage({ username, currentUser }) {
     return (
       <div key={msg.id}
         style={{ display:"flex", flexDirection: isMe ? "row-reverse" : "row", gap:8, alignItems:"flex-end", marginTop: grouped ? 1 : 8, position:"relative" }}
-        onMouseEnter={() => isArchAdmin && setDeleteHover(msg.id)}
-        onMouseLeave={() => { setEmojiPickerFor(null); setDeleteHover(null); }}>
+        onMouseLeave={() => setEmojiPickerFor(null)}>
 
         <div style={{ width:32, flexShrink:0 }}>
           {isLastInGroup && (
@@ -1210,7 +1226,21 @@ function BoardPage({ username, currentUser }) {
             </div>
           )}
 
-          <div style={{
+          <div
+            onDoubleClick={() => isArchAdmin && setDeleteHover(deleteHover === msg.id ? null : msg.id)}
+            onMouseDown={e => { if (isArchAdmin && deleteHover === msg.id) e.stopPropagation(); }}
+            onTouchEnd={(e) => {
+              if (!isArchAdmin) return;
+              const now = Date.now();
+              const last = lastTapRef.current[msg.id] || 0;
+              if (now - last < 300) {
+                e.preventDefault();
+                e.stopPropagation();
+                setDeleteHover(deleteHover === msg.id ? null : msg.id);
+              }
+              lastTapRef.current[msg.id] = now;
+            }}
+            style={{
             background: isMe
               ? `radial-gradient(ellipse 90% 50% at 50% -10%, rgba(255,255,255,0.22) 0%, transparent 60%),
                  radial-gradient(ellipse 60% 40% at 80% 90%, rgba(0,255,200,0.15) 0%, transparent 70%),
@@ -1354,8 +1384,8 @@ function BoardPage({ username, currentUser }) {
             {/* Arch-admin delete — only visible on hover, never shown for own messages */}
             {isArchAdmin && deleteHover === msg.id && (
               <button
-                onMouseDown={e => e.preventDefault()}
-                onClick={() => { if (window.confirm("Delete this message?")) deleteMessage(msg.id); }}
+                onMouseDown={e => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); if (window.confirm("Delete this message?")) deleteMessage(msg.id); }}
                 style={{ background:"rgba(255,40,40,0.15)", border:"1px solid rgba(255,80,80,0.4)", borderRadius:3, cursor:"pointer", color:"rgba(255,100,100,0.9)", fontSize:11, padding:"2px 6px", lineHeight:1, marginTop:2 }}
                 title="Delete message">
                 ✕
