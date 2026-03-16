@@ -3310,7 +3310,7 @@ function RulePage({ user }) {
           margin:12px 0; padding:10px 16px;
           border-left:2px solid rgba(136,255,0,0.4);
           background:rgba(136,255,0,0.04);
-          color:var(--muted); font-style:italic;
+          color:var(--chrome); font-style:italic;
           border-radius:0 3px 3px 0;
         }
         [contenteditable="true"] hr   { border:none; border-top:1px solid rgba(136,255,0,0.2); margin:12px 0; }
@@ -3332,7 +3332,7 @@ function RulePage({ user }) {
           margin:12px 0; padding:10px 16px;
           border-left:2px solid rgba(136,255,0,0.4);
           background:rgba(136,255,0,0.04);
-          color:var(--muted); font-style:italic;
+          color:var(--chrome); font-style:italic;
           border-radius:0 3px 3px 0;
         }
         .rule-card hr   { border:none; border-top:1px solid rgba(136,255,0,0.2); margin:12px 0; }
