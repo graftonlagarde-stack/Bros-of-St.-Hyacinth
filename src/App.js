@@ -6178,6 +6178,28 @@ export default function App() {
   const [loaded, setLoaded]                     = useState(false);
   const mainRef = useRef(null);
   const glbCanvasRef = useRef(null);
+
+  // ── Shia LaBeouf easter egg ───────────────────────────────────────────────
+  const [shiaActive, setShiaActive] = useState(false);
+  const shiaClicksRef = useRef([]);
+  const shiaVideoRef  = useRef(null);
+
+  const handleShiaClick = (e) => {
+    // Only trigger on non-interactive elements, excluding orb and nav tabs
+    if (e.target.closest('button,a,input,textarea,select,[role="button"]')) return;
+    if (e.target.closest('.xbox-orb-wrap,.xbox-orb,.nav-item,.nav-item-wrap,.nav-wrap')) return;
+    const now = Date.now();
+    shiaClicksRef.current = [...shiaClicksRef.current, now].filter(t => now - t < 1500);
+    if (shiaClicksRef.current.length >= 5) {
+      shiaClicksRef.current = [];
+      setShiaActive(true);
+    }
+  };
+
+  useEffect(() => {
+    document.addEventListener('click', handleShiaClick);
+    return () => document.removeEventListener('click', handleShiaClick);
+  }, []);
   const navWrapRef = useRef(null);
   const orbWrapRef = useRef(null);
   const swipeTouchRef = useRef(null); // { x, y } of touchstart
@@ -6469,6 +6491,7 @@ export default function App() {
       <div className="app-bg" />
       <div className="grid-stars" />
       <div className="app"
+          onClick={handleShiaClick}
           onTouchStart={isMobile ? (e) => {
             const t = e.touches[0];
             swipeTouchRef.current = { x: t.clientX, y: t.clientY };
@@ -6563,6 +6586,54 @@ export default function App() {
           onClose={() => setShowAdmin(false)}
         />
       )}
+
+      {/* Shia LaBeouf Easter Egg */}
+      {shiaActive && (
+        isMobile ? (
+          <div style={{
+            position: "fixed", inset: 0, zIndex: 99999,
+            background: "transparent", pointerEvents: "none",
+            overflow: "hidden",
+          }}>
+            <video
+              ref={shiaVideoRef}
+              autoPlay
+              onEnded={() => setShiaActive(false)}
+              onCanPlay={e => e.target.play()}
+              style={{
+                position: "fixed", bottom: 0,
+                left: "50%", transform: "translateX(-40%)",
+                width: "300vw", height: "auto",
+                objectFit: "contain", objectPosition: "bottom center",
+                mixBlendMode: "multiply", pointerEvents: "none",
+              }}
+              src={`/${Math.floor(Math.random() * 6) + 1}.webm`}
+            />
+          </div>
+        ) : (
+          <div style={{
+            position: "fixed", bottom: 0, right: 0, zIndex: 99999,
+            width: 720, height: 535,
+            overflow: "hidden", display: "block",
+            pointerEvents: "none",
+          }}>
+            <video
+              ref={shiaVideoRef}
+              autoPlay
+              onEnded={() => setShiaActive(false)}
+              onCanPlay={e => e.target.play()}
+              style={{
+                marginTop: -5,
+                maxWidth: "none",
+                padding: 0,
+                mixBlendMode: "multiply", pointerEvents: "none",
+              }}
+              src={`/${Math.floor(Math.random() * 6) + 1}.webm`}
+            />
+          </div>
+        )
+      )}
+
     </>
   );
 }
