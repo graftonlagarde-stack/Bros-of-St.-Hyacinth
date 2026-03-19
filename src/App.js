@@ -6189,7 +6189,7 @@ export default function App() {
     if (e.target.closest('button,a,input,textarea,select,[role="button"]')) return;
     if (e.target.closest('.xbox-orb-wrap,.xbox-orb,.nav-item,.nav-item-wrap,.nav-wrap')) return;
     const now = Date.now();
-    shiaClicksRef.current = [...shiaClicksRef.current, now].filter(t => now - t < 1500);
+    shiaClicksRef.current = [...shiaClicksRef.current, now].filter(t => now - t < 800);
     if (shiaClicksRef.current.length >= 5) {
       shiaClicksRef.current = [];
       setShiaActive(true);
@@ -6598,6 +6598,7 @@ export default function App() {
             <video
               ref={shiaVideoRef}
               autoPlay
+              playsInline
               onEnded={() => setShiaActive(false)}
               onCanPlay={e => e.target.play()}
               style={{
@@ -6620,9 +6621,12 @@ export default function App() {
             <video
               ref={shiaVideoRef}
               autoPlay
+              playsInline
               onEnded={() => setShiaActive(false)}
               onCanPlay={e => e.target.play()}
               style={{
+                display: "block",
+                width: 720,
                 marginTop: -5,
                 maxWidth: "none",
                 padding: 0,
