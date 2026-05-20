@@ -1822,71 +1822,6 @@ const css = `
     from { transform: translateY(0); }
     to   { transform: translateY(100%); }
   }
-  @keyframes crossBloom {
-    0%   {
-      filter:
-        drop-shadow(0 0 10px rgba(180,220,255,1.0))
-        drop-shadow(0 0 28px rgba(160,210,255,0.95))
-        drop-shadow(0 0 65px rgba(140,200,255,0.82))
-        drop-shadow(0 0 130px rgba(120,180,255,0.58))
-        drop-shadow(0 0 220px rgba(100,160,255,0.32))
-        brightness(1.5);
-    }
-    15%  {
-      filter:
-        drop-shadow(0 0 20px rgba(235,248,255,1.0))
-        drop-shadow(0 0 58px rgba(215,238,255,0.99))
-        drop-shadow(0 0 125px rgba(195,228,255,0.91))
-        drop-shadow(0 0 250px rgba(175,212,255,0.69))
-        drop-shadow(0 0 420px rgba(155,192,255,0.43))
-        brightness(2.2);
-    }
-    30%  {
-      filter:
-        drop-shadow(0 0 12px rgba(170,215,255,0.97))
-        drop-shadow(0 0 32px rgba(150,205,255,0.92))
-        drop-shadow(0 0 72px rgba(130,192,255,0.78))
-        drop-shadow(0 0 145px rgba(110,172,255,0.54))
-        drop-shadow(0 0 250px rgba(90,152,255,0.28))
-        brightness(1.55);
-    }
-    48%  {
-      filter:
-        drop-shadow(0 0 22px rgba(242,250,255,1.0))
-        drop-shadow(0 0 62px rgba(222,242,255,0.99))
-        drop-shadow(0 0 135px rgba(202,230,255,0.93))
-        drop-shadow(0 0 270px rgba(182,217,255,0.71))
-        drop-shadow(0 0 460px rgba(162,197,255,0.45))
-        brightness(2.35);
-    }
-    65%  {
-      filter:
-        drop-shadow(0 0 11px rgba(175,218,255,0.98))
-        drop-shadow(0 0 30px rgba(155,208,255,0.93))
-        drop-shadow(0 0 68px rgba(135,195,255,0.79))
-        drop-shadow(0 0 138px rgba(115,175,255,0.55))
-        drop-shadow(0 0 240px rgba(95,155,255,0.29))
-        brightness(1.52);
-    }
-    82%  {
-      filter:
-        drop-shadow(0 0 18px rgba(228,244,255,1.0))
-        drop-shadow(0 0 50px rgba(208,234,255,0.97))
-        drop-shadow(0 0 108px rgba(188,224,255,0.87))
-        drop-shadow(0 0 216px rgba(168,208,255,0.65))
-        drop-shadow(0 0 380px rgba(148,188,255,0.39))
-        brightness(2.0);
-    }
-    100% {
-      filter:
-        drop-shadow(0 0 10px rgba(180,220,255,1.0))
-        drop-shadow(0 0 28px rgba(160,210,255,0.95))
-        drop-shadow(0 0 65px rgba(140,200,255,0.82))
-        drop-shadow(0 0 130px rgba(120,180,255,0.58))
-        drop-shadow(0 0 220px rgba(100,160,255,0.32))
-        brightness(1.5);
-    }
-  }
   @keyframes rankGlow {
     0%,100% { box-shadow: 0 0 20px rgba(136,255,0,0.2), inset 0 0 40px rgba(136,255,0,0.03); }
     50%     { box-shadow: 0 0 40px rgba(136,255,0,0.45), inset 0 0 60px rgba(136,255,0,0.07); }
@@ -4236,7 +4171,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
     }}>
-      <canvas ref={crossMountRef} style={{ position: "absolute", inset: 0, zIndex: 1, animation: "crossBloom 0.5s ease-in-out infinite" }} />
+      <canvas ref={crossMountRef} style={{ position: "absolute", inset: 0, zIndex: 1, filter: "drop-shadow(0 0 10px rgba(180,220,255,0.88)) drop-shadow(0 0 3px rgba(255,255,255,0.75))" }} />
       <div ref={figureMountRef} style={{ position: "absolute", inset: 0, zIndex: 2 }} />
     </div>
   );
