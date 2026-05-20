@@ -6174,8 +6174,12 @@ export default function App() {
       const canvas = glbCanvasRef.current;
       if (!canvas) { setTimeout(init, 150); return; }
 
-      const W = canvas.offsetWidth  || 220;
-      const H = canvas.offsetHeight || 220;
+      // Measure the parent wrapper, which has explicit CSS dimensions (220×220).
+      // The canvas itself reports 0×0 in Firefox/Safari until Three.js sizes it,
+      // so reading canvas.offsetWidth directly is unreliable across browsers.
+      const parent = canvas.parentElement;
+      const W = (parent && parent.offsetWidth  > 10) ? parent.offsetWidth  : (canvas.offsetWidth  || 220);
+      const H = (parent && parent.offsetHeight > 10) ? parent.offsetHeight : (canvas.offsetHeight || 220);
       if (W < 10) { setTimeout(init, 150); return; }
 
       renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
@@ -6279,6 +6283,15 @@ export default function App() {
         let lastOrbFrame = 0;
         function animate(now) {
           animId = requestAnimationFrame(animate);
+          // Correct renderer if parent dimensions have changed after init
+          const p = canvas.parentElement;
+          const cW = (p && p.offsetWidth  > 10) ? p.offsetWidth  : canvas.offsetWidth;
+          const cH = (p && p.offsetHeight > 10) ? p.offsetHeight : canvas.offsetHeight;
+          if (cW > 0 && cH > 0 && (cam.aspect !== cW / cH)) {
+            renderer.setSize(cW, cH);
+            cam.aspect = cW / cH;
+            cam.updateProjectionMatrix();
+          }
           if (now - lastOrbFrame < FRAME_MS_ORB) return;
           lastOrbFrame = now - ((now - lastOrbFrame) % FRAME_MS_ORB);
           const dt = clock.getDelta();
