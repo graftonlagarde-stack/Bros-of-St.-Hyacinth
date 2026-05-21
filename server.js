@@ -128,9 +128,15 @@ async function deleteCloudinaryAsset(publicId) {
 async function purgeOrphanCloudinaryAssets() {
   try {
     const { rows } = await db.query(
-      "SELECT media_public_id FROM messages WHERE media_public_id IS NOT NULL"
+      "SELECT media_public_id, media_extra_ids FROM messages WHERE media_public_id IS NOT NULL OR media_extra_ids IS NOT NULL"
     );
-    const knownIds = new Set(rows.map(r => r.media_public_id));
+    const knownIds = new Set();
+    for (const row of rows) {
+      if (row.media_public_id) knownIds.add(row.media_public_id);
+      if (row.media_extra_ids) {
+        for (const pid of JSON.parse(row.media_extra_ids)) knownIds.add(pid);
+      }
+    }
     let nextCursor = null;
     let orphanCount = 0;
     do {
@@ -291,6 +297,9 @@ async function initDb() {
   await db.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
   `);
+  await db.query(`
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_extra_ids TEXT;
+  `);
 
   // Ensure the arch-admin account always has the correct role
   await db.query(`
@@ -406,6 +415,7 @@ const shapeMessage = (row, reactionsMap) => ({
     publicId: row.media_public_id,
     isVideo:  (row.media_type || "").startsWith("video/"),
   } : null,
+  mediaExtra: row.media_extra_ids ? JSON.parse(row.media_extra_ids).map(pid => ({ publicId: pid })) : [],
   isSystem:  row.is_system,
   reactions: reactionsMap[Number(row.id)] || {},
 });
@@ -942,23 +952,28 @@ app.post("/api/board/messages", requireAuth, async (req, res) => {
     const user = userRows[0];
     if (!user) return res.status(404).json({ error: "User not found." });
 
-    const { text, media } = req.body;
+    const { text, media, mediaExtra } = req.body;
     if (!text?.trim() && !media)
       return res.status(400).json({ error: "Message cannot be empty." });
 
+    const extraIds = Array.isArray(mediaExtra) ? mediaExtra.map(m => m.publicId).filter(Boolean) : [];
     const ts = Date.now();
     const { rows } = await db.query(`
       INSERT INTO messages
-        (user_id, author, ts, text, media_url, media_type, media_bytes, media_public_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        (user_id, author, ts, text, media_url, media_type, media_bytes, media_public_id, media_extra_ids)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [req.userId, displayName(user), ts, text?.trim() || "",
        media?.dataUrl || null, media?.type || null,
-       media?.bytes || 0, media?.publicId || null]
+       media?.bytes || 0, media?.publicId || null,
+       extraIds.length > 0 ? JSON.stringify(extraIds) : null]
     );
 
     // Remove from pending — it's now a real message
     if (media?.publicId) {
       await db.query("DELETE FROM pending_uploads WHERE public_id = $1", [media.publicId]);
+    }
+    for (const pid of extraIds) {
+      await db.query("DELETE FROM pending_uploads WHERE public_id = $1", [pid]);
     }
 
     // Push notification — notify all OTHER users that a new message arrived
@@ -994,10 +1009,16 @@ app.delete("/api/board/messages/:id", requireAuth, async (req, res) => {
     if (!userRows[0] || userRows[0].role !== "arch_admin")
       return res.status(403).json({ error: "Forbidden" });
     const { id } = req.params;
-    const { rows } = await db.query("SELECT media_public_id FROM messages WHERE id = $1", [id]);
+    const { rows } = await db.query("SELECT media_public_id, media_extra_ids FROM messages WHERE id = $1", [id]);
     if (!rows[0]) return res.status(404).json({ error: "Not found" });
     if (rows[0].media_public_id) {
       try { await cloudinary.uploader.destroy(rows[0].media_public_id, { resource_type: "auto" }); } catch (_) {}
+    }
+    if (rows[0].media_extra_ids) {
+      const extraIds = JSON.parse(rows[0].media_extra_ids);
+      for (const pid of extraIds) {
+        try { await cloudinary.uploader.destroy(pid, { resource_type: "auto" }); } catch (_) {}
+      }
     }
     await db.query("DELETE FROM messages WHERE id = $1", [id]);
     return res.json({ ok: true });

@@ -1088,7 +1088,11 @@ function BoardPage({ username, currentUser }) {
       publicId: f.publicId ?? "",
       isVideo:  f.type?.startsWith("video/"),
     }));
-    const msg = { text: text.trim(), media: allMedia.length > 0 ? allMedia[0] : null };
+    const msg = {
+      text:       text.trim(),
+      media:      allMedia.length > 0 ? allMedia[0] : null,
+      mediaExtra: allMedia.length > 1 ? allMedia.slice(1) : [],
+    };
     await saveMessage(msg);
     setText("");
     setMediaFiles([]);
