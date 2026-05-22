@@ -146,6 +146,7 @@ async function purgeOrphanCloudinaryAssets() {
       if (nextCursor) params.next_cursor = nextCursor;
       const result = await cloudinary.api.resources(params);
       for (const asset of result.resources) {
+        if (asset.public_id.startsWith("bible-audio/")) continue; // never delete static Bible audio
         if (!knownIds.has(asset.public_id)) {
           await cloudinary.uploader.destroy(asset.public_id, { resource_type: "auto" });
           orphanCount++;
