@@ -128,13 +128,15 @@ async function deleteCloudinaryAsset(publicId) {
 async function purgeOrphanCloudinaryAssets() {
   try {
     const { rows } = await db.query(
-      "SELECT media_public_id, media_extra_ids FROM messages WHERE media_public_id IS NOT NULL OR media_extra_ids IS NOT NULL"
+      "SELECT media_public_id, media_extra FROM messages WHERE media_public_id IS NOT NULL OR media_extra IS NOT NULL"
     );
     const knownIds = new Set();
     for (const row of rows) {
       if (row.media_public_id) knownIds.add(row.media_public_id);
-      if (row.media_extra_ids) {
-        for (const pid of JSON.parse(row.media_extra_ids)) knownIds.add(pid);
+      if (row.media_extra) {
+        for (const m of JSON.parse(row.media_extra)) {
+          if (m.publicId) knownIds.add(m.publicId);
+        }
       }
     }
     let nextCursor = null;
@@ -298,7 +300,7 @@ async function initDb() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
   `);
   await db.query(`
-    ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_extra_ids TEXT;
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_extra TEXT;
   `);
 
   // Ensure the arch-admin account always has the correct role
@@ -415,7 +417,7 @@ const shapeMessage = (row, reactionsMap) => ({
     publicId: row.media_public_id,
     isVideo:  (row.media_type || "").startsWith("video/"),
   } : null,
-  mediaExtra: row.media_extra_ids ? JSON.parse(row.media_extra_ids).map(pid => ({ publicId: pid })) : [],
+  mediaExtra: row.media_extra ? JSON.parse(row.media_extra) : [],
   isSystem:  row.is_system,
   reactions: reactionsMap[Number(row.id)] || {},
 });
@@ -956,24 +958,26 @@ app.post("/api/board/messages", requireAuth, async (req, res) => {
     if (!text?.trim() && !media)
       return res.status(400).json({ error: "Message cannot be empty." });
 
-    const extraIds = Array.isArray(mediaExtra) ? mediaExtra.map(m => m.publicId).filter(Boolean) : [];
+    const extraItems = Array.isArray(mediaExtra) && mediaExtra.length > 0 ? mediaExtra : null;
     const ts = Date.now();
     const { rows } = await db.query(`
       INSERT INTO messages
-        (user_id, author, ts, text, media_url, media_type, media_bytes, media_public_id, media_extra_ids)
+        (user_id, author, ts, text, media_url, media_type, media_bytes, media_public_id, media_extra)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [req.userId, displayName(user), ts, text?.trim() || "",
        media?.dataUrl || null, media?.type || null,
        media?.bytes || 0, media?.publicId || null,
-       extraIds.length > 0 ? JSON.stringify(extraIds) : null]
+       extraItems ? JSON.stringify(extraItems) : null]
     );
 
     // Remove from pending — it's now a real message
     if (media?.publicId) {
       await db.query("DELETE FROM pending_uploads WHERE public_id = $1", [media.publicId]);
     }
-    for (const pid of extraIds) {
-      await db.query("DELETE FROM pending_uploads WHERE public_id = $1", [pid]);
+    if (extraItems) {
+      for (const m of extraItems) {
+        if (m.publicId) await db.query("DELETE FROM pending_uploads WHERE public_id = $1", [m.publicId]);
+      }
     }
 
     // Push notification — notify all OTHER users that a new message arrived
@@ -1009,15 +1013,17 @@ app.delete("/api/board/messages/:id", requireAuth, async (req, res) => {
     if (!userRows[0] || userRows[0].role !== "arch_admin")
       return res.status(403).json({ error: "Forbidden" });
     const { id } = req.params;
-    const { rows } = await db.query("SELECT media_public_id, media_extra_ids FROM messages WHERE id = $1", [id]);
+    const { rows } = await db.query("SELECT media_public_id, media_extra FROM messages WHERE id = $1", [id]);
     if (!rows[0]) return res.status(404).json({ error: "Not found" });
     if (rows[0].media_public_id) {
       try { await cloudinary.uploader.destroy(rows[0].media_public_id, { resource_type: "auto" }); } catch (_) {}
     }
-    if (rows[0].media_extra_ids) {
-      const extraIds = JSON.parse(rows[0].media_extra_ids);
-      for (const pid of extraIds) {
-        try { await cloudinary.uploader.destroy(pid, { resource_type: "auto" }); } catch (_) {}
+    if (rows[0].media_extra) {
+      const extras = JSON.parse(rows[0].media_extra);
+      for (const m of extras) {
+        if (m.publicId) {
+          try { await cloudinary.uploader.destroy(m.publicId, { resource_type: "auto" }); } catch (_) {}
+        }
       }
     }
     await db.query("DELETE FROM messages WHERE id = $1", [id]);
