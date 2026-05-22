@@ -501,8 +501,9 @@ function useBoardMessages() {
   const saveMessage = async (msg) => {
     try {
       const saved = await api.postMessage({
-        text:  msg.text,
-        media: msg.media,
+        text:       msg.text,
+        media:      msg.media,
+        mediaExtra: msg.mediaExtra ?? [],
       });
       setMessages(prev => [...prev, saved]);
     } catch (err) {
@@ -1088,7 +1089,11 @@ function BoardPage({ username, currentUser }) {
       publicId: f.publicId ?? "",
       isVideo:  f.type?.startsWith("video/"),
     }));
-    const msg = { text: text.trim(), media: allMedia.length > 0 ? allMedia[0] : null };
+    const msg = {
+      text:       text.trim(),
+      media:      allMedia.length > 0 ? allMedia[0] : null,
+      mediaExtra: allMedia.length > 1 ? allMedia.slice(1) : [],
+    };
     await saveMessage(msg);
     setText("");
     setMediaFiles([]);
