@@ -1320,7 +1320,7 @@ function BoardPage({ username, currentUser }) {
               <div
                 className="delete-overlay"
                 style={{
-                  display: isMobile ? (deleteHover === msg.id ? "flex" : "none") : undefined,
+                  ...(isMobile ? { display: deleteHover === msg.id ? "flex" : "none" } : {}),
                   position:"absolute", top:6, right:6,
                   alignItems:"center", justifyContent:"center",
                   zIndex: 10,
