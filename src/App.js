@@ -501,9 +501,8 @@ function useBoardMessages() {
   const saveMessage = async (msg) => {
     try {
       const saved = await api.postMessage({
-        text:       msg.text,
-        media:      msg.media,
-        mediaExtra: msg.mediaExtra ?? [],
+        text:  msg.text,
+        media: msg.media,
       });
       setMessages(prev => [...prev, saved]);
     } catch (err) {
@@ -1089,11 +1088,7 @@ function BoardPage({ username, currentUser }) {
       publicId: f.publicId ?? "",
       isVideo:  f.type?.startsWith("video/"),
     }));
-    const msg = {
-      text:       text.trim(),
-      media:      allMedia.length > 0 ? allMedia[0] : null,
-      mediaExtra: allMedia.length > 1 ? allMedia.slice(1) : [],
-    };
+    const msg = { text: text.trim(), media: allMedia.length > 0 ? allMedia[0] : null };
     await saveMessage(msg);
     setText("");
     setMediaFiles([]);
@@ -1229,7 +1224,7 @@ function BoardPage({ username, currentUser }) {
           )}
 
           <div
-            onDoubleClick={() => isArchAdmin && setDeleteHover(deleteHover === msg.id ? null : msg.id)}
+            className="msg-bubble"
             onMouseDown={e => { if (isArchAdmin && deleteHover === msg.id) e.stopPropagation(); }}
             onTouchStart={(e) => {
               if (!isArchAdmin) return;
@@ -1244,9 +1239,10 @@ function BoardPage({ username, currentUser }) {
             }}
             onTouchMove={() => {
               if (!isArchAdmin) return;
-              clearTimeout(lastTapRef.current[msg.id]); // cancel if finger moves
+              clearTimeout(lastTapRef.current[msg.id]);
             }}
             style={{
+            position: "relative",
             background: isMe
               ? `radial-gradient(ellipse 90% 50% at 50% -10%, rgba(255,255,255,0.35) 0%, transparent 60%),
                  radial-gradient(ellipse 60% 40% at 80% 90%, rgba(0,255,200,0.15) 0%, transparent 70%),
@@ -1318,6 +1314,32 @@ function BoardPage({ username, currentUser }) {
                 )}
               </div>
             ))}
+            {/* Arch-admin delete overlay — desktop: appears on bubble hover via CSS;
+                mobile: appears after long-press sets deleteHover */}
+            {isArchAdmin && (
+              <div
+                className="delete-overlay"
+                style={{
+                  display: isMobile ? (deleteHover === msg.id ? "flex" : "none") : undefined,
+                  position:"absolute", top:6, right:6,
+                  alignItems:"center", justifyContent:"center",
+                  zIndex: 10,
+                }}>
+                <button
+                  onMouseDown={e => e.stopPropagation()}
+                  onTouchStart={e => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); if (window.confirm("Delete this message?")) deleteMessage(msg.id); }}
+                  style={{
+                    background:"rgba(180,20,20,0.85)", border:"1px solid rgba(255,80,80,0.6)",
+                    borderRadius:"50%", width:28, height:28, display:"flex", alignItems:"center",
+                    justifyContent:"center", cursor:"pointer", color:"#fff", fontSize:14,
+                    boxShadow:"0 2px 8px rgba(0,0,0,0.6)", lineHeight:1, padding:0,
+                  }}
+                  title="Delete message">
+                  ✕
+                </button>
+              </div>
+            )}
           </div>
 
           {reactionEntries.length > 0 && (
@@ -1387,16 +1409,6 @@ function BoardPage({ username, currentUser }) {
               style={{ background:"none", border:"none", cursor:"pointer", color:"var(--muted)", fontSize:12, padding:"3px 6px", opacity:0.5, marginTop:2 }}>
               😊 +
             </button>
-            {/* Arch-admin delete — only visible on hover, never shown for own messages */}
-            {isArchAdmin && deleteHover === msg.id && (
-              <button
-                onMouseDown={e => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); if (window.confirm("Delete this message?")) deleteMessage(msg.id); }}
-                style={{ background:"rgba(255,40,40,0.15)", border:"1px solid rgba(255,80,80,0.4)", borderRadius:3, cursor:"pointer", color:"rgba(255,100,100,0.9)", fontSize:11, padding:"2px 6px", lineHeight:1, marginTop:2 }}
-                title="Delete message">
-                ✕
-              </button>
-            )}
 
             {/* ── Quick-bar: single row of most-used + + button ── */}
             {emojiPickerFor === msg.id && (() => {
@@ -2785,6 +2797,11 @@ const css = `
        to update the height dynamically when the keyboard opens/closes.
        The visualViewport API is the only truly cross-platform reliable way.
     */
+    /* Arch-admin delete overlay on bubble */
+    .msg-bubble { position: relative; }
+    .msg-bubble .delete-overlay { display: none; }
+    .msg-bubble:hover .delete-overlay { display: flex; }
+
     .chat-mobile-root {
       position: absolute;
       top: 0; left: 0; right: 0;
