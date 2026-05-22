@@ -139,21 +139,28 @@ async function purgeOrphanCloudinaryAssets() {
         }
       }
     }
-    let nextCursor = null;
     let orphanCount = 0;
-    do {
-      const params = { max_results: 500, resource_type: "auto" };
-      if (nextCursor) params.next_cursor = nextCursor;
-      const result = await cloudinary.api.resources(params);
-      for (const asset of result.resources) {
-        if (asset.public_id.startsWith("bible-audio/")) continue; // never delete static Bible audio
-        if (!knownIds.has(asset.public_id)) {
-          await cloudinary.uploader.destroy(asset.public_id, { resource_type: "auto" });
-          orphanCount++;
+    // Cloudinary requires separate calls per resource_type — "auto" is not valid for listing
+    for (const resourceType of ["image", "video", "raw"]) {
+      let nextCursor = null;
+      do {
+        const params = { max_results: 500, resource_type: resourceType };
+        if (nextCursor) params.next_cursor = nextCursor;
+        const result = await cloudinary.api.resources(params);
+        for (const asset of result.resources) {
+          if (asset.public_id.startsWith("bible-audio/")) continue;
+          if (!knownIds.has(asset.public_id)) {
+            try {
+              await cloudinary.uploader.destroy(asset.public_id, { resource_type: resourceType });
+              orphanCount++;
+            } catch (e) {
+              console.warn(`⚠ Could not delete orphan ${asset.public_id}:`, e.message);
+            }
+          }
         }
-      }
-      nextCursor = result.next_cursor;
-    } while (nextCursor);
+        nextCursor = result.next_cursor;
+      } while (nextCursor);
+    }
     if (orphanCount > 0) console.log(`🧹 Purged ${orphanCount} orphan Cloudinary assets.`);
   } catch (err) {
     console.error("purgeOrphanCloudinaryAssets error:", err.message);
