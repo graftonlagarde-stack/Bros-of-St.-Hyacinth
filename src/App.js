@@ -1225,6 +1225,8 @@ function BoardPage({ username, currentUser }) {
 
           <div
             className="msg-bubble"
+            onMouseEnter={() => { if (isArchAdmin && !isMobile) setDeleteHover(msg.id); }}
+            onMouseLeave={() => { if (isArchAdmin && !isMobile) setDeleteHover(null); }}
             onMouseDown={e => { if (isArchAdmin && deleteHover === msg.id) e.stopPropagation(); }}
             onTouchStart={(e) => {
               if (!isArchAdmin) return;
@@ -1320,7 +1322,7 @@ function BoardPage({ username, currentUser }) {
               <div
                 className="delete-overlay"
                 style={{
-                  ...(isMobile ? { display: deleteHover === msg.id ? "flex" : "none" } : {}),
+                  display: deleteHover === msg.id ? "flex" : "none",
                   position:"absolute", top:6, right:6,
                   alignItems:"center", justifyContent:"center",
                   zIndex: 10,
@@ -2799,8 +2801,6 @@ const css = `
     */
     /* Arch-admin delete overlay on bubble */
     .msg-bubble { position: relative; }
-    .msg-bubble .delete-overlay { display: none; }
-    .msg-bubble:hover .delete-overlay { display: flex; }
 
     .chat-mobile-root {
       position: absolute;
