@@ -501,9 +501,8 @@ function useBoardMessages() {
   const saveMessage = async (msg) => {
     try {
       const saved = await api.postMessage({
-        text:       msg.text,
-        media:      msg.media,
-        mediaExtra: msg.mediaExtra ?? [],
+        text:  msg.text,
+        media: msg.media,
       });
       setMessages(prev => [...prev, saved]);
     } catch (err) {
@@ -581,7 +580,7 @@ function VideoPlayer({ src, mt }) {
 
   return (
     <video ref={videoRef} playsInline
-      style={{ maxWidth:280, borderRadius:10, marginTop: mt || 0, display:"block", background:"#000", verticalAlign:"top" }} />
+      style={{ width:"100%", maxWidth:280, borderRadius:10, marginTop: mt || 0, display:"block", background:"#000", verticalAlign:"top" }} />
   );
 }
 
@@ -1089,11 +1088,7 @@ function BoardPage({ username, currentUser }) {
       publicId: f.publicId ?? "",
       isVideo:  f.type?.startsWith("video/"),
     }));
-    const msg = {
-      text:       text.trim(),
-      media:      allMedia.length > 0 ? allMedia[0] : null,
-      mediaExtra: allMedia.length > 1 ? allMedia.slice(1) : [],
-    };
+    const msg = { text: text.trim(), media: allMedia.length > 0 ? allMedia[0] : null };
     await saveMessage(msg);
     setText("");
     setMediaFiles([]);
@@ -1209,16 +1204,18 @@ function BoardPage({ username, currentUser }) {
 
     return (
       <div key={msg.id}
-        style={{ display:"flex", flexDirection: isMe ? "row-reverse" : "row", gap:8, alignItems:"flex-end", marginTop: grouped ? 1 : 8, position:"relative" }}
+        style={{ display:"flex", flexDirection: isMe ? "row-reverse" : "row", gap:8, alignItems:"flex-end", marginTop: grouped ? 0 : 8, position:"relative" }}
         onMouseLeave={() => setEmojiPickerFor(null)}>
 
-        <div style={{ width:32, flexShrink:0 }}>
-          {isLastInGroup && (
-            <div className="avatar sm" style={{ background: isMe ? "linear-gradient(135deg,#003322,#006644)" : "linear-gradient(135deg,#001a10,#002e1a)", color:"#88ff00" }}>
-              {initials(msg.author)}
-            </div>
-          )}
-        </div>
+        {!isMe && (
+          <div style={{ width:32, flexShrink:0 }}>
+            {isLastInGroup && (
+              <div className="avatar sm" style={{ background:"linear-gradient(135deg,#001a10,#002e1a)", color:"#88ff00" }}>
+                {initials(msg.author)}
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={{ maxWidth:"75%", display:"flex", flexDirection:"column", alignItems: isMe ? "flex-end" : "flex-start" }}>
           {!grouped && (
@@ -1268,7 +1265,8 @@ function BoardPage({ username, currentUser }) {
             borderLeft: isMe ? "1px solid rgba(0,255,204,0.35)" : "1px solid rgba(120,220,0,0.2)",
             borderRadius: isMe ? "18px 3px 18px 18px" : "3px 18px 18px 18px",
             padding: msg.text ? "10px 14px" : (!msg.text && (msg.media || (msg.mediaExtra||[]).length > 0)) ? "0" : "4px",
-            maxWidth: (!msg.text && (msg.media || (msg.mediaExtra||[]).length > 0)) ? 240 : undefined,
+            width: undefined,
+            maxWidth: undefined,
             overflow: (!msg.text && (msg.media || (msg.mediaExtra||[]).length > 0)) ? "hidden" : "visible",
             fontSize:14, lineHeight:1.5, wordBreak:"break-word",
             boxShadow: emojiPickerFor === msg.id
@@ -1286,12 +1284,14 @@ function BoardPage({ username, currentUser }) {
             {[msg.media, ...(msg.mediaExtra||[])].filter(Boolean).map((m, mi) => (
               <div key={mi} style={{ marginTop: (mi === 0 && msg.text) ? 8 : mi > 0 ? 6 : 0 }}>
                 {m.type?.startsWith("image/") && (
-                  <img src={m.dataUrl} alt="attachment"
-                    onClick={() => openLightbox(m.dataUrl, "image")}
-                    style={{ display:"block", cursor:"pointer", width:"100%", maxWidth:240, maxHeight:240, objectFit:"cover", borderRadius: msg.text ? 4 : "inherit" }} />
+                  <div style={{ width: isMobile ? "60vw" : 220 }}>
+                    <img src={m.dataUrl} alt="attachment"
+                      onClick={() => openLightbox(m.dataUrl, "image")}
+                      style={{ display:"block", cursor:"pointer", width:"100%", height:"auto", borderRadius: msg.text ? 4 : "inherit" }} />
+                  </div>
                 )}
                 {m.type?.startsWith("video/") && (
-                  <div onClick={() => openLightbox(m.dataUrl, "video")} style={{ cursor:"pointer", position:"relative", lineHeight:0 }}>
+                  <div onClick={() => openLightbox(m.dataUrl, "video")} style={{ cursor:"pointer", position:"relative", lineHeight:0, width: isMobile ? "60vw" : 220 }}>
                     <VideoPlayer src={m.dataUrl} mt={0} />
                     <div style={{ position:"absolute", top:0, left:0, right:0, bottom:0, display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
                       <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1681,7 +1681,7 @@ function BoardPage({ username, currentUser }) {
       <>
         {lightbox}
         <div ref={chatRootRef} className="chat-mobile-root">
-          <div ref={scrollContainerRef} className="chat-mobile-messages" style={{ padding: "80px 14px 20px", display: "flex", flexDirection: "column-reverse", willChange: "transform" }}>
+          <div ref={scrollContainerRef} className="chat-mobile-messages" style={{ padding: "60px 14px 20px", display: "flex", flexDirection: "column-reverse", willChange: "transform" }}>
             {messageList}
           </div>
           <div className="chat-mobile-input">
