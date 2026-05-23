@@ -292,9 +292,15 @@ async function initDb() {
   `);
   await db.query(`
     CREATE TABLE IF NOT EXISTS unread_counts (
-      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-      count   INTEGER NOT NULL DEFAULT 0
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type    TEXT NOT NULL DEFAULT 'global-chat',
+      count   INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, type)
     );
+  `);
+  // Migrate any existing single-column rows to the new schema
+  await db.query(`
+    ALTER TABLE unread_counts ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'global-chat';
   `);
   await db.query(`
     CREATE TABLE IF NOT EXISTS password_resets (
@@ -755,21 +761,21 @@ app.post("/api/upload", requireAuth, upload.single("file"), async (req, res) => 
 });
 
 // ── Push notification helper ───────────────────────────────────────────────────
-// Increment unread count for a user and return the new total
-async function incrementUnread(userId) {
+// Increment unread count for a user by type and return the new total for that type
+async function incrementUnread(userId, type = "global-chat") {
   const { rows } = await db.query(`
-    INSERT INTO unread_counts (user_id, count) VALUES ($1, 1)
-    ON CONFLICT (user_id) DO UPDATE SET count = unread_counts.count + 1
+    INSERT INTO unread_counts (user_id, type, count) VALUES ($1, $2, 1)
+    ON CONFLICT (user_id, type) DO UPDATE SET count = unread_counts.count + 1
     RETURNING count
-  `, [userId]);
+  `, [userId, type]);
   return rows[0]?.count ?? 1;
 }
 
 async function sendPushToUser(userId, payload) {
   if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
   try {
-    // Increment unread count and attach to payload so service worker can set badge
-    const badge = await incrementUnread(userId);
+    const type = payload.notifType || "global-chat";
+    const badge = await incrementUnread(userId, type);
     const fullPayload = { ...payload, badge };
 
     const { rows } = await db.query(
@@ -952,14 +958,22 @@ app.delete("/api/push/subscribe", requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/badge/clear — user has viewed the chat; reset their unread count to 0
+// POST /api/badge/clear — reset unread counts for one or more notification types
 app.post("/api/badge/clear", requireAuth, async (req, res) => {
   try {
-    await db.query(
-      "INSERT INTO unread_counts (user_id, count) VALUES ($1, 0) ON CONFLICT (user_id) DO UPDATE SET count = 0",
+    const types = Array.isArray(req.body.types) ? req.body.types : ["global-chat"];
+    for (const type of types) {
+      await db.query(
+        "INSERT INTO unread_counts (user_id, type, count) VALUES ($1, $2, 0) ON CONFLICT (user_id, type) DO UPDATE SET count = 0",
+        [req.userId, type]
+      );
+    }
+    // Clear the app icon badge only if all known types are now zero
+    const { rows } = await db.query(
+      "SELECT COALESCE(SUM(count), 0) AS total FROM unread_counts WHERE user_id = $1",
       [req.userId]
     );
-    return res.json({ ok: true });
+    return res.json({ ok: true, totalRemaining: Number(rows[0]?.total ?? 0) });
   } catch (err) {
     console.error("badge/clear:", err);
     return res.status(500).json({ error: "Server error." });
@@ -1030,6 +1044,7 @@ app.post("/api/board/messages", requireAuth, async (req, res) => {
         body:  pushBody,
         tag:   "bsh-message",
         url:   "/",
+        notifType: "global-chat",
       });
     }
 
@@ -1102,6 +1117,7 @@ app.post("/api/board/reactions", requireAuth, async (req, res) => {
           body:  `${name} reacted ${emoji} to your message`,
           tag:   "bsh-reaction",
           url:   "/",
+          notifType: "reaction",
         });
       }
     }
@@ -1349,6 +1365,7 @@ app.post("/api/chapters/:id/admin", requireAuth, requireAdmin, async (req, res) 
     sendPushToUser(Number(userId), {
       title: "Chapter Admin",
       body: "You have been appointed as a chapter admin.",
+      notifType: "chapter-membership",
     });
     res.json({ ok: true });
   } catch (err) {
@@ -1410,13 +1427,18 @@ app.post("/api/chapters/:id/join", requireAuth, async (req, res) => {
       sendPushToUser(a.user_id, {
         title: "New Join Request",
         body: `${name} has requested to join your chapter.`,
+        notifType: "chapter-membership",
       });
     }
     // Also notify arch-admin if no chapter admin exists
     if (adminRows.length === 0) {
       const { rows: aaRows } = await db.query("SELECT id FROM users WHERE role = 'arch_admin'");
       for (const aa of aaRows) {
-        sendPushToUser(aa.id, { title: "New Join Request", body: `${name} requested to join ${cRows[0].name} (no admin assigned).` });
+        sendPushToUser(aa.id, {
+          title: "New Join Request",
+          body: `${name} requested to join ${cRows[0].name} (no admin assigned).`,
+          notifType: "chapter-membership",
+        });
       }
     }
     res.json({ ok: true });
@@ -1479,6 +1501,7 @@ app.patch("/api/chapters/:id/requests/:userId", requireAuth, async (req, res) =>
       body: action === "approve"
         ? `You have been approved to join ${cRows[0]?.name}.`
         : `Your request to join ${cRows[0]?.name} was not approved.`,
+      notifType: "chapter-membership",
     });
     res.json({ ok: true });
   } catch (err) {
@@ -1642,6 +1665,7 @@ app.post("/api/chapters/:id/messages", requireAuth, async (req, res) => {
         title: displayName(user),
         body: text?.trim() || "Sent an attachment",
         tag: `chapter-${chapterId}`,
+        notifType: "chapter-chat",
       });
     }
     res.json(newMsg);

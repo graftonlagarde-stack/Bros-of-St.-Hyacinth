@@ -925,6 +925,15 @@ function BoardPage({ username, currentUser }) {
       .then(msgs => setChapterMessages(msgs))
       .catch(() => {})
       .finally(() => setChapterMsgLoading(false));
+    // Clear chapter-chat notifications
+    const token = api.getToken();
+    if (token) {
+      fetch(`${API_BASE}/api/badge/clear`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ types: ["chapter-chat"] }),
+      }).catch(() => {});
+    }
   }, [chatTab, chapterMembership]);
   const [text, setText]                 = useState("");
   const [mediaFiles, setMediaFiles]     = useState([]);
@@ -5996,6 +6005,15 @@ function ProfilePage({ user, onDeleted, onLogout }) {
     api.getMyMembership().then(m => setMembership(m)).catch(() => setMembership(null));
     api.getChapters().then(setChapters).catch(() => {});
     if (isArchAdmin) api.getAdminUsers().then(u => setAllUsers(u)).catch(() => {});
+    // Clear chapter-membership notifications on profile view
+    const token = api.getToken();
+    if (token) {
+      fetch(`${API_BASE}/api/badge/clear`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ types: ["chapter-membership"] }),
+      }).catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
@@ -6804,28 +6822,35 @@ export default function App() {
 
   const handleSetPage = (id) => {
     setPage(id);
-    if (id === "boards") clearBadge();
+    if (id === "boards") clearBadge(["global-chat", "reaction"]);
   };
 
-  // Clear the app icon badge and reset server unread count when user views chat
-  const clearBadge = () => {
-    if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+  // Clear notification badge for specific types when user views the relevant page
+  const clearBadge = (types = ["global-chat"]) => {
     const token = api.getToken();
     if (token) {
       fetch(`${API_BASE}/api/badge/clear`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => {});
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ types }),
+      })
+        .then(r => r.json())
+        .then(data => {
+          // Only clear the app icon badge if no unread counts remain across all types
+          if (navigator.clearAppBadge && data.totalRemaining === 0) {
+            navigator.clearAppBadge().catch(() => {});
+          }
+        })
+        .catch(() => {});
     }
   };
 
   // Also clear badge if user is already on boards and the app comes back into focus
   useEffect(() => {
     if (page !== "boards") return;
-    const onFocus = () => clearBadge();
+    const onFocus = () => clearBadge(["global-chat", "reaction"]);
     window.addEventListener("focus", onFocus);
-    // Clear immediately in case we're already focused
-    clearBadge();
+    clearBadge(["global-chat", "reaction"]);
     return () => window.removeEventListener("focus", onFocus);
   }, [page]);
 
