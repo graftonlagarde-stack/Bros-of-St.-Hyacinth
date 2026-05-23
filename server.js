@@ -311,9 +311,6 @@ async function initDb() {
     ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_extra TEXT;
   `);
   await db.query(`
-    ALTER TABLE messages ADD COLUMN IF NOT EXISTS chapter_id INTEGER REFERENCES chapters(id) ON DELETE SET NULL;
-  `);
-  await db.query(`
     CREATE TABLE IF NOT EXISTS chapters (
       id          SERIAL PRIMARY KEY,
       name        TEXT NOT NULL UNIQUE,
@@ -333,6 +330,9 @@ async function initDb() {
       resolved_at  BIGINT,
       UNIQUE(user_id)
     );
+  `);
+  await db.query(`
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS chapter_id INTEGER REFERENCES chapters(id) ON DELETE SET NULL;
   `);
 
   // Ensure the arch-admin account always has the correct role
