@@ -922,7 +922,7 @@ function BoardPage({ username, currentUser }) {
     if (chatTab !== "chapter" || !chapterMembership) return;
     setChapterMsgLoading(true);
     api.getChapterMessages(chapterMembership.chapter_id)
-      .then(msgs => setChapterMessages([...msgs].reverse()))
+      .then(msgs => setChapterMessages(msgs))
       .catch(() => {})
       .finally(() => setChapterMsgLoading(false));
   }, [chatTab, chapterMembership]);
@@ -1131,7 +1131,7 @@ function BoardPage({ username, currentUser }) {
     if (chatTab === "chapter" && chapterMembership) {
       try {
         const saved = await api.postChapterMessage(chapterMembership.chapter_id, msg);
-        setChapterMessages(prev => [...prev, saved]);
+        setChapterMessages(prev => [saved, ...prev]);
       } catch (err) { console.warn("chapter message failed:", err); }
     } else {
       await saveMessage(msg);

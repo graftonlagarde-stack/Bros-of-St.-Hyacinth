@@ -972,7 +972,7 @@ app.post("/api/badge/clear", requireAuth, async (req, res) => {
 
 app.get("/api/board/messages", requireAuth, async (req, res) => {
   try {
-    const { rows } = await db.query("SELECT * FROM messages ORDER BY ts ASC");
+    const { rows } = await db.query("SELECT * FROM messages WHERE chapter_id IS NULL ORDER BY ts ASC");
     const ids = rows.map(r => Number(r.id));
     const reactionsMap = await loadReactions(ids);
     return res.json(rows.map(r => shapeMessage(r, reactionsMap)));
