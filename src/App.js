@@ -5566,6 +5566,7 @@ function TopChartsPage({ username, currentUser }) {
         </div>
       ) : (
         <>
+        <div style={{display:"flex",gap:20,marginBottom:24,flexWrap:"wrap"}}>
         <div style={{flex:1,minWidth:220}}>
           <div className="form-label" style={{marginBottom:8}}>Exercise</div>
           <div className="tab-row" style={{flexWrap:"wrap"}}>
@@ -5594,7 +5595,7 @@ function TopChartsPage({ username, currentUser }) {
           </div>
         </div>
         )}
-      </div>
+        </div>
 
       {/* ── YOUR RANK CARD ── */}
       {isBodyweightChart ? <BodyweightRankCard username={username} exercise={chartEx} userLogs={userLogs} communityUsers={communityUsers} /> : <MyRankCard username={username} exercise={chartEx} repCat={chartRep} userLogs={userLogs} communityUsers={communityUsers} />}
