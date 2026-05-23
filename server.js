@@ -334,6 +334,8 @@ async function initDb() {
   await db.query(`
     ALTER TABLE messages ADD COLUMN IF NOT EXISTS chapter_id INTEGER REFERENCES chapters(id) ON DELETE SET NULL;
   `);
+  // Retroactively hard-delete any chapters that were previously only deactivated
+  await db.query(`DELETE FROM chapters WHERE active = false;`);
 
   // Ensure the arch-admin account always has the correct role
   await db.query(`
@@ -1292,24 +1294,31 @@ app.patch("/api/chapters/:id", requireAuth, requireAdmin, async (req, res) => {
     const { rows: roleRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
     if (roleRows[0]?.role !== "arch_admin") return res.status(403).json({ error: "Arch-admin only." });
     const { name, description } = req.body;
+    if (name !== undefined && !name.trim()) return res.status(400).json({ error: "Chapter name cannot be empty." });
     const { rows } = await db.query(
-      "UPDATE chapters SET name = COALESCE($1, name), description = COALESCE($2, description) WHERE id = $3 RETURNING *",
-      [name?.trim() || null, description?.trim() ?? null, req.params.id]
+      `UPDATE chapters SET
+        name        = CASE WHEN $1::text IS NOT NULL THEN $1 ELSE name END,
+        description = CASE WHEN $2::text IS NOT NULL THEN $2 ELSE description END
+       WHERE id = $3 RETURNING *`,
+      [name?.trim() ?? null, description?.trim() ?? null, req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: "Chapter not found." });
     res.json(rows[0]);
   } catch (err) {
+    if (err.code === "23505") return res.status(400).json({ error: "A chapter with that name already exists." });
     console.error("PATCH /api/chapters/:id:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// DELETE /api/chapters/:id — deactivate a chapter (arch-admin only)
+// DELETE /api/chapters/:id — permanently delete a chapter (arch-admin only)
 app.delete("/api/chapters/:id", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { rows: roleRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
     if (roleRows[0]?.role !== "arch_admin") return res.status(403).json({ error: "Arch-admin only." });
-    await db.query("UPDATE chapters SET active = false WHERE id = $1", [req.params.id]);
+    // Hard delete — memberships cascade, messages.chapter_id set to null
+    const { rowCount } = await db.query("DELETE FROM chapters WHERE id = $1", [req.params.id]);
+    if (!rowCount) return res.status(404).json({ error: "Chapter not found." });
     res.json({ ok: true });
   } catch (err) {
     console.error("DELETE /api/chapters/:id:", err);

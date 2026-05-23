@@ -5914,6 +5914,8 @@ function ProfilePage({ user, onDeleted, onLogout }) {
   const [allUsers, setAllUsers]         = useState([]);
   const [adminPickChap, setAdminPickChap] = useState(null); // chapter id being assigned admin
   const [adminPickUser, setAdminPickUser] = useState("");
+  const [editChap, setEditChap]           = useState(null); // { id, name, description }
+  const [editChapError, setEditChapError] = useState("");
 
   useEffect(() => {
     api.getMyMembership().then(m => setMembership(m)).catch(() => setMembership(null));
@@ -5995,13 +5997,24 @@ function ProfilePage({ user, onDeleted, onLogout }) {
     finally { setChapLoading(false); }
   };
 
-  const handleDeactivateChapter = async (id, name) => {
-    if (!window.confirm(`Deactivate chapter "${name}"? Members will lose access.`)) return;
+  const handleDeleteChapter = async (id, name) => {
+    if (!window.confirm(`Permanently delete chapter "${name}"? This cannot be undone. All members will be removed.`)) return;
     try {
       await api.deactivateChapter(id);
       const updated = await api.getChapters();
       setChapters(updated);
     } catch (err) { setChapterMsg(err.message); }
+  };
+
+  const handleEditChapter = async () => {
+    setEditChapError("");
+    if (!editChap.name.trim()) { setEditChapError("Name cannot be empty."); return; }
+    try {
+      await api.editChapter(editChap.id, { name: editChap.name.trim(), description: editChap.description.trim() });
+      const updated = await api.getChapters();
+      setChapters(updated);
+      setEditChap(null);
+    } catch (err) { setEditChapError(err.message); }
   };
 
   const handleAssignAdmin = async (chapterId) => {
@@ -6321,16 +6334,43 @@ function ProfilePage({ user, onDeleted, onLogout }) {
                     </div>
                     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                       <button className="btn btn-primary" style={{fontSize:10,padding:"5px 10px"}}
+                        onClick={()=>{setEditChap(editChap?.id===c.id?null:{id:c.id,name:c.name,description:c.description||""});setEditChapError("");}}>
+                        EDIT
+                      </button>
+                      <button className="btn btn-primary" style={{fontSize:10,padding:"5px 10px"}}
                         onClick={()=>setAdminPickChap(adminPickChap===c.id?null:c.id)}>
                         ASSIGN ADMIN
                       </button>
                       <button className="btn" style={{fontSize:10,padding:"5px 10px",color:"#ff4455",
                         borderColor:"rgba(255,68,85,0.3)"}}
-                        onClick={()=>handleDeactivateChapter(c.id,c.name)}>
-                        DEACTIVATE
+                        onClick={()=>handleDeleteChapter(c.id,c.name)}>
+                        DELETE
                       </button>
                     </div>
                   </div>
+                  {/* Edit form */}
+                  {editChap?.id===c.id && (
+                    <div style={{marginTop:12,borderTop:"1px solid rgba(136,255,0,0.08)",paddingTop:12}}>
+                      <div style={{marginBottom:8}}>
+                        <div className="form-label" style={{marginBottom:4}}>Name</div>
+                        <input value={editChap.name} onChange={e=>setEditChap(v=>({...v,name:e.target.value}))}
+                          style={{width:"100%",boxSizing:"border-box"}} />
+                      </div>
+                      <div style={{marginBottom:10}}>
+                        <div className="form-label" style={{marginBottom:4}}>Description</div>
+                        <input value={editChap.description} onChange={e=>setEditChap(v=>({...v,description:e.target.value}))}
+                          style={{width:"100%",boxSizing:"border-box"}} />
+                      </div>
+                      {editChapError && <div style={{color:"#ff4455",fontSize:12,marginBottom:8}}>{editChapError}</div>}
+                      <div style={{display:"flex",gap:8}}>
+                        <button className="btn btn-primary" style={{fontSize:11,padding:"7px 14px"}}
+                          onClick={handleEditChapter}>SAVE</button>
+                        <button className="btn btn-ghost" style={{fontSize:11,padding:"7px 14px"}}
+                          onClick={()=>setEditChap(null)}>CANCEL</button>
+                      </div>
+                    </div>
+                  )}
+                  {/* Assign admin form */}
                   {adminPickChap===c.id && (
                     <div style={{marginTop:12,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                       <select value={adminPickUser} onChange={e=>setAdminPickUser(e.target.value)}
