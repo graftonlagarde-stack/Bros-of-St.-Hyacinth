@@ -1727,7 +1727,7 @@ function BoardPage({ username, currentUser }) {
         {lightbox}
         <div ref={chatRootRef} className="chat-mobile-root">
           {chapterMembership && (
-            <div style={{display:"flex",borderBottom:"1px solid rgba(136,255,0,0.12)",
+            <div style={{display:"flex",justifyContent:"flex-end",borderBottom:"1px solid rgba(136,255,0,0.12)",
               background:"rgba(0,8,4,0.98)",zIndex:5,flexShrink:0}}>
               {["global","chapter"].map(tab => (
                 <button key={tab} onClick={()=>setChatTab(tab)}
@@ -1760,7 +1760,7 @@ function BoardPage({ username, currentUser }) {
       {lightbox}
       <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 0px)", overflow:"hidden", position:"relative" }}>
         {chapterMembership && (
-          <div style={{display:"flex",borderBottom:"1px solid rgba(136,255,0,0.12)",
+          <div style={{display:"flex",justifyContent:"flex-end",borderBottom:"1px solid rgba(136,255,0,0.12)",
             background:"rgba(0,8,4,0.98)",flexShrink:0,zIndex:5}}>
             {["global","chapter"].map(tab => (
               <button key={tab} onClick={()=>setChatTab(tab)}
@@ -5436,10 +5436,14 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack, navExpand
 }
 
 // ─── TOP CHARTS PAGE ──────────────────────────────────────────────────────────
-function TopChartsPage({ username }) {
+function TopChartsPage({ username, currentUser }) {
   const [userLogs, setUserLogs] = useState([]);
   const [chartEx, setChartEx] = useState("Bench Press");
   const [chartRep, setChartRep] = useState(1);
+  const [chartsTab, setChartsTab] = useState("global"); // "global" | "chapter"
+  const [membership, setMembership] = useState(null);
+  const [chapterStats, setChapterStats] = useState([]);
+  const [chapterStatsLoading, setChapterStatsLoading] = useState(false);
   const { communityUsers } = useCommunityUsers(username);
   const isPullup = chartEx === "Pull-up";
   const isPushup = chartEx === "Push-up";
@@ -5449,7 +5453,19 @@ function TopChartsPage({ username }) {
     api.getLogs()
       .then(data => setUserLogs(data))
       .catch(err => console.warn("TopCharts getLogs:", err));
+    api.getMyMembership().then(m => {
+      if (m && m.status === "approved") setMembership(m);
+    }).catch(() => {});
   }, [username]);
+
+  useEffect(() => {
+    if (chartsTab !== "chapter" || !membership) return;
+    setChapterStatsLoading(true);
+    api.getChapterStats(membership.chapter_id)
+      .then(setChapterStats)
+      .catch(() => {})
+      .finally(() => setChapterStatsLoading(false));
+  }, [chartsTab, membership]);
 
   // Build leaderboard for selected exercise + rep category
   const buildLeaderboard = (exercise, repCat) => {
@@ -5489,10 +5505,67 @@ function TopChartsPage({ username }) {
 
   return (
     <div className="page" style={{position:"relative"}}>
-      <div className="page-title">TOP <span className="accentText">CHARTS</span></div>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:4}}>
+        <div className="page-title" style={{marginBottom:0}}>TOP <span className="accentText">CHARTS</span></div>
+        {membership && (
+          <div style={{display:"flex",borderBottom:"1px solid rgba(136,255,0,0.12)",alignSelf:"flex-end"}}>
+            {["global","chapter"].map(tab => (
+              <button key={tab} onClick={()=>setChartsTab(tab)}
+                style={{padding:"8px 18px",border:"none",background:"none",cursor:"pointer",
+                  fontFamily:"'Orbitron',sans-serif",fontSize:9,letterSpacing:2,textTransform:"uppercase",
+                  color: chartsTab===tab ? "#88ff00" : "var(--muted)",
+                  borderBottom: chartsTab===tab ? "2px solid #88ff00" : "2px solid transparent",
+                  transition:"all 0.2s"}}>
+                {tab === "global" ? "Global" : membership.chapter_name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="page-sub">&ldquo;Non nobis, Domine, non nobis, sed nomini Tuo da gloriam.&rdquo;</div>
 
-      <div style={{display:"flex",gap:20,marginBottom:24,flexWrap:"wrap"}}>
+      {chartsTab === "chapter" && membership ? (
+        /* ── Chapter leaderboard ── */
+        <div>
+          {chapterStatsLoading ? (
+            <div style={{color:"var(--muted)",fontSize:13,padding:20,textAlign:"center",
+              fontFamily:"'Orbitron',sans-serif",letterSpacing:2}}>LOADING…</div>
+          ) : chapterStats.length === 0 ? (
+            <div style={{color:"var(--muted)",fontSize:13,padding:20}}>No chapter workout data yet.</div>
+          ) : (
+            <div className="card">
+              <div className="card-title">{membership.chapter_name} — Leaderboard</div>
+              <div style={{overflowX:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                  <thead>
+                    <tr style={{borderBottom:"1px solid rgba(136,255,0,0.15)"}}>
+                      {["Rank","Member","Total Lifts","Days Logged","Max Weight"].map(h => (
+                        <th key={h} style={{padding:"8px 10px",textAlign:"left",fontFamily:"'Orbitron',sans-serif",
+                          fontSize:9,letterSpacing:1,color:"var(--muted)",fontWeight:600}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {chapterStats.map((s,i) => (
+                      <tr key={s.id} style={{borderBottom:"1px solid rgba(136,255,0,0.05)",
+                        background: s.id===currentUser?.id ? "rgba(136,255,0,0.04)" : "transparent"}}>
+                        <td style={{padding:"8px 10px",color:"var(--muted)",fontWeight:700}}>#{i+1}</td>
+                        <td style={{padding:"8px 10px",fontWeight:s.id===currentUser?.id?700:400}}>
+                          {s.displayName}{s.id===currentUser?.id?" (you)":""}
+                        </td>
+                        <td style={{padding:"8px 10px"}}>{s.totalLifts}</td>
+                        <td style={{padding:"8px 10px"}}>{s.daysLogged}</td>
+                        <td style={{padding:"8px 10px"}}>{s.maxWeight > 0 ? `${s.maxWeight} lbs` : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
         <div style={{flex:1,minWidth:220}}>
           <div className="form-label" style={{marginBottom:8}}>Exercise</div>
           <div className="tab-row" style={{flexWrap:"wrap"}}>
@@ -5607,6 +5680,8 @@ function TopChartsPage({ username }) {
           </tbody>
         </table>
       </div>
+        </>
+      )}
     </div>
   );
 }
@@ -5902,7 +5977,6 @@ function ProfilePage({ user, onDeleted, onLogout }) {
   const [membership, setMembership]   = useState(undefined); // undefined=loading, null=none
   const [chapters, setChapters]       = useState([]);
   const [requests, setRequests]       = useState([]);
-  const [stats, setStats]             = useState([]);
   const [chapterMsg, setChapterMsg]   = useState("");
   const [joiningId, setJoiningId]     = useState(null);
   const [chapLoading, setChapLoading] = useState(false);
@@ -5926,7 +6000,6 @@ function ProfilePage({ user, onDeleted, onLogout }) {
   useEffect(() => {
     if (!membership || membership.status !== "approved") return;
     api.getChapterRequests(membership.chapter_id).then(setRequests).catch(() => {});
-    api.getChapterStats(membership.chapter_id).then(setStats).catch(() => {});
   }, [membership]);
 
   const handleDelete = async () => {
@@ -6247,42 +6320,6 @@ function ProfilePage({ user, onDeleted, onLogout }) {
           </div>
         )}
       </div>
-
-      {/* ── Section 3: Chapter Workout Stats ── */}
-      {membership?.status === "approved" && stats.length > 0 && (
-        <div style={cardStyle}>
-          <div style={{position:"absolute",top:0,left:0,right:0,height:1,
-            background:"linear-gradient(90deg,#88ff00,#00ffcc)",backgroundSize:"300% 100%",
-            opacity:0.4,animation:"sheen 3.5s ease-in-out infinite"}} />
-          {sectionTitle("Chapter Leaderboard")}
-          <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-              <thead>
-                <tr style={{borderBottom:"1px solid rgba(136,255,0,0.15)"}}>
-                  {["Rank","Member","Total Lifts","Days Logged","Max Weight"].map(h => (
-                    <th key={h} style={{padding:"6px 10px",textAlign:"left",fontFamily:"'Orbitron',sans-serif",
-                      fontSize:9,letterSpacing:1,color:"var(--muted)",fontWeight:600}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {stats.map((s,i) => (
-                  <tr key={s.id} style={{borderBottom:"1px solid rgba(136,255,0,0.05)",
-                    background: s.id===user.id ? "rgba(136,255,0,0.04)" : "transparent"}}>
-                    <td style={{padding:"8px 10px",color:"var(--muted)",fontWeight:700}}>#{i+1}</td>
-                    <td style={{padding:"8px 10px",fontWeight:s.id===user.id?700:400}}>
-                      {s.displayName}{s.id===user.id?" (you)":""}
-                    </td>
-                    <td style={{padding:"8px 10px"}}>{s.totalLifts}</td>
-                    <td style={{padding:"8px 10px"}}>{s.daysLogged}</td>
-                    <td style={{padding:"8px 10px"}}>{s.maxWeight > 0 ? `${s.maxWeight} lbs` : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* ── Section 4: Arch-Admin Chapter Management ── */}
       {isArchAdmin && (
@@ -6908,14 +6945,16 @@ export default function App() {
                 </div>
               );
             })}
-            <div className="nav-item-wrap" onClick={() => setPage("profile")}>
-              <div className="nav-item">{username}</div>
+            <div className={`nav-item-wrap${page === "profile" ? " active-wrap" : ""}`}
+              onTouchStart={() => { setPressedId("profile"); setPage("profile"); }}
+              onClick={() => setPage("profile")}>
+              <div className={`nav-item${page === "profile" ? " active" : ""}`}>{username}</div>
             </div>
           </div>
         </div>
         <div ref={mainRef} className={`main${isMobile ? (navExpanded ? " nav-open" : " nav-closed") : ""}${isMobile && page === "boards" ? " chat-active" : ""}`} style={{display:"flex", flexDirection:"column"}}>
           {page === "workout" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><WorkoutPage username={username} /></div>}
-          {page === "topcharts" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><TopChartsPage username={username} /></div>}
+          {page === "topcharts" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><TopChartsPage username={username} currentUser={user} /></div>}
           {page === "boards" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><BoardPage username={username} currentUser={user} /></div>}
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
           {page === "rule" && <RulePage user={user} />}
