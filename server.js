@@ -310,6 +310,30 @@ async function initDb() {
   await db.query(`
     ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_extra TEXT;
   `);
+  await db.query(`
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS chapter_id INTEGER REFERENCES chapters(id) ON DELETE SET NULL;
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS chapters (
+      id          SERIAL PRIMARY KEY,
+      name        TEXT NOT NULL UNIQUE,
+      description TEXT NOT NULL DEFAULT '',
+      created_at  BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT,
+      active      BOOLEAN NOT NULL DEFAULT true
+    );
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS chapter_memberships (
+      id           SERIAL PRIMARY KEY,
+      chapter_id   INTEGER NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+      user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role         TEXT NOT NULL DEFAULT 'member',
+      status       TEXT NOT NULL DEFAULT 'pending',
+      requested_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT,
+      resolved_at  BIGINT,
+      UNIQUE(user_id)
+    );
+  `);
 
   // Ensure the arch-admin account always has the correct role
   await db.query(`
@@ -1194,6 +1218,427 @@ app.put("/api/rule/:section", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("rule PUT:", err);
     return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CHAPTER ROUTES
+// ═════════════════════════════════════════════════════════════════════════════
+
+// Helper: get chapter membership for a user
+async function getUserMembership(userId) {
+  const { rows } = await db.query(`
+    SELECT cm.*, c.name AS chapter_name, c.description, c.active
+    FROM chapter_memberships cm
+    JOIN chapters c ON c.id = cm.chapter_id
+    WHERE cm.user_id = $1
+  `, [userId]);
+  return rows[0] || null;
+}
+
+// Helper: check if user is chapter admin for a given chapter
+async function isChapterAdmin(userId, chapterId) {
+  const { rows } = await db.query(
+    "SELECT id FROM chapter_memberships WHERE user_id = $1 AND chapter_id = $2 AND role = 'admin' AND status = 'approved'",
+    [userId, chapterId]
+  );
+  return rows.length > 0;
+}
+
+// GET /api/chapters — list all active chapters with member count and admin name
+app.get("/api/chapters", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await db.query(`
+      SELECT
+        c.id, c.name, c.description, c.created_at, c.active,
+        COUNT(cm.id) FILTER (WHERE cm.status = 'approved') AS member_count,
+        MAX(u.first_name || ' ' || u.last_name) FILTER (WHERE cm.role = 'admin' AND cm.status = 'approved') AS admin_name
+      FROM chapters c
+      LEFT JOIN chapter_memberships cm ON cm.chapter_id = c.id
+      LEFT JOIN users u ON u.id = cm.user_id
+      WHERE c.active = true
+      GROUP BY c.id
+      ORDER BY c.name ASC
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("GET /api/chapters:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// POST /api/chapters — create a chapter (arch-admin only)
+app.post("/api/chapters", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows: roleRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    if (roleRows[0]?.role !== "arch_admin") return res.status(403).json({ error: "Arch-admin only." });
+    const { name, description } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: "Chapter name is required." });
+    const { rows } = await db.query(
+      "INSERT INTO chapters (name, description) VALUES ($1, $2) RETURNING *",
+      [name.trim(), description?.trim() || ""]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    if (err.code === "23505") return res.status(400).json({ error: "A chapter with that name already exists." });
+    console.error("POST /api/chapters:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// PATCH /api/chapters/:id — edit chapter name/description (arch-admin only)
+app.patch("/api/chapters/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows: roleRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    if (roleRows[0]?.role !== "arch_admin") return res.status(403).json({ error: "Arch-admin only." });
+    const { name, description } = req.body;
+    const { rows } = await db.query(
+      "UPDATE chapters SET name = COALESCE($1, name), description = COALESCE($2, description) WHERE id = $3 RETURNING *",
+      [name?.trim() || null, description?.trim() ?? null, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Chapter not found." });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error("PATCH /api/chapters/:id:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// DELETE /api/chapters/:id — deactivate a chapter (arch-admin only)
+app.delete("/api/chapters/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows: roleRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    if (roleRows[0]?.role !== "arch_admin") return res.status(403).json({ error: "Arch-admin only." });
+    await db.query("UPDATE chapters SET active = false WHERE id = $1", [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("DELETE /api/chapters/:id:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// POST /api/chapters/:id/admin — assign chapter admin (arch-admin only)
+app.post("/api/chapters/:id/admin", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows: roleRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    if (roleRows[0]?.role !== "arch_admin") return res.status(403).json({ error: "Arch-admin only." });
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: "userId required." });
+    const chapterId = Number(req.params.id);
+    // Demote any existing admin in this chapter
+    await db.query(
+      "UPDATE chapter_memberships SET role = 'member' WHERE chapter_id = $1 AND role = 'admin'",
+      [chapterId]
+    );
+    // Upsert the new admin as approved member with admin role
+    await db.query(`
+      INSERT INTO chapter_memberships (chapter_id, user_id, role, status, resolved_at)
+      VALUES ($1, $2, 'admin', 'approved', $3)
+      ON CONFLICT (user_id) DO UPDATE SET chapter_id = $1, role = 'admin', status = 'approved', resolved_at = $3
+    `, [chapterId, userId, Date.now()]);
+    // Notify the new admin
+    sendPushToUser(Number(userId), {
+      title: "Chapter Admin",
+      body: "You have been appointed as a chapter admin.",
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("POST /api/chapters/:id/admin:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /api/chapters/my — get current user's membership
+app.get("/api/chapters/my", requireAuth, async (req, res) => {
+  try {
+    const membership = await getUserMembership(req.userId);
+    if (!membership) return res.json(null);
+    // Also return chapter members if approved
+    let members = [];
+    if (membership.status === "approved") {
+      const { rows } = await db.query(`
+        SELECT u.id, u.first_name, u.last_name, cm.role, cm.requested_at
+        FROM chapter_memberships cm
+        JOIN users u ON u.id = cm.user_id
+        WHERE cm.chapter_id = $1 AND cm.status = 'approved'
+        ORDER BY cm.role DESC, u.first_name ASC
+      `, [membership.chapter_id]);
+      members = rows.map(r => ({
+        id: Number(r.id),
+        displayName: `${r.first_name} ${r.last_name}`,
+        role: r.role,
+      }));
+    }
+    res.json({ ...membership, members });
+  } catch (err) {
+    console.error("GET /api/chapters/my:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// POST /api/chapters/:id/join — request to join a chapter
+app.post("/api/chapters/:id/join", requireAuth, async (req, res) => {
+  try {
+    const chapterId = Number(req.params.id);
+    // Check chapter exists and is active
+    const { rows: cRows } = await db.query("SELECT * FROM chapters WHERE id = $1 AND active = true", [chapterId]);
+    if (!cRows[0]) return res.status(404).json({ error: "Chapter not found." });
+    // Check user doesn't already have a membership
+    const existing = await getUserMembership(req.userId);
+    if (existing) return res.status(400).json({ error: "You already belong to or have a pending request for a chapter." });
+    await db.query(
+      "INSERT INTO chapter_memberships (chapter_id, user_id) VALUES ($1, $2)",
+      [chapterId, req.userId]
+    );
+    // Notify chapter admin
+    const { rows: adminRows } = await db.query(`
+      SELECT cm.user_id FROM chapter_memberships cm
+      WHERE cm.chapter_id = $1 AND cm.role = 'admin' AND cm.status = 'approved'
+    `, [chapterId]);
+    const { rows: userRows } = await db.query("SELECT first_name, last_name FROM users WHERE id = $1", [req.userId]);
+    const name = userRows[0] ? `${userRows[0].first_name} ${userRows[0].last_name}` : "A user";
+    for (const a of adminRows) {
+      sendPushToUser(a.user_id, {
+        title: "New Join Request",
+        body: `${name} has requested to join your chapter.`,
+      });
+    }
+    // Also notify arch-admin if no chapter admin exists
+    if (adminRows.length === 0) {
+      const { rows: aaRows } = await db.query("SELECT id FROM users WHERE role = 'arch_admin'");
+      for (const aa of aaRows) {
+        sendPushToUser(aa.id, { title: "New Join Request", body: `${name} requested to join ${cRows[0].name} (no admin assigned).` });
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("POST /api/chapters/:id/join:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /api/chapters/:id/requests — list pending requests (chapter admin or arch-admin)
+app.get("/api/chapters/:id/requests", requireAuth, async (req, res) => {
+  try {
+    const chapterId = Number(req.params.id);
+    const { rows: roleRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    const isArchAdmin = roleRows[0]?.role === "arch_admin";
+    const isAdmin = isArchAdmin || await isChapterAdmin(req.userId, chapterId);
+    if (!isAdmin) return res.status(403).json({ error: "Forbidden." });
+    const { rows } = await db.query(`
+      SELECT cm.id, cm.user_id, cm.requested_at, u.first_name, u.last_name, u.email
+      FROM chapter_memberships cm
+      JOIN users u ON u.id = cm.user_id
+      WHERE cm.chapter_id = $1 AND cm.status = 'pending'
+      ORDER BY cm.requested_at ASC
+    `, [chapterId]);
+    res.json(rows.map(r => ({
+      id: Number(r.id),
+      userId: Number(r.user_id),
+      displayName: `${r.first_name} ${r.last_name}`,
+      email: r.email,
+      requestedAt: Number(r.requested_at),
+    })));
+  } catch (err) {
+    console.error("GET /api/chapters/:id/requests:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// PATCH /api/chapters/:id/requests/:userId — approve or reject (chapter admin or arch-admin)
+app.patch("/api/chapters/:id/requests/:userId", requireAuth, async (req, res) => {
+  try {
+    const chapterId = Number(req.params.id);
+    const targetUserId = Number(req.params.userId);
+    const { action } = req.body; // 'approve' or 'reject'
+    if (!["approve", "reject"].includes(action)) return res.status(400).json({ error: "action must be approve or reject." });
+    const { rows: roleRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    const isArchAdmin = roleRows[0]?.role === "arch_admin";
+    const isAdmin = isArchAdmin || await isChapterAdmin(req.userId, chapterId);
+    if (!isAdmin) return res.status(403).json({ error: "Forbidden." });
+    const status = action === "approve" ? "approved" : "rejected";
+    const { rows } = await db.query(`
+      UPDATE chapter_memberships SET status = $1, resolved_at = $2
+      WHERE chapter_id = $3 AND user_id = $4 AND status = 'pending'
+      RETURNING *
+    `, [status, Date.now(), chapterId, targetUserId]);
+    if (!rows[0]) return res.status(404).json({ error: "Request not found." });
+    // Notify the user
+    const { rows: cRows } = await db.query("SELECT name FROM chapters WHERE id = $1", [chapterId]);
+    sendPushToUser(targetUserId, {
+      title: action === "approve" ? "Request Approved" : "Request Rejected",
+      body: action === "approve"
+        ? `You have been approved to join ${cRows[0]?.name}.`
+        : `Your request to join ${cRows[0]?.name} was not approved.`,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("PATCH /api/chapters/:id/requests/:userId:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// DELETE /api/chapters/:id/members/:userId — remove a member (chapter admin or arch-admin)
+app.delete("/api/chapters/:id/members/:userId", requireAuth, async (req, res) => {
+  try {
+    const chapterId = Number(req.params.id);
+    const targetUserId = Number(req.params.userId);
+    const { rows: roleRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    const isArchAdmin = roleRows[0]?.role === "arch_admin";
+    const isAdmin = isArchAdmin || await isChapterAdmin(req.userId, chapterId);
+    if (!isAdmin) return res.status(403).json({ error: "Forbidden." });
+    await db.query(
+      "DELETE FROM chapter_memberships WHERE chapter_id = $1 AND user_id = $2",
+      [chapterId, targetUserId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("DELETE /api/chapters/:id/members/:userId:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// DELETE /api/chapters/:id/leave — leave a chapter
+app.delete("/api/chapters/:id/leave", requireAuth, async (req, res) => {
+  try {
+    const chapterId = Number(req.params.id);
+    // Don't allow chapter admin to leave without succession
+    const { rows: cmRows } = await db.query(
+      "SELECT role FROM chapter_memberships WHERE chapter_id = $1 AND user_id = $2",
+      [chapterId, req.userId]
+    );
+    if (cmRows[0]?.role === "admin") {
+      return res.status(400).json({ error: "Chapter admins cannot leave without first transferring admin to another member. Contact the arch-admin." });
+    }
+    await db.query(
+      "DELETE FROM chapter_memberships WHERE chapter_id = $1 AND user_id = $2",
+      [chapterId, req.userId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("DELETE /api/chapters/:id/leave:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /api/chapters/:id/stats — workout leaderboard for chapter members
+app.get("/api/chapters/:id/stats", requireAuth, async (req, res) => {
+  try {
+    const chapterId = Number(req.params.id);
+    // Must be approved member or arch-admin
+    const { rows: roleRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    const isArchAdmin = roleRows[0]?.role === "arch_admin";
+    if (!isArchAdmin) {
+      const { rows: cmRows } = await db.query(
+        "SELECT id FROM chapter_memberships WHERE chapter_id = $1 AND user_id = $2 AND status = 'approved'",
+        [chapterId, req.userId]
+      );
+      if (!cmRows[0]) return res.status(403).json({ error: "Forbidden." });
+    }
+    const { rows } = await db.query(`
+      SELECT
+        u.id, u.first_name, u.last_name,
+        COUNT(ll.id) AS total_lifts,
+        MAX(ll.weight) AS max_weight,
+        COUNT(DISTINCT ll.date) AS days_logged
+      FROM chapter_memberships cm
+      JOIN users u ON u.id = cm.user_id
+      LEFT JOIN lift_logs ll ON ll.user_id = u.id
+      WHERE cm.chapter_id = $1 AND cm.status = 'approved'
+      GROUP BY u.id
+      ORDER BY total_lifts DESC, days_logged DESC
+    `, [chapterId]);
+    res.json(rows.map(r => ({
+      id: Number(r.id),
+      displayName: `${r.first_name} ${r.last_name}`,
+      totalLifts: Number(r.total_lifts),
+      maxWeight: Number(r.max_weight) || 0,
+      daysLogged: Number(r.days_logged),
+    })));
+  } catch (err) {
+    console.error("GET /api/chapters/:id/stats:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /api/chapters/:id/messages — chapter-scoped chat messages
+app.get("/api/chapters/:id/messages", requireAuth, async (req, res) => {
+  try {
+    const chapterId = Number(req.params.id);
+    // Must be approved member or arch-admin
+    const { rows: roleRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    const isArchAdmin = roleRows[0]?.role === "arch_admin";
+    if (!isArchAdmin) {
+      const { rows: cmRows } = await db.query(
+        "SELECT id FROM chapter_memberships WHERE chapter_id = $1 AND user_id = $2 AND status = 'approved'",
+        [chapterId, req.userId]
+      );
+      if (!cmRows[0]) return res.status(403).json({ error: "Forbidden." });
+    }
+    const { rows } = await db.query(
+      "SELECT * FROM messages WHERE chapter_id = $1 ORDER BY ts DESC LIMIT 200",
+      [chapterId]
+    );
+    const reactionsMap = await loadReactions(rows.map(r => r.id));
+    res.json(rows.map(r => shapeMessage(r, reactionsMap)));
+  } catch (err) {
+    console.error("GET /api/chapters/:id/messages:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// POST /api/chapters/:id/messages — post to chapter chat
+app.post("/api/chapters/:id/messages", requireAuth, async (req, res) => {
+  try {
+    const chapterId = Number(req.params.id);
+    // Must be approved member or arch-admin
+    const { rows: userRows } = await db.query("SELECT * FROM users WHERE id = $1", [req.userId]);
+    const user = userRows[0];
+    if (!user) return res.status(401).json({ error: "User not found." });
+    const isArchAdmin = user.role === "arch_admin";
+    if (!isArchAdmin) {
+      const { rows: cmRows } = await db.query(
+        "SELECT id FROM chapter_memberships WHERE chapter_id = $1 AND user_id = $2 AND status = 'approved'",
+        [chapterId, req.userId]
+      );
+      if (!cmRows[0]) return res.status(403).json({ error: "Forbidden." });
+    }
+    const { text, media, mediaExtra } = req.body;
+    if (!text?.trim() && !media) return res.status(400).json({ error: "Message cannot be empty." });
+    const extraItems = Array.isArray(mediaExtra) && mediaExtra.length > 0 ? mediaExtra : null;
+    const ts = Date.now();
+    const { rows } = await db.query(`
+      INSERT INTO messages
+        (user_id, author, ts, text, media_url, media_type, media_bytes, media_public_id, media_extra, chapter_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [req.userId, displayName(user), ts, text?.trim() || "",
+       media?.dataUrl || null, media?.type || null,
+       media?.bytes || 0, media?.publicId || null,
+       extraItems ? JSON.stringify(extraItems) : null, chapterId]
+    );
+    if (media?.publicId) await db.query("DELETE FROM pending_uploads WHERE public_id = $1", [media.publicId]);
+    if (extraItems) {
+      for (const m of extraItems) {
+        if (m.publicId) await db.query("DELETE FROM pending_uploads WHERE public_id = $1", [m.publicId]);
+      }
+    }
+    const newMsg = shapeMessage(rows[0], {});
+    // Notify chapter members
+    const { rows: members } = await db.query(
+      "SELECT user_id FROM chapter_memberships WHERE chapter_id = $1 AND status = 'approved' AND user_id != $2",
+      [chapterId, req.userId]
+    );
+    for (const m of members) {
+      sendPushToUser(m.user_id, {
+        title: displayName(user),
+        body: text?.trim() || "Sent an attachment",
+        tag: `chapter-${chapterId}`,
+      });
+    }
+    res.json(newMsg);
+  } catch (err) {
+    console.error("POST /api/chapters/:id/messages:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
