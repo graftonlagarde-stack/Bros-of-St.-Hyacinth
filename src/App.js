@@ -143,6 +143,22 @@ const api = {
   getAdminUsers:  ()          => api.get("/api/admin/users"),
   adminDeleteUser:(id)         => api.delete(`/api/admin/users/${id}`),
   adminSetRole:   (id, role)   => api.post(`/api/admin/users/${id}/role`, { role }),
+
+  // Chapters
+  getChapters:          ()              => api.get("/api/chapters"),
+  createChapter:        (body)          => api.post("/api/chapters", body),
+  editChapter:          (id, body)      => api.request("PATCH", `/api/chapters/${id}`, body),
+  deactivateChapter:    (id)            => api.delete(`/api/chapters/${id}`),
+  assignChapterAdmin:   (id, userId)    => api.post(`/api/chapters/${id}/admin`, { userId }),
+  getMyMembership:      ()              => api.get("/api/chapters/my"),
+  joinChapter:          (id)            => api.post(`/api/chapters/${id}/join`, {}),
+  getChapterRequests:   (id)            => api.get(`/api/chapters/${id}/requests`),
+  resolveChapterRequest:(id, userId, action) => api.request("PATCH", `/api/chapters/${id}/requests/${userId}`, { action }),
+  removeMember:         (id, userId)    => api.delete(`/api/chapters/${id}/members/${userId}`),
+  leaveChapter:         (id)            => api.delete(`/api/chapters/${id}/leave`),
+  getChapterStats:      (id)            => api.get(`/api/chapters/${id}/stats`),
+  getChapterMessages:   (id)            => api.get(`/api/chapters/${id}/messages`),
+  postChapterMessage:   (id, body)      => api.post(`/api/chapters/${id}/messages`, body),
 };
 
 // ─── SEED DATA ────────────────────────────────────────────────────────────────
@@ -534,7 +550,7 @@ function useBoardMessages() {
   return { messages, loading, fetchMessages, saveMessage, saveReaction, deleteMessage };
 }
 
-const SEED_MESSAGES = []; // removed — real messages come from useBoardMessages()
+
 
 // ─── COMMUNITY USER SHAPE (for reference) ─────────────────────────────────────
 // { name: string, logs: { [exercise]: { [repCat]: [{weight,ts}] } } }
@@ -891,6 +907,25 @@ function LinkPreview({ url, onLoad }) {
 function BoardPage({ username, currentUser }) {
   const isMobile = useIsMobile();
   const { messages, fetchMessages, saveMessage, saveReaction, deleteMessage } = useBoardMessages();
+  const [chatTab, setChatTab]           = useState("global"); // "global" | "chapter"
+  const [chapterMembership, setChapterMembership] = useState(null);
+  const [chapterMessages, setChapterMessages]     = useState([]);
+  const [chapterMsgLoading, setChapterMsgLoading] = useState(false);
+
+  useEffect(() => {
+    api.getMyMembership().then(m => {
+      if (m && m.status === "approved") setChapterMembership(m);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (chatTab !== "chapter" || !chapterMembership) return;
+    setChapterMsgLoading(true);
+    api.getChapterMessages(chapterMembership.chapter_id)
+      .then(msgs => setChapterMessages([...msgs].reverse()))
+      .catch(() => {})
+      .finally(() => setChapterMsgLoading(false));
+  }, [chatTab, chapterMembership]);
   const [text, setText]                 = useState("");
   const [mediaFiles, setMediaFiles]     = useState([]);
   const [attachWarning, setAttachWarning] = useState(false);
@@ -1088,8 +1123,19 @@ function BoardPage({ username, currentUser }) {
       publicId: f.publicId ?? "",
       isVideo:  f.type?.startsWith("video/"),
     }));
-    const msg = { text: text.trim(), media: allMedia.length > 0 ? allMedia[0] : null };
-    await saveMessage(msg);
+    const msg = {
+      text:       text.trim(),
+      media:      allMedia.length > 0 ? allMedia[0] : null,
+      mediaExtra: allMedia.length > 1 ? allMedia.slice(1) : [],
+    };
+    if (chatTab === "chapter" && chapterMembership) {
+      try {
+        const saved = await api.postChapterMessage(chapterMembership.chapter_id, msg);
+        setChapterMessages(prev => [...prev, saved]);
+      } catch (err) { console.warn("chapter message failed:", err); }
+    } else {
+      await saveMessage(msg);
+    }
     setText("");
     setMediaFiles([]);
   };
@@ -1180,7 +1226,8 @@ function BoardPage({ username, currentUser }) {
   // ── Message list ────────────────────────────────────────────────────────
   // Rendered into a column-reverse container, so we reverse the array here
   // to keep chronological order (oldest top → newest bottom) visually correct.
-  const messageList = [...messages].reverse().map((msg, i, arr) => {
+  const activeMessages = chatTab === "chapter" && chapterMembership ? chapterMessages : [...messages].reverse();
+  const messageList = activeMessages.map((msg, i, arr) => {
     const isMe = msg.author === username;
     // In the reversed array, the "previous" message is the one after in the array (older)
     // and the "next" message is the one before (newer)
@@ -1265,8 +1312,6 @@ function BoardPage({ username, currentUser }) {
             borderLeft: isMe ? "1px solid rgba(0,255,204,0.35)" : "1px solid rgba(120,220,0,0.2)",
             borderRadius: isMe ? "18px 3px 18px 18px" : "3px 18px 18px 18px",
             padding: msg.text ? "10px 14px" : (!msg.text && (msg.media || (msg.mediaExtra||[]).length > 0)) ? "0" : "4px",
-            width: undefined,
-            maxWidth: undefined,
             overflow: (!msg.text && (msg.media || (msg.mediaExtra||[]).length > 0)) ? "hidden" : "visible",
             fontSize:14, lineHeight:1.5, wordBreak:"break-word",
             boxShadow: emojiPickerFor === msg.id
@@ -1681,8 +1726,25 @@ function BoardPage({ username, currentUser }) {
       <>
         {lightbox}
         <div ref={chatRootRef} className="chat-mobile-root">
+          {chapterMembership && (
+            <div style={{display:"flex",borderBottom:"1px solid rgba(136,255,0,0.12)",
+              background:"rgba(0,8,4,0.98)",zIndex:5,flexShrink:0}}>
+              {["global","chapter"].map(tab => (
+                <button key={tab} onClick={()=>setChatTab(tab)}
+                  style={{flex:1,padding:"10px 0",border:"none",background:"none",cursor:"pointer",
+                    fontFamily:"'Orbitron',sans-serif",fontSize:9,letterSpacing:2,textTransform:"uppercase",
+                    color: chatTab===tab ? "#88ff00" : "var(--muted)",
+                    borderBottom: chatTab===tab ? "2px solid #88ff00" : "2px solid transparent",
+                    transition:"all 0.2s"}}>
+                  {tab === "global" ? "Global" : chapterMembership.chapter_name}
+                </button>
+              ))}
+            </div>
+          )}
           <div ref={scrollContainerRef} className="chat-mobile-messages" style={{ padding: "60px 14px 20px", display: "flex", flexDirection: "column-reverse", willChange: "transform" }}>
-            {messageList}
+            {chapterMsgLoading ? (
+              <div style={{color:"var(--muted)",fontSize:13,textAlign:"center",padding:20}}>Loading…</div>
+            ) : messageList}
           </div>
           <div className="chat-mobile-input">
             {inputBar}
@@ -1697,8 +1759,25 @@ function BoardPage({ username, currentUser }) {
     <>
       {lightbox}
       <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 0px)", overflow:"hidden", position:"relative" }}>
+        {chapterMembership && (
+          <div style={{display:"flex",borderBottom:"1px solid rgba(136,255,0,0.12)",
+            background:"rgba(0,8,4,0.98)",flexShrink:0,zIndex:5}}>
+            {["global","chapter"].map(tab => (
+              <button key={tab} onClick={()=>setChatTab(tab)}
+                style={{padding:"12px 24px",border:"none",background:"none",cursor:"pointer",
+                  fontFamily:"'Orbitron',sans-serif",fontSize:10,letterSpacing:2,textTransform:"uppercase",
+                  color: chatTab===tab ? "#88ff00" : "var(--muted)",
+                  borderBottom: chatTab===tab ? "2px solid #88ff00" : "2px solid transparent",
+                  transition:"all 0.2s"}}>
+                {tab === "global" ? "Global" : chapterMembership.chapter_name}
+              </button>
+            ))}
+          </div>
+        )}
         <div ref={scrollContainerRef} style={{ flex:1, overflowY:"scroll", overscrollBehavior:"none", WebkitOverflowScrolling:"auto", padding:"120px 28px 130px", display:"flex", flexDirection:"column-reverse", gap:4, willChange:"transform" }}>
-          {messageList}
+          {chapterMsgLoading ? (
+            <div style={{color:"var(--muted)",fontSize:13,textAlign:"center",padding:20}}>Loading…</div>
+          ) : messageList}
         </div>
 
         {/* Desktop attach warning */}
@@ -5574,188 +5653,6 @@ const AuthField = ({ label, type, value, onChange, onEnter }) => (
 );
 
 // ─── ADMIN PANEL ─────────────────────────────────────────────────────────────
-function AdminPanel({ currentUser, onClose }) {
-  const [users, setUsers]     = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState("");
-  const [confirm, setConfirm] = useState(null);
-
-  const isArchAdmin = currentUser.role === "arch_admin";
-
-  const load = () => {
-    setLoading(true);
-    api.getAdminUsers()
-      .then(data => setUsers(data))
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => { load(); }, []);
-
-  const handleDelete = async (userId) => {
-    try {
-      await api.adminDeleteUser(userId);
-      setUsers(prev => prev.filter(u => u.id !== userId));
-      setConfirm(null);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const handleSetRole = async (userId, role) => {
-    try {
-      const { user: updated } = await api.adminSetRole(userId, role);
-      setUsers(prev => prev.map(u => u.id === updated.id ? updated : u));
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const roleBadge = (role) => {
-    if (role === "arch_admin") return { label: "ARCH-ADMIN", color: "#ffcc00" };
-    if (role === "admin")      return { label: "ADMIN",      color: "#88ff00" };
-    return                            { label: "MEMBER",     color: "#556655" };
-  };
-
-  const canDelete = (u) => {
-    if (u.id === currentUser.id) return false;
-    if (u.role === "arch_admin") return false;
-    if (currentUser.role === "admin" && u.role === "admin") return false;
-    return true;
-  };
-
-  return (
-    <div style={{
-      position:"fixed", inset:0, zIndex:1001,
-      background:"rgba(0,0,0,0.8)", backdropFilter:"blur(4px)",
-      display:"flex", alignItems:"center", justifyContent:"center",
-    }} onClick={onClose}>
-      <div style={{
-        width:520, maxHeight:"80vh", display:"flex", flexDirection:"column",
-        background:"linear-gradient(155deg,rgba(0,14,8,0.99),rgba(0,5,3,1))",
-        border:"1px solid rgba(255,204,0,0.25)", borderRadius:4,
-        position:"relative", overflow:"hidden",
-      }} onClick={e => e.stopPropagation()}>
-        <div style={{position:"absolute",top:0,left:0,right:0,height:1,
-          background:"linear-gradient(90deg,#ffcc00,#88ff00,#ffcc00)",
-          backgroundSize:"300% 100%", opacity:0.8, animation:"sheen 2.5s ease-in-out infinite"}} />
-
-        {/* Header */}
-        <div style={{padding:"24px 28px 16px", borderBottom:"1px solid rgba(136,255,0,0.08)", flexShrink:0}}>
-          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
-            <div>
-              <div style={{
-                fontFamily:"'Orbitron',sans-serif", fontSize:13, fontWeight:900, letterSpacing:4,
-                background:"linear-gradient(155deg,#ffcc00,#ffe066,#ffcc00)",
-                WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
-              }}>
-                {isArchAdmin ? "ARCH-ADMIN PANEL" : "ADMIN PANEL"}
-              </div>
-              <div style={{color:"var(--muted)",fontSize:11,marginTop:3,fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>
-                {users.length} {users.length === 1 ? "MEMBER" : "MEMBERS"}
-              </div>
-            </div>
-            <button onClick={onClose} style={{background:"none",border:"none",color:"var(--muted)",
-              fontSize:18,cursor:"pointer",lineHeight:1,padding:0}}>✕</button>
-          </div>
-          {error && <div style={{color:"#ff4455",fontSize:12,marginTop:10,fontWeight:600}}>{error}</div>}
-        </div>
-
-        {/* User list */}
-        <div style={{overflowY:"auto", flex:1, padding:"8px 0"}}>
-          {loading ? (
-            <div style={{color:"var(--muted)",fontSize:12,padding:28,textAlign:"center",
-              fontFamily:"'Orbitron',sans-serif",letterSpacing:2}}>LOADING…</div>
-          ) : users.map(u => {
-            const badge = roleBadge(u.role);
-            const isMe = u.id === currentUser.id;
-            return (
-              <div key={u.id} style={{
-                display:"flex", alignItems:"center", gap:12, padding:"12px 28px",
-                borderBottom:"1px solid rgba(136,255,0,0.05)",
-                background: isMe ? "rgba(136,255,0,0.03)" : "transparent",
-              }}>
-                <div className="avatar sm" style={{
-                  flexShrink:0,
-                  background: u.role === "arch_admin" ? "linear-gradient(135deg,#332200,#664400)"
-                            : u.role === "admin"      ? "linear-gradient(135deg,#003322,#006644)"
-                            : "linear-gradient(135deg,#001a10,#002e1a)",
-                  color: badge.color,
-                }}>
-                  {initials(u.displayName)}
-                </div>
-                <div style={{flex:1, minWidth:0}}>
-                  <div style={{display:"flex", alignItems:"center", gap:8}}>
-                    <span style={{fontWeight:700, fontSize:13, color:"var(--text)"}}>{u.displayName}</span>
-                    {isMe && <span style={{fontSize:9,color:"var(--muted)",fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>YOU</span>}
-                  </div>
-                  <div style={{color:"var(--muted)",fontSize:11,marginTop:1}}>{u.email}</div>
-                </div>
-                <div style={{display:"flex", alignItems:"center", gap:8, flexShrink:0}}>
-                  <div style={{
-                    fontSize:9, fontWeight:700, letterSpacing:1.5, padding:"3px 8px",
-                    border:`1px solid ${badge.color}44`, borderRadius:2,
-                    color:badge.color, fontFamily:"'Orbitron',sans-serif",
-                  }}>{badge.label}</div>
-                  {isArchAdmin && u.role !== "arch_admin" && !isMe && (
-                    <button onClick={() => handleSetRole(u.id, u.role === "admin" ? "user" : "admin")}
-                      style={{
-                        fontSize:9, padding:"3px 8px", cursor:"pointer", borderRadius:2,
-                        background:"rgba(136,255,0,0.06)", border:"1px solid rgba(136,255,0,0.2)",
-                        color:"var(--accent)", fontFamily:"'Orbitron',sans-serif", letterSpacing:1,
-                      }}>
-                      {u.role === "admin" ? "DEMOTE" : "MAKE ADMIN"}
-                    </button>
-                  )}
-                  {canDelete(u) && (
-                    <button onClick={() => setConfirm({ userId: u.id, name: u.displayName })}
-                      style={{
-                        fontSize:9, padding:"3px 8px", cursor:"pointer", borderRadius:2,
-                        background:"rgba(255,68,85,0.06)", border:"1px solid rgba(255,68,85,0.25)",
-                        color:"#ff4455", fontFamily:"'Orbitron',sans-serif", letterSpacing:1,
-                      }}>
-                      DELETE
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Delete confirmation */}
-      {confirm && (
-        <div style={{
-          position:"fixed", inset:0, zIndex:1002,
-          background:"rgba(0,0,0,0.6)", backdropFilter:"blur(2px)",
-          display:"flex", alignItems:"center", justifyContent:"center",
-        }} onClick={() => setConfirm(null)}>
-          <div style={{
-            width:340, background:"linear-gradient(155deg,rgba(0,14,8,0.99),rgba(0,5,3,1))",
-            border:"1px solid rgba(255,68,85,0.3)", borderRadius:4, padding:28,
-          }} onClick={e => e.stopPropagation()}>
-            <div style={{color:"#ff4455",fontSize:12,fontWeight:700,marginBottom:10,
-              fontFamily:"'Orbitron',sans-serif",letterSpacing:1,textTransform:"uppercase"}}>
-              ⚠ Confirm Deletion
-            </div>
-            <div style={{color:"var(--text)",fontSize:13,marginBottom:20}}>
-              Delete <strong>{confirm.name}</strong>? This will permanently remove their account, all lift logs, and all chat messages.
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <button className="btn btn-ghost" style={{flex:1,justifyContent:"center",fontSize:10}}
-                onClick={() => setConfirm(null)}>CANCEL</button>
-              <button className="btn" style={{flex:1,justifyContent:"center",fontSize:10,
-                color:"#ff4455",borderColor:"rgba(255,68,85,0.4)"}}
-                onClick={() => handleDelete(confirm.userId)}>CONFIRM DELETE</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function AuthScreen({ onAuth }) {
   const [mode, setMode]           = useState(() => {
     // If URL has ?reset=TOKEN, go straight to reset mode
@@ -5988,151 +5885,624 @@ function AuthScreen({ onAuth }) {
   );
 }
 
-// ─── USER PROFILE MODAL ───────────────────────────────────────────────────────
-function UserProfileModal({ user, onClose, onDeleted, onLogout }) {
-  const [deleteStep, setDeleteStep] = useState(false); // show confirm form
+// ─── PROFILE PAGE ─────────────────────────────────────────────────────────────
+function ProfilePage({ user, onDeleted, onLogout }) {
+  const isMobile = useIsMobile();
+  const isArchAdmin = user.role === "arch_admin";
+  const isAdmin = user.role === "arch_admin" || user.role === "admin";
+
+  // Account section state
+  const [deleteStep, setDeleteStep] = useState(false);
   const [pw1, setPw1]   = useState("");
   const [pw2, setPw2]   = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [delError, setDelError] = useState("");
+  const [delLoading, setDelLoading] = useState(false);
+
+  // Chapter state
+  const [membership, setMembership]   = useState(undefined); // undefined=loading, null=none
+  const [chapters, setChapters]       = useState([]);
+  const [requests, setRequests]       = useState([]);
+  const [stats, setStats]             = useState([]);
+  const [chapterMsg, setChapterMsg]   = useState("");
+  const [joiningId, setJoiningId]     = useState(null);
+  const [chapLoading, setChapLoading] = useState(false);
+
+  // Arch-admin chapter management state
+  const [newChapName, setNewChapName]   = useState("");
+  const [newChapDesc, setNewChapDesc]   = useState("");
+  const [createError, setCreateError]   = useState("");
+  const [allUsers, setAllUsers]         = useState([]);
+  const [adminPickChap, setAdminPickChap] = useState(null); // chapter id being assigned admin
+  const [adminPickUser, setAdminPickUser] = useState("");
+
+  useEffect(() => {
+    api.getMyMembership().then(m => setMembership(m)).catch(() => setMembership(null));
+    api.getChapters().then(setChapters).catch(() => {});
+    if (isArchAdmin) api.getAdminUsers().then(u => setAllUsers(u)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!membership || membership.status !== "approved") return;
+    api.getChapterRequests(membership.chapter_id).then(setRequests).catch(() => {});
+    api.getChapterStats(membership.chapter_id).then(setStats).catch(() => {});
+  }, [membership]);
 
   const handleDelete = async () => {
-    setError("");
-    if (!pw1 || !pw2) { setError("Please enter your password twice to confirm."); return; }
-    if (pw1 !== pw2)  { setError("Passwords do not match."); return; }
-    setLoading(true);
+    setDelError("");
+    if (!pw1 || !pw2) { setDelError("Please enter your password twice to confirm."); return; }
+    if (pw1 !== pw2)  { setDelError("Passwords do not match."); return; }
+    setDelLoading(true);
     try {
       await api.deleteAccount({ password: pw1, passwordConfirm: pw2 });
       api.clearToken();
       onDeleted();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { setDelError(err.message); }
+    finally { setDelLoading(false); }
   };
 
+  const handleJoin = async (chapterId) => {
+    setJoiningId(chapterId);
+    setChapterMsg("");
+    try {
+      await api.joinChapter(chapterId);
+      const m = await api.getMyMembership();
+      setMembership(m);
+      setChapterMsg("Request submitted! Awaiting approval from the chapter admin.");
+    } catch (err) { setChapterMsg(err.message); }
+    finally { setJoiningId(null); }
+  };
+
+  const handleLeave = async () => {
+    if (!window.confirm("Are you sure you want to leave your chapter?")) return;
+    try {
+      await api.leaveChapter(membership.chapter_id);
+      setMembership(null);
+      const updated = await api.getChapters();
+      setChapters(updated);
+    } catch (err) { setChapterMsg(err.message); }
+  };
+
+  const handleResolve = async (userId, action) => {
+    try {
+      await api.resolveChapterRequest(membership.chapter_id, userId, action);
+      setRequests(r => r.filter(x => x.userId !== userId));
+      if (action === "approve") {
+        const m = await api.getMyMembership();
+        setMembership(m);
+      }
+    } catch (err) { setChapterMsg(err.message); }
+  };
+
+  const handleRemoveMember = async (userId, name) => {
+    if (!window.confirm(`Remove ${name} from the chapter?`)) return;
+    try {
+      await api.removeMember(membership.chapter_id, userId);
+      const m = await api.getMyMembership();
+      setMembership(m);
+    } catch (err) { setChapterMsg(err.message); }
+  };
+
+  const handleCreateChapter = async () => {
+    setCreateError("");
+    if (!newChapName.trim()) { setCreateError("Name is required."); return; }
+    setChapLoading(true);
+    try {
+      await api.createChapter({ name: newChapName.trim(), description: newChapDesc.trim() });
+      setNewChapName(""); setNewChapDesc("");
+      const updated = await api.getChapters();
+      setChapters(updated);
+    } catch (err) { setCreateError(err.message); }
+    finally { setChapLoading(false); }
+  };
+
+  const handleDeactivateChapter = async (id, name) => {
+    if (!window.confirm(`Deactivate chapter "${name}"? Members will lose access.`)) return;
+    try {
+      await api.deactivateChapter(id);
+      const updated = await api.getChapters();
+      setChapters(updated);
+    } catch (err) { setChapterMsg(err.message); }
+  };
+
+  const handleAssignAdmin = async (chapterId) => {
+    if (!adminPickUser) return;
+    try {
+      await api.assignChapterAdmin(chapterId, Number(adminPickUser));
+      setAdminPickChap(null); setAdminPickUser("");
+      const updated = await api.getChapters();
+      setChapters(updated);
+      setChapterMsg("Chapter admin assigned.");
+    } catch (err) { setChapterMsg(err.message); }
+  };
+
+  // ── Shared card style ────────────────────────────────────────────────────────
+  const cardStyle = {
+    background:"linear-gradient(155deg,rgba(0,14,8,0.95),rgba(0,5,3,1))",
+    border:"1px solid rgba(136,255,0,0.12)", borderRadius:4, padding: isMobile ? "20px 16px" : 28,
+    position:"relative", overflow:"hidden", marginBottom:16,
+  };
+  const sectionTitle = (text) => (
+    <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:11,fontWeight:900,letterSpacing:3,
+      color:"rgba(136,255,0,0.7)",textTransform:"uppercase",marginBottom:16}}>
+      {text}
+    </div>
+  );
+  const infoRow = (label, val) => (
+    <div key={label} style={{display:"flex",justifyContent:"space-between",
+      padding:"10px 0",borderBottom:"1px solid rgba(136,255,0,0.06)",fontSize:13}}>
+      <span style={{color:"var(--muted)",fontFamily:"'Orbitron',sans-serif",fontSize:10,letterSpacing:1,textTransform:"uppercase"}}>{label}</span>
+      <span style={{color:"var(--text)",fontWeight:600}}>{val}</span>
+    </div>
+  );
+
   return (
-    <div style={{
-      position:"fixed", inset:0, zIndex:1000,
-      background:"rgba(0,0,0,0.7)", backdropFilter:"blur(4px)",
-      display:"flex", alignItems:"center", justifyContent:"center",
-    }} onClick={onClose}>
-      <div style={{
-        width:380, background:"linear-gradient(155deg,rgba(0,14,8,0.99),rgba(0,5,3,1))",
-        border:"1px solid rgba(136,255,0,0.2)", borderRadius:4, padding:32,
-        position:"relative", overflow:"hidden",
-      }} onClick={e => e.stopPropagation()}>
-        {/* Top accent line */}
+    <div className="page" style={{maxWidth:680}}>
+      {/* Accent line */}
+      <div style={{position:"fixed",top:0,left:0,right:0,height:1,zIndex:10,
+        background:"linear-gradient(90deg,#88ff00,#aaffee,#88ff00)",
+        backgroundSize:"300% 100%",opacity:0.4,animation:"sheen 2.5s ease-in-out infinite",pointerEvents:"none"}} />
+
+      <div className="page-title">MY PROFILE</div>
+
+      {/* ── Section 1: Account Info ── */}
+      <div style={cardStyle}>
         <div style={{position:"absolute",top:0,left:0,right:0,height:1,
-          background:"linear-gradient(90deg,#88ff00,#aaff44,#88ff00,#88ff00)",
-          backgroundSize:"300% 100%", opacity:0.6, animation:"sheen 2.5s ease-in-out infinite"}} />
-
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24}}>
-          <div style={{
-            fontFamily:"'Orbitron',sans-serif", fontSize:13, fontWeight:900, letterSpacing:4,
-            background:"linear-gradient(155deg,#ffffff,#aaffee,#88ff00)",
-            WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
-          }}>MY PROFILE</div>
-          <button onClick={onClose} style={{background:"none",border:"none",color:"var(--muted)",
-            fontSize:18,cursor:"pointer",lineHeight:1,padding:0}}>✕</button>
-        </div>
-
-        {/* Avatar + name */}
-        <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:24}}>
-          <div className="avatar" style={{width:52,height:52,fontSize:18}}>
-            {initials(user.displayName)}
-          </div>
+          background:"linear-gradient(90deg,#88ff00,#aaff44)",backgroundSize:"300% 100%",
+          opacity:0.5,animation:"sheen 2.5s ease-in-out infinite"}} />
+        {sectionTitle("Account")}
+        <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:20}}>
+          <div className="avatar" style={{width:52,height:52,fontSize:18}}>{initials(user.displayName)}</div>
           <div>
             <div style={{fontWeight:700,fontSize:16,marginBottom:2}}>{user.displayName}</div>
             <div style={{color:"var(--muted)",fontSize:12}}>{user.email}</div>
           </div>
         </div>
-
-        {/* Info rows */}
         {[
-          ["First Name", user.firstName],
-          ["Last Name",  user.lastName],
-          ["Email",      user.email],
-          ["Role",         user.role === "arch_admin" ? "Arch-Admin" : user.role === "admin" ? "Admin" : "Member"],
-          ["Member Since", new Date().toLocaleDateString("en-US", { month:"long", year:"numeric" })],
-        ].map(([label, val]) => (
-          <div key={label} style={{display:"flex",justifyContent:"space-between",
-            padding:"10px 0",borderBottom:"1px solid rgba(136,255,0,0.06)",fontSize:13}}>
-            <span style={{color:"var(--muted)",fontFamily:"'Orbitron',sans-serif",fontSize:10,letterSpacing:1,textTransform:"uppercase"}}>{label}</span>
-            <span style={{color:"var(--text)",fontWeight:600}}>{val}</span>
-          </div>
-        ))}
-
-        {/* Logout section */}
-        <div style={{marginTop:28}}>
-          <button className="btn" style={{
-            width:"100%",justifyContent:"center",padding:"10px 20px",
-            color:"var(--muted)",borderColor:"rgba(136,255,0,0.15)",fontSize:11,letterSpacing:2,
-          }} onClick={onLogout}>
-            LOG OUT
-          </button>
-        </div>
-
-        {/* Delete section */}
-        <div style={{marginTop:28}}>
+          ["First Name",   user.firstName],
+          ["Last Name",    user.lastName],
+          ["Email",        user.email],
+          ["Role",         isArchAdmin ? "Arch-Admin" : user.role === "admin" ? "Admin" : "Member"],
+          ["Member Since", new Date().toLocaleDateString("en-US",{month:"long",year:"numeric"})],
+        ].map(([l,v]) => infoRow(l,v))}
+        <div style={{display:"flex",gap:8,marginTop:20,flexWrap:"wrap"}}>
+          <button className="btn" style={{flex:1,justifyContent:"center",padding:"10px 20px",
+            color:"var(--muted)",borderColor:"rgba(136,255,0,0.15)",fontSize:11,letterSpacing:2}}
+            onClick={onLogout}>LOG OUT</button>
           {!deleteStep ? (
-            <button className="btn" style={{
-              width:"100%",justifyContent:"center",padding:"10px 20px",
-              color:"#ff4455",borderColor:"rgba(255,68,85,0.3)",fontSize:11,letterSpacing:2,
-            }} onClick={() => setDeleteStep(true)}>
-              DELETE ACCOUNT
-            </button>
+            <button className="btn" style={{flex:1,justifyContent:"center",padding:"10px 20px",
+              color:"#ff4455",borderColor:"rgba(255,68,85,0.3)",fontSize:11,letterSpacing:2}}
+              onClick={() => setDeleteStep(true)}>DELETE ACCOUNT</button>
           ) : (
-            <div style={{
-              background:"rgba(255,68,85,0.06)", border:"1px solid rgba(255,68,85,0.25)",
-              borderRadius:4, padding:18,
-            }}>
+            <div style={{width:"100%",background:"rgba(255,68,85,0.06)",border:"1px solid rgba(255,68,85,0.25)",
+              borderRadius:4,padding:18,marginTop:8}}>
               <div style={{color:"#ff4455",fontSize:12,fontWeight:700,marginBottom:12,
-                fontFamily:"'Orbitron',sans-serif",letterSpacing:1,textTransform:"uppercase"}}>
-                ⚠ Confirm Account Deletion
-              </div>
+                fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>⚠ CONFIRM ACCOUNT DELETION</div>
               <div style={{color:"var(--muted)",fontSize:12,marginBottom:14}}>
                 This is permanent and cannot be undone. Enter your password twice to confirm.
               </div>
               <div style={{marginBottom:10}}>
                 <div className="form-label" style={{marginBottom:5}}>Password</div>
-                <input type="password" value={pw1} onChange={e => setPw1(e.target.value)}
-                  style={{width:"100%",boxSizing:"border-box"}} />
+                <input type="password" value={pw1} onChange={e=>setPw1(e.target.value)} style={{width:"100%",boxSizing:"border-box"}} />
               </div>
               <div style={{marginBottom:14}}>
                 <div className="form-label" style={{marginBottom:5}}>Confirm Password</div>
-                <input type="password" value={pw2} onChange={e => setPw2(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && handleDelete()}
-                  style={{width:"100%",boxSizing:"border-box"}} />
+                <input type="password" value={pw2} onChange={e=>setPw2(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&handleDelete()} style={{width:"100%",boxSizing:"border-box"}} />
               </div>
-              {error && <div style={{color:"#ff4455",fontSize:12,marginBottom:12,fontWeight:600}}>{error}</div>}
+              {delError && <div style={{color:"#ff4455",fontSize:12,marginBottom:12,fontWeight:600}}>{delError}</div>}
               <div style={{display:"flex",gap:8}}>
                 <button className="btn btn-ghost" style={{flex:1,justifyContent:"center",fontSize:10}}
-                  onClick={() => { setDeleteStep(false); setPw1(""); setPw2(""); setError(""); }}>
-                  CANCEL
-                </button>
-                <button className="btn" disabled={loading}
-                  style={{flex:1,justifyContent:"center",fontSize:10,
-                    color:"#ff4455",borderColor:"rgba(255,68,85,0.4)"}}
-                  onClick={handleDelete}>
-                  {loading ? "DELETING…" : "CONFIRM DELETE"}
-                </button>
+                  onClick={()=>{setDeleteStep(false);setPw1("");setPw2("");setDelError("");}}>CANCEL</button>
+                <button className="btn" disabled={delLoading}
+                  style={{flex:1,justifyContent:"center",fontSize:10,color:"#ff4455",borderColor:"rgba(255,68,85,0.4)"}}
+                  onClick={handleDelete}>{delLoading?"DELETING…":"CONFIRM DELETE"}</button>
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* ── Section 2: Chapter ── */}
+      <div style={cardStyle}>
+        <div style={{position:"absolute",top:0,left:0,right:0,height:1,
+          background:"linear-gradient(90deg,#00ffcc,#88ff00)",backgroundSize:"300% 100%",
+          opacity:0.4,animation:"sheen 3s ease-in-out infinite"}} />
+        {sectionTitle("Chapter")}
+        {chapterMsg && (
+          <div style={{background:"rgba(136,255,0,0.07)",border:"1px solid rgba(136,255,0,0.2)",
+            borderRadius:3,padding:"10px 14px",fontSize:13,marginBottom:14,color:"#88ff00"}}>
+            {chapterMsg}
+          </div>
+        )}
+
+        {membership === undefined ? (
+          <div style={{color:"var(--muted)",fontSize:13}}>Loading…</div>
+        ) : membership === null ? (
+          /* No membership — show chapter directory */
+          <div>
+            <div style={{color:"var(--muted)",fontSize:13,marginBottom:16}}>
+              You are not currently a member of any chapter. Request to join one below.
+            </div>
+            {chapters.length === 0 ? (
+              <div style={{color:"var(--muted)",fontSize:13}}>No chapters have been created yet.</div>
+            ) : chapters.map(c => (
+              <div key={c.id} style={{border:"1px solid rgba(136,255,0,0.1)",borderRadius:4,
+                padding:"14px 16px",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:14,marginBottom:2}}>{c.name}</div>
+                  {c.description && <div style={{color:"var(--muted)",fontSize:12,marginBottom:4}}>{c.description}</div>}
+                  <div style={{color:"var(--muted)",fontSize:11}}>
+                    {c.member_count} member{c.member_count !== 1 ? "s" : ""}
+                    {c.admin_name ? ` · Admin: ${c.admin_name}` : " · No admin assigned"}
+                  </div>
+                </div>
+                <button className="btn btn-primary" style={{fontSize:11,padding:"7px 14px",letterSpacing:1}}
+                  disabled={joiningId === c.id}
+                  onClick={() => handleJoin(c.id)}>
+                  {joiningId === c.id ? "REQUESTING…" : "REQUEST TO JOIN"}
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : membership.status === "pending" ? (
+          /* Pending */
+          <div>
+            {infoRow("Chapter", membership.chapter_name)}
+            {infoRow("Status", "Pending approval")}
+            <div style={{color:"var(--muted)",fontSize:12,marginTop:12}}>
+              Your request is awaiting approval from the chapter admin.
+            </div>
+          </div>
+        ) : membership.status === "rejected" ? (
+          /* Rejected */
+          <div>
+            {infoRow("Status", "Request not approved")}
+            <div style={{color:"var(--muted)",fontSize:12,marginTop:8,marginBottom:16}}>
+              Your previous request was not approved. You may request to join another chapter.
+            </div>
+            {chapters.map(c => (
+              <div key={c.id} style={{border:"1px solid rgba(136,255,0,0.1)",borderRadius:4,
+                padding:"14px 16px",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:14}}>{c.name}</div>
+                  <div style={{color:"var(--muted)",fontSize:11}}>{c.member_count} members</div>
+                </div>
+                <button className="btn btn-primary" style={{fontSize:11,padding:"7px 14px"}}
+                  disabled={joiningId===c.id} onClick={()=>handleJoin(c.id)}>
+                  {joiningId===c.id?"REQUESTING…":"REQUEST TO JOIN"}
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          /* Approved member */
+          <div>
+            {infoRow("Chapter", membership.chapter_name)}
+            {infoRow("Your Role", membership.role === "admin" ? "Chapter Admin" : "Member")}
+            {membership.description && infoRow("Description", membership.description)}
+
+            {/* Member roster */}
+            <div style={{marginTop:16,marginBottom:8,fontFamily:"'Orbitron',sans-serif",
+              fontSize:10,letterSpacing:2,color:"var(--muted)"}}>MEMBERS</div>
+            {(membership.members||[]).map(m => (
+              <div key={m.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+                padding:"8px 0",borderBottom:"1px solid rgba(136,255,0,0.05)"}}>
+                <div>
+                  <span style={{fontSize:13,fontWeight:600}}>{m.displayName}</span>
+                  {m.role==="admin" && <span style={{fontSize:10,color:"#88ff00",marginLeft:8,
+                    fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>ADMIN</span>}
+                </div>
+                {/* Chapter admin can remove non-admin members */}
+                {membership.role==="admin" && m.role!=="admin" && m.id!==user.id && (
+                  <button className="btn" style={{fontSize:10,padding:"3px 8px",color:"#ff4455",
+                    borderColor:"rgba(255,68,85,0.3)"}}
+                    onClick={()=>handleRemoveMember(m.id, m.displayName)}>REMOVE</button>
+                )}
+              </div>
+            ))}
+
+            {/* Pending requests — chapter admin only */}
+            {membership.role==="admin" && requests.length > 0 && (
+              <div style={{marginTop:20}}>
+                <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,letterSpacing:2,
+                  color:"var(--muted)",marginBottom:10}}>PENDING REQUESTS</div>
+                {requests.map(r => (
+                  <div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+                    padding:"10px 0",borderBottom:"1px solid rgba(136,255,0,0.05)",gap:8,flexWrap:"wrap"}}>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:600}}>{r.displayName}</div>
+                      <div style={{color:"var(--muted)",fontSize:11}}>{r.email}</div>
+                    </div>
+                    <div style={{display:"flex",gap:6}}>
+                      <button className="btn btn-primary" style={{fontSize:10,padding:"4px 10px"}}
+                        onClick={()=>handleResolve(r.userId,"approve")}>APPROVE</button>
+                      <button className="btn" style={{fontSize:10,padding:"4px 10px",color:"#ff4455",
+                        borderColor:"rgba(255,68,85,0.3)"}}
+                        onClick={()=>handleResolve(r.userId,"reject")}>REJECT</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Leave chapter — non-admin only */}
+            {membership.role !== "admin" && (
+              <button className="btn" style={{marginTop:20,fontSize:11,padding:"8px 16px",
+                color:"var(--muted)",borderColor:"rgba(136,255,0,0.15)"}}
+                onClick={handleLeave}>LEAVE CHAPTER</button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Section 3: Chapter Workout Stats ── */}
+      {membership?.status === "approved" && stats.length > 0 && (
+        <div style={cardStyle}>
+          <div style={{position:"absolute",top:0,left:0,right:0,height:1,
+            background:"linear-gradient(90deg,#88ff00,#00ffcc)",backgroundSize:"300% 100%",
+            opacity:0.4,animation:"sheen 3.5s ease-in-out infinite"}} />
+          {sectionTitle("Chapter Leaderboard")}
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <thead>
+                <tr style={{borderBottom:"1px solid rgba(136,255,0,0.15)"}}>
+                  {["Rank","Member","Total Lifts","Days Logged","Max Weight"].map(h => (
+                    <th key={h} style={{padding:"6px 10px",textAlign:"left",fontFamily:"'Orbitron',sans-serif",
+                      fontSize:9,letterSpacing:1,color:"var(--muted)",fontWeight:600}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {stats.map((s,i) => (
+                  <tr key={s.id} style={{borderBottom:"1px solid rgba(136,255,0,0.05)",
+                    background: s.id===user.id ? "rgba(136,255,0,0.04)" : "transparent"}}>
+                    <td style={{padding:"8px 10px",color:"var(--muted)",fontWeight:700}}>#{i+1}</td>
+                    <td style={{padding:"8px 10px",fontWeight:s.id===user.id?700:400}}>
+                      {s.displayName}{s.id===user.id?" (you)":""}
+                    </td>
+                    <td style={{padding:"8px 10px"}}>{s.totalLifts}</td>
+                    <td style={{padding:"8px 10px"}}>{s.daysLogged}</td>
+                    <td style={{padding:"8px 10px"}}>{s.maxWeight > 0 ? `${s.maxWeight} lbs` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Section 4: Arch-Admin Chapter Management ── */}
+      {isArchAdmin && (
+        <div style={cardStyle}>
+          <div style={{position:"absolute",top:0,left:0,right:0,height:1,
+            background:"linear-gradient(90deg,#ffaa00,#ff6600)",backgroundSize:"300% 100%",
+            opacity:0.5,animation:"sheen 2s ease-in-out infinite"}} />
+          {sectionTitle("Arch-Admin: Chapter Management")}
+
+          {/* Create chapter */}
+          <div style={{marginBottom:20}}>
+            <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,letterSpacing:2,
+              color:"var(--muted)",marginBottom:10}}>CREATE NEW CHAPTER</div>
+            <div style={{marginBottom:8}}>
+              <div className="form-label" style={{marginBottom:4}}>Chapter Name</div>
+              <input value={newChapName} onChange={e=>setNewChapName(e.target.value)}
+                placeholder="e.g. Chapter of St. Joseph"
+                style={{width:"100%",boxSizing:"border-box"}} />
+            </div>
+            <div style={{marginBottom:10}}>
+              <div className="form-label" style={{marginBottom:4}}>Description (optional)</div>
+              <input value={newChapDesc} onChange={e=>setNewChapDesc(e.target.value)}
+                placeholder="Location or brief description"
+                style={{width:"100%",boxSizing:"border-box"}} />
+            </div>
+            {createError && <div style={{color:"#ff4455",fontSize:12,marginBottom:8}}>{createError}</div>}
+            <button className="btn btn-primary" style={{fontSize:11,padding:"8px 16px"}}
+              disabled={chapLoading} onClick={handleCreateChapter}>
+              {chapLoading ? "CREATING…" : "CREATE CHAPTER"}
+            </button>
+          </div>
+
+          {/* Existing chapters */}
+          {chapters.length > 0 && (
+            <div>
+              <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,letterSpacing:2,
+                color:"var(--muted)",marginBottom:10}}>ALL CHAPTERS</div>
+              {chapters.map(c => (
+                <div key={c.id} style={{border:"1px solid rgba(136,255,0,0.1)",borderRadius:4,
+                  padding:"14px 16px",marginBottom:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,flexWrap:"wrap"}}>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:14,marginBottom:2}}>{c.name}</div>
+                      {c.description && <div style={{color:"var(--muted)",fontSize:12,marginBottom:4}}>{c.description}</div>}
+                      <div style={{color:"var(--muted)",fontSize:11}}>
+                        {c.member_count} member{c.member_count!==1?"s":""}
+                        {c.admin_name ? ` · Admin: ${c.admin_name}` : " · No admin assigned"}
+                      </div>
+                    </div>
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      <button className="btn btn-primary" style={{fontSize:10,padding:"5px 10px"}}
+                        onClick={()=>setAdminPickChap(adminPickChap===c.id?null:c.id)}>
+                        ASSIGN ADMIN
+                      </button>
+                      <button className="btn" style={{fontSize:10,padding:"5px 10px",color:"#ff4455",
+                        borderColor:"rgba(255,68,85,0.3)"}}
+                        onClick={()=>handleDeactivateChapter(c.id,c.name)}>
+                        DEACTIVATE
+                      </button>
+                    </div>
+                  </div>
+                  {adminPickChap===c.id && (
+                    <div style={{marginTop:12,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                      <select value={adminPickUser} onChange={e=>setAdminPickUser(e.target.value)}
+                        style={{flex:1,padding:"8px 10px",background:"var(--surface)",border:"1px solid var(--border)",
+                          color:"var(--text)",borderRadius:3,fontSize:13}}>
+                        <option value="">Select a user…</option>
+                        {allUsers.map(u => (
+                          <option key={u.id} value={u.id}>{u.displayName} ({u.email})</option>
+                        ))}
+                      </select>
+                      <button className="btn btn-primary" style={{fontSize:11,padding:"8px 14px"}}
+                        disabled={!adminPickUser} onClick={()=>handleAssignAdmin(c.id)}>
+                        CONFIRM
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Section 5: Admin Panel (admin and arch-admin only) ── */}
+      {isAdmin && (
+        <AdminSection currentUser={user} cardStyle={cardStyle} sectionTitle={sectionTitle} />
+      )}
+
     </div>
   );
 }
 
-// ─── APP ──────────────────────────────────────────────────────────────────────
+// ─── ADMIN SECTION ────────────────────────────────────────────────────────────
+function AdminSection({ currentUser, cardStyle, sectionTitle }) {
+  const [users, setUsers]     = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState("");
+  const [confirm, setConfirm] = useState(null);
+  const isArchAdmin = currentUser.role === "arch_admin";
+
+  const load = () => {
+    setLoading(true);
+    api.getAdminUsers()
+      .then(data => setUsers(data))
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleDelete = async (userId) => {
+    try {
+      await api.adminDeleteUser(userId);
+      setUsers(prev => prev.filter(u => u.id !== userId));
+      setConfirm(null);
+    } catch (err) { setError(err.message); }
+  };
+
+  const handleSetRole = async (userId, role) => {
+    try {
+      const { user: updated } = await api.adminSetRole(userId, role);
+      setUsers(prev => prev.map(u => u.id === updated.id ? updated : u));
+    } catch (err) { setError(err.message); }
+  };
+
+  const roleBadge = (role) => {
+    if (role === "arch_admin") return { label: "ARCH-ADMIN", color: "#ffcc00" };
+    if (role === "admin")      return { label: "ADMIN",      color: "#88ff00" };
+    return                            { label: "MEMBER",     color: "#556655" };
+  };
+
+  const canDelete = (u) => {
+    if (u.id === currentUser.id) return false;
+    if (u.role === "arch_admin") return false;
+    if (currentUser.role === "admin" && u.role === "admin") return false;
+    return true;
+  };
+
+  return (
+    <div style={{...cardStyle, borderColor:"rgba(255,204,0,0.2)"}}>
+      <div style={{position:"absolute",top:0,left:0,right:0,height:1,
+        background:"linear-gradient(90deg,#ffcc00,#88ff00,#ffcc00)",backgroundSize:"300% 100%",
+        opacity:0.7,animation:"sheen 2.5s ease-in-out infinite"}} />
+      {sectionTitle(isArchAdmin ? "Arch-Admin Panel" : "Admin Panel")}
+      {error && <div style={{color:"#ff4455",fontSize:12,marginBottom:12,fontWeight:600}}>{error}</div>}
+      <div style={{color:"var(--muted)",fontSize:11,marginBottom:14,fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>
+        {users.length} {users.length === 1 ? "MEMBER" : "MEMBERS"}
+      </div>
+      {loading ? (
+        <div style={{color:"var(--muted)",fontSize:12,textAlign:"center",padding:20,
+          fontFamily:"'Orbitron',sans-serif",letterSpacing:2}}>LOADING…</div>
+      ) : users.map(u => {
+        const badge = roleBadge(u.role);
+        const isMe = u.id === currentUser.id;
+        return (
+          <div key={u.id} style={{
+            display:"flex", alignItems:"center", gap:12, padding:"12px 0",
+            borderBottom:"1px solid rgba(136,255,0,0.05)",
+            background: isMe ? "rgba(136,255,0,0.03)" : "transparent",
+            flexWrap:"wrap",
+          }}>
+            <div className="avatar sm" style={{
+              flexShrink:0,
+              background: u.role === "arch_admin" ? "linear-gradient(135deg,#332200,#664400)"
+                        : u.role === "admin"      ? "linear-gradient(135deg,#003322,#006644)"
+                        : "linear-gradient(135deg,#001a10,#002e1a)",
+              color: badge.color,
+            }}>{initials(u.displayName)}</div>
+            <div style={{flex:1, minWidth:0}}>
+              <div style={{display:"flex", alignItems:"center", gap:8}}>
+                <span style={{fontWeight:700, fontSize:13}}>{u.displayName}</span>
+                {isMe && <span style={{fontSize:9,color:"var(--muted)",fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>YOU</span>}
+              </div>
+              <div style={{color:"var(--muted)",fontSize:11,marginTop:1}}>{u.email}</div>
+            </div>
+            <div style={{display:"flex", alignItems:"center", gap:8, flexShrink:0}}>
+              <div style={{fontSize:9,fontWeight:700,letterSpacing:1.5,padding:"3px 8px",
+                border:`1px solid ${badge.color}44`,borderRadius:2,
+                color:badge.color,fontFamily:"'Orbitron',sans-serif"}}>{badge.label}</div>
+              {isArchAdmin && u.role !== "arch_admin" && !isMe && (
+                <button onClick={() => handleSetRole(u.id, u.role === "admin" ? "user" : "admin")}
+                  style={{fontSize:9,padding:"3px 8px",cursor:"pointer",borderRadius:2,
+                    background:"rgba(136,255,0,0.06)",border:"1px solid rgba(136,255,0,0.2)",
+                    color:"var(--accent)",fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>
+                  {u.role === "admin" ? "DEMOTE" : "MAKE ADMIN"}
+                </button>
+              )}
+              {canDelete(u) && (
+                <button onClick={() => setConfirm({ userId: u.id, name: u.displayName })}
+                  style={{fontSize:9,padding:"3px 8px",cursor:"pointer",borderRadius:2,
+                    background:"rgba(255,68,85,0.06)",border:"1px solid rgba(255,68,85,0.25)",
+                    color:"#ff4455",fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>
+                  DELETE
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      {confirm && (
+        <div style={{
+          position:"fixed",inset:0,zIndex:1002,
+          background:"rgba(0,0,0,0.6)",backdropFilter:"blur(2px)",
+          display:"flex",alignItems:"center",justifyContent:"center",
+        }} onClick={() => setConfirm(null)}>
+          <div style={{width:340,background:"linear-gradient(155deg,rgba(0,14,8,0.99),rgba(0,5,3,1))",
+            border:"1px solid rgba(255,68,85,0.3)",borderRadius:4,padding:28}}
+            onClick={e => e.stopPropagation()}>
+            <div style={{color:"#ff4455",fontSize:12,fontWeight:700,marginBottom:10,
+              fontFamily:"'Orbitron',sans-serif",letterSpacing:1,textTransform:"uppercase"}}>
+              ⚠ Confirm Deletion
+            </div>
+            <div style={{color:"var(--text)",fontSize:13,marginBottom:20}}>
+              Delete <strong>{confirm.name}</strong>? This will permanently remove their account, all lift logs, and all chat messages.
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button className="btn btn-ghost" style={{flex:1,justifyContent:"center",fontSize:10}}
+                onClick={() => setConfirm(null)}>CANCEL</button>
+              <button className="btn" style={{flex:1,justifyContent:"center",fontSize:10,
+                color:"#ff4455",borderColor:"rgba(255,68,85,0.4)"}}
+                onClick={() => handleDelete(confirm.userId)}>CONFIRM DELETE</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 export default function App() {
   const isMobile = useIsMobile();
   const [user, setUser]                         = useState(null);   // { id, firstName, lastName, email, displayName }
-  const [showProfile, setShowProfile]           = useState(false);
-  const [showAdmin, setShowAdmin]               = useState(false);
+  const [showProfile, setShowProfile]           = useState(false); // kept for compat, now unused
   const [page, setPage]                         = useState("workout");
   const [pressedId, setPressedId]               = useState(null); // mobile: instant active highlight on touch
   // Backdrops are always mounted (keep-alive). Visibility driven by page state.
@@ -6475,7 +6845,7 @@ export default function App() {
           </div>
           {/* Orb — click to toggle nav */}
           <div ref={orbWrapRef} className="xbox-orb-wrap" onClick={() => setNavExpanded(v => !v)}
-            style={(!isMobile && (user.role === "arch_admin" || user.role === "admin")) ? { top:"calc(50% - 30px)" } : {}}>
+            style={{}}>
             <div className="xbox-orb" />
             <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(circle at 50% 55%, transparent 30%, rgba(0,5,0,0.5) 62%, rgba(0,0,0,0.80) 100%)",zIndex:1,pointerEvents:"none"}} />
             <canvas ref={glbCanvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",borderRadius:"50%",pointerEvents:"none",zIndex:2,filter:"blur(0.5px) drop-shadow(0 0 10px #aaff00cc) drop-shadow(0 0 25px #88ff0099) drop-shadow(0 0 55px #55dd0066) drop-shadow(0 0 90px #33aa0033)"}} />
@@ -6487,7 +6857,7 @@ export default function App() {
           </div>
           {/* Blade nav */}
           <div ref={navWrapRef} className={`nav-wrap${navExpanded ? "" : " retracted"}`}
-            style={(!isMobile && (user.role === "arch_admin" || user.role === "admin")) ? { top:"calc(50% - 30px)" } : {}}>
+            style={{}}>
             {navItems.map(n => {
               const isActive = (pressedId ?? page) === n.id;
               return (
@@ -6498,12 +6868,7 @@ export default function App() {
                 </div>
               );
             })}
-            {(user.role === "arch_admin" || user.role === "admin") && (
-              <div className="nav-item-wrap" onClick={() => setShowAdmin(true)}>
-                <div className="nav-item">{user.role === "arch_admin" ? "Arch-Admin" : "Admin"}</div>
-              </div>
-            )}
-            <div className="nav-item-wrap" onClick={() => setShowProfile(true)}>
+            <div className="nav-item-wrap" onClick={() => setPage("profile")}>
               <div className="nav-item">{username}</div>
             </div>
           </div>
@@ -6514,6 +6879,7 @@ export default function App() {
           {page === "boards" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><BoardPage username={username} currentUser={user} /></div>}
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
           {page === "rule" && <RulePage user={user} />}
+          {page === "profile" && <ProfilePage user={user} onDeleted={() => { api.clearToken(); setUser(null); }} onLogout={() => { handleLogout(); setPage("workout"); }} />}
         </div>
         <FigureBackdrop variant="boards"    visible={page === "boards"}    isMobile={isMobile} />
         <AudioFigureBackdrop               visible={page === "audio"}     isMobile={isMobile} />
@@ -6523,20 +6889,6 @@ export default function App() {
       </div>
       {currentTrack && (
         <PlayerBar track={currentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} tracks={PERMANENT_TRACKS} setTrack={setCurrentTrack} navExpanded={navExpanded} />
-      )}
-      {showProfile && (
-        <UserProfileModal
-          user={user}
-          onClose={() => setShowProfile(false)}
-          onDeleted={handleDeleted}
-          onLogout={() => { setShowProfile(false); handleLogout(); }}
-        />
-      )}
-      {showAdmin && (
-        <AdminPanel
-          currentUser={user}
-          onClose={() => setShowAdmin(false)}
-        />
       )}
     </>
   );
