@@ -961,18 +961,17 @@ function LinkPreview({ url, onLoad }) {
 function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
   const isMobile = useIsMobile();
   const { messages, fetchMessages, saveMessage, saveReaction, deleteMessage } = useBoardMessages();
-  const [chatTab, setChatTab]           = useState("global"); // "global" | "chapter"
+  // On mobile, chatTab is derived directly from mobileScreen to avoid render-cycle lag.
+  // On desktop, it's driven by the internal tab buttons via chatTabInternal.
+  const [chatTabInternal, setChatTabInternal] = useState("global");
+  const chatTab = (isMobile && mobileScreen !== null)
+    ? (mobileScreen === "chapter" ? "chapter" : "global")
+    : chatTabInternal;
+  const setChatTab = (val) => { if (!isMobile) setChatTabInternal(val); };
   const [chapterMembership, setChapterMembership] = useState(null);
   const [chapterMessages, setChapterMessages]     = useState([]);
   const [chapterMsgLoading, setChapterMsgLoading] = useState(false);
   const chapterLatestTs = useRef(0);
-
-  // On mobile, mobileScreen drives the tab; on desktop, internal buttons drive it
-  useEffect(() => {
-    if (mobileScreen !== null) {
-      setChatTab(mobileScreen === "chapter" ? "chapter" : "global");
-    }
-  }, [mobileScreen]);
 
   useEffect(() => {
     api.getMyMembership().then(m => {
@@ -5549,18 +5548,16 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
   const [userLogs, setUserLogs] = useState([]);
   const [chartEx, setChartEx] = useState("Bench Press");
   const [chartRep, setChartRep] = useState(1);
-  const [chartsTab, setChartsTab] = useState("global"); // "global" | "chapter"
+  const [chartsTabInternal, setChartsTabInternal] = useState("global");
+  const isMobileTC = useIsMobile();
+  const chartsTab = (isMobileTC && mobileScreen !== null)
+    ? (mobileScreen === "chapter" ? "chapter" : "global")
+    : chartsTabInternal;
+  const setChartsTab = (val) => { if (!isMobileTC) setChartsTabInternal(val); };
   const [membership, setMembership] = useState(null);
   const [chapterCommunityUsers, setChapterCommunityUsers] = useState([]);
   const [chapterUsersLoading, setChapterUsersLoading] = useState(false);
   const { communityUsers } = useCommunityUsers(username);
-
-  // On mobile, mobileScreen drives the tab
-  useEffect(() => {
-    if (mobileScreen !== null) {
-      setChartsTab(mobileScreen === "chapter" ? "chapter" : "global");
-    }
-  }, [mobileScreen]);
   const isPullup = chartEx === "Pull-up";
   const isPushup = chartEx === "Push-up";
   const isBodyweightChart = isPullup || isPushup;
