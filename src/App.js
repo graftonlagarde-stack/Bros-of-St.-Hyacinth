@@ -1825,6 +1825,7 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
 
   // ── Mobile layout: fixed full-screen flex column ─────────────────────────
   if (isMobile) {
+    const showChapter = chatTab === "chapter";
     return (
       <>
         {lightbox}
@@ -1832,7 +1833,7 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
           {chapterMembership && (
             <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,
               padding:"8px 0",borderBottom:"1px solid rgba(136,255,0,0.12)",
-              background:"rgba(0,8,4,0.98)",zIndex:5,flexShrink:0}}>
+              background:"rgba(0,8,4,0.98)",zIndex:5,flexShrink:0,position:"relative"}}>
               {["global","chapter"].map(tab => (
                 <div key={tab} style={{
                   width: chatTab===tab ? 18 : 6,
@@ -1844,14 +1845,14 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
               <div style={{position:"absolute",right:12,fontSize:9,
                 fontFamily:"'Orbitron',sans-serif",letterSpacing:1,
                 color:"rgba(136,255,0,0.4)"}}>
-                {chatTab === "global" ? "GLOBAL" : chapterMembership.chapter_name.toUpperCase()}
+                {showChapter ? chapterMembership.chapter_name.toUpperCase() : "GLOBAL"}
               </div>
             </div>
           )}
           <div ref={scrollContainerRef} className="chat-mobile-messages" style={{ padding: "60px 14px 20px", display: "flex", flexDirection: "column-reverse", willChange: "transform" }}>
-            {chapterMsgLoading ? (
-              <div style={{color:"var(--muted)",fontSize:13,textAlign:"center",padding:20}}>Loading…</div>
-            ) : messageList}
+            {chapterMsgLoading
+              ? <div style={{color:"var(--muted)",fontSize:13,textAlign:"center",padding:20}}>Loading…</div>
+              : messageList}
           </div>
           <div className="chat-mobile-input">
             {inputBar}
@@ -2911,7 +2912,6 @@ const css = `
     }
     .main.nav-open  { transform: translateX(100vw) !important; }
     .main.nav-closed { transform: translateX(0)    !important; }
-    .main.nav-closed.chapter-screen { transform: translateX(-100vw) !important; }
 
     /* ── Page: compact padding, smaller title ── */
     .page { padding: 20px 14px !important; }
@@ -7254,7 +7254,7 @@ export default function App() {
             </div>
           </div>
         </div>
-        <div ref={mainRef} className={`main${isMobile ? (navExpanded ? " nav-open" : " nav-closed") : ""}${isMobile && page === "boards" ? " chat-active" : ""}${isMobile && mobileScreen === "chapter" && !navExpanded ? " chapter-screen" : ""}`} style={{display:"flex", flexDirection:"column"}}>
+        <div ref={mainRef} className={`main${isMobile ? (navExpanded ? " nav-open" : " nav-closed") : ""}${isMobile && page === "boards" ? " chat-active" : ""}`} style={{display:"flex", flexDirection:"column"}}>
           {page === "workout" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><WorkoutPage username={username} /></div>}
           {page === "topcharts" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
           {page === "boards" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><BoardPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
