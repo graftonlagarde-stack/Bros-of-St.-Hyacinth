@@ -3,6 +3,32 @@ import { createPortal } from "react-dom";
 
 // ─── POLLING HOOK ─────────────────────────────────────────────────────────────
 // Runs a callback at a fixed interval, pausing when the tab is hidden.
+// ─── PILL SCROLL TEXT ─────────────────────────────────────────────────────────
+function PillScrollText({ label }) {
+  const marqueeRef = useRef(null);
+  const needsScroll = label.length > 6;
+
+  useEffect(() => {
+    if (!needsScroll || !marqueeRef.current) return;
+    const labelW = marqueeRef.current.scrollWidth;
+    const windowW = 48;
+    const dist = windowW + labelW;
+    const duration = dist / 30; // 30px per second
+    marqueeRef.current.style.setProperty("--pill-marquee-from", `${windowW}px`);
+    marqueeRef.current.style.setProperty("--pill-marquee-to",   `-${labelW}px`);
+    marqueeRef.current.style.setProperty("--pill-duration",     `${duration.toFixed(1)}s`);
+  }, [label, needsScroll]);
+
+  return (
+    <div className={`tab-pill-text${needsScroll ? " scrolling" : ""}`}>
+      {needsScroll
+        ? <div ref={marqueeRef} className="tab-pill-marquee">{label}</div>
+        : <span className="tab-pill-inner">{label}</span>
+      }
+    </div>
+  );
+}
+
 function usePolling(callback, intervalMs, active = true) {
   const cbRef = useRef(callback);
   useEffect(() => { cbRef.current = callback; }, [callback]);
@@ -1840,18 +1866,7 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
                   transition:"all 0.25s ease",
                 }} />
               ))}
-              {(() => {
-                const label = showChapter ? chapterMembership.chapter_name.toUpperCase() : "GLOBAL";
-                const needsScroll = label.length > 6;
-                return (
-                  <div className={`tab-pill-text${needsScroll ? " scrolling" : ""}`}>
-                    <div className={`tab-pill-scroll-track${needsScroll ? " needs-scroll" : ""}`}>
-                      <span className="tab-pill-inner">{label}</span>
-                      {needsScroll && <span className="tab-pill-inner">{label}</span>}
-                    </div>
-                  </div>
-                );
-              })()}
+              <PillScrollText label={showChapter ? chapterMembership.chapter_name.toUpperCase() : "GLOBAL"} />
             </div>
           )}
           <div
@@ -2075,9 +2090,12 @@ const css = `
   }
   .tab-pill-text {
     position: relative;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: visible;
     width: 48px;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
   }
   .tab-pill-text::before {
     content: '';
@@ -2098,18 +2116,18 @@ const css = `
     z-index: 1;
   }
   .tab-pill-text.scrolling::before { opacity: 1; }
-  .tab-pill-scroll-track {
-    display: flex;
+  @keyframes pillMarquee {
+    from { transform: translateX(var(--pill-marquee-from, 48px)); }
+    to   { transform: translateX(var(--pill-marquee-to, -200px)); }
+  }
+  .tab-pill-marquee {
+    display: inline-block;
     white-space: nowrap;
-  }
-  @keyframes pillScroll {
-    0%    { transform: translateX(0); }
-    30%   { transform: translateX(0); }
-    70%   { transform: translateX(-50%); }
-    100%  { transform: translateX(-50%); }
-  }
-  .tab-pill-scroll-track.needs-scroll {
-    animation: pillScroll 3s linear 2s infinite;
+    font-size: 9px;
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 1px;
+    color: rgba(136,255,0,0.7);
+    animation: pillMarquee var(--pill-duration, 8s) linear 0s infinite;
   }
   .tab-pill-inner {
     display: inline-block;
@@ -2118,7 +2136,6 @@ const css = `
     font-family: 'Orbitron', sans-serif;
     letter-spacing: 1px;
     color: rgba(136,255,0,0.7);
-    padding-right: 24px;
   }
 
   /* ── BASE ── */
@@ -5768,18 +5785,7 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
                 transition:"all 0.25s ease",
               }} />
             ))}
-            {(() => {
-              const label = chartsTab === "global" ? "GLOBAL" : membership.chapter_name.toUpperCase();
-              const needsScroll = label.length > 6;
-              return (
-                <div className={`tab-pill-text${needsScroll ? " scrolling" : ""}`}>
-                  <div className={`tab-pill-scroll-track${needsScroll ? " needs-scroll" : ""}`}>
-                    <span className="tab-pill-inner">{label}</span>
-                    {needsScroll && <span className="tab-pill-inner">{label}</span>}
-                  </div>
-                </div>
-              );
-            })()}
+            <PillScrollText label={chartsTab === "global" ? "GLOBAL" : membership.chapter_name.toUpperCase()} />
           </div>
         )}
       </div>
