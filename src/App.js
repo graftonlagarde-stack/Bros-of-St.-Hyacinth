@@ -1831,28 +1831,57 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
         {lightbox}
         <div ref={chatRootRef} className="chat-mobile-root">
           {chapterMembership && (
-            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,
-              padding:"8px 0",borderBottom:"1px solid rgba(136,255,0,0.12)",
-              background:"rgba(0,8,4,0.98)",zIndex:5,flexShrink:0,position:"relative"}}>
-              {["global","chapter"].map(tab => (
-                <div key={tab} style={{
-                  width: chatTab===tab ? 18 : 6,
-                  height:6, borderRadius:3,
-                  background: chatTab===tab ? "#88ff00" : "rgba(136,255,0,0.25)",
-                  transition:"all 0.25s ease",
-                }} />
-              ))}
-              <div style={{position:"absolute",right:12,fontSize:9,
+            <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",
+              padding:"8px 14px",borderBottom:"1px solid rgba(136,255,0,0.12)",
+              background:"rgba(0,8,4,0.98)",zIndex:5,flexShrink:0}}>
+              <div />
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                {["global","chapter"].map(tab => (
+                  <div key={tab} style={{
+                    width: chatTab===tab ? 18 : 6,
+                    height:6, borderRadius:3,
+                    background: chatTab===tab ? "#88ff00" : "rgba(136,255,0,0.25)",
+                    transition:"all 0.25s ease",
+                  }} />
+                ))}
+              </div>
+              <div style={{textAlign:"right",fontSize:9,
                 fontFamily:"'Orbitron',sans-serif",letterSpacing:1,
-                color:"rgba(136,255,0,0.4)"}}>
+                color:"rgba(136,255,0,0.4)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                 {showChapter ? chapterMembership.chapter_name.toUpperCase() : "GLOBAL"}
               </div>
             </div>
           )}
-          <div ref={scrollContainerRef} className="chat-mobile-messages" style={{ padding: "60px 14px 20px", display: "flex", flexDirection: "column-reverse", willChange: "transform" }}>
-            {chapterMsgLoading
-              ? <div style={{color:"var(--muted)",fontSize:13,textAlign:"center",padding:20}}>Loading…</div>
-              : messageList}
+          {/* Sliding panels */}
+          <div style={{
+            flex:1, display:"flex", overflow:"hidden", position:"relative",
+          }}>
+            <div style={{
+              display:"flex", width: chapterMembership ? "200%" : "100%",
+              height:"100%",
+              transform: showChapter && chapterMembership ? "translateX(-50%)" : "translateX(0)",
+              transition:"transform 0.35s cubic-bezier(0.4,0,0.2,1)",
+            }}>
+              {/* Global panel */}
+              <div style={{width: chapterMembership ? "50%" : "100%", flexShrink:0, display:"flex", flexDirection:"column"}}>
+                <div ref={scrollContainerRef} className="chat-mobile-messages" style={{ padding: "60px 14px 20px", display: "flex", flexDirection: "column-reverse", willChange: "transform" }}>
+                  {chatTab === "global" || !chapterMembership
+                    ? messageList
+                    : null}
+                </div>
+              </div>
+              {/* Chapter panel */}
+              {chapterMembership && (
+                <div style={{width:"50%", flexShrink:0, display:"flex", flexDirection:"column"}}>
+                  <div style={{flex:1, overflowY:"scroll", overscrollBehavior:"none", WebkitOverflowScrolling:"auto",
+                    padding:"60px 14px 20px", display:"flex", flexDirection:"column-reverse", willChange:"transform"}}>
+                    {chapterMsgLoading
+                      ? <div style={{color:"var(--muted)",fontSize:13,textAlign:"center",padding:20}}>Loading…</div>
+                      : chatTab === "chapter" ? messageList : null}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <div className="chat-mobile-input">
             {inputBar}
@@ -5677,30 +5706,43 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
           </div>
         )}
         {membership && isMobile && (
-          <div style={{display:"flex",alignItems:"center",gap:6,alignSelf:"center",position:"relative"}}>
-            {["global","chapter"].map(tab => (
-              <div key={tab} style={{
-                width: chartsTab===tab ? 18 : 6, height:6, borderRadius:3,
-                background: chartsTab===tab ? "#88ff00" : "rgba(136,255,0,0.25)",
-                transition:"all 0.25s ease",
-              }} />
-            ))}
-            <span style={{marginLeft:4,fontSize:9,fontFamily:"'Orbitron',sans-serif",
-              letterSpacing:1,color:"rgba(136,255,0,0.5)"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",
+            alignSelf:"center",minWidth:120}}>
+            <div />
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              {["global","chapter"].map(tab => (
+                <div key={tab} style={{
+                  width: chartsTab===tab ? 18 : 6, height:6, borderRadius:3,
+                  background: chartsTab===tab ? "#88ff00" : "rgba(136,255,0,0.25)",
+                  transition:"all 0.25s ease",
+                }} />
+              ))}
+            </div>
+            <div style={{textAlign:"right",fontSize:9,fontFamily:"'Orbitron',sans-serif",
+              letterSpacing:1,color:"rgba(136,255,0,0.5)",whiteSpace:"nowrap",
+              overflow:"hidden",textOverflow:"ellipsis",maxWidth:100}}>
               {chartsTab === "global" ? "GLOBAL" : membership.chapter_name.toUpperCase()}
-            </span>
+            </div>
           </div>
         )}
       </div>
       <div className="page-sub">&ldquo;Non nobis, Domine, non nobis, sed nomini Tuo da gloriam.&rdquo;</div>
 
-      {chartsTab === "chapter" && membership ? (
-        /* ── Chapter leaderboard — same UI as global, chapter-scoped data ── */
-        <>
-        {chapterUsersLoading ? (
-          <div style={{color:"var(--muted)",fontSize:12,padding:28,textAlign:"center",
-            fontFamily:"'Orbitron',sans-serif",letterSpacing:2}}>LOADING…</div>
-        ) : (
+      {/* Sliding content container — on mobile animates between global and chapter */}
+      <div style={{
+        position: isMobile && membership ? "relative" : "static",
+        overflow: isMobile && membership ? "hidden" : "visible",
+      }}>
+        <div style={{
+          display: isMobile && membership ? "flex" : "block",
+          width: isMobile && membership ? "200%" : "100%",
+          transform: isMobile && membership && chartsTab === "chapter" ? "translateX(-50%)" : "translateX(0)",
+          transition: isMobile && membership ? "transform 0.35s cubic-bezier(0.4,0,0.2,1)" : "none",
+          alignItems: "flex-start",
+        }}>
+          {/* Global panel — always rendered so it stays in position during slide */}
+          <div style={{width: isMobile && membership ? "50%" : "100%", flexShrink: 0}}>
+      {chartsTab !== "chapter" || !isMobile || !membership ? (
         <>
         <div style={{display:"flex",gap:20,marginBottom:24,flexWrap:"wrap"}}>
         <div style={{flex:1,minWidth:220}}>
@@ -5820,9 +5862,17 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
           </table>
         </div>
         </>
-        )}
-        </>
-      ) : (
+      ) : null}
+          </div>
+          {/* Chapter panel */}
+          {membership && (
+            <div style={{width: isMobile ? "50%" : "auto", flexShrink: 0}}>
+      {chartsTab === "chapter" && membership ? (
+        <>
+        {chapterUsersLoading ? (
+          <div style={{color:"var(--muted)",fontSize:12,padding:28,textAlign:"center",
+            fontFamily:"'Orbitron',sans-serif",letterSpacing:2}}>LOADING…</div>
+        ) : (
         <>
         <div style={{display:"flex",gap:20,marginBottom:24,flexWrap:"wrap"}}>
         <div style={{flex:1,minWidth:220}}>
@@ -5940,7 +5990,13 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
         </table>
       </div>
         </>
-      )}
+        )}
+        </>
+      ) : null}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
