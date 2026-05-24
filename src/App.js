@@ -157,6 +157,7 @@ const api = {
   removeMember:         (id, userId)    => api.delete(`/api/chapters/${id}/members/${userId}`),
   leaveChapter:         (id)            => api.delete(`/api/chapters/${id}/leave`),
   getChapterStats:      (id)            => api.get(`/api/chapters/${id}/stats`),
+  getChapterCommunityUsers: (id)        => api.get(`/api/chapters/${id}/community-users`),
   getChapterMessages:   (id)            => api.get(`/api/chapters/${id}/messages`),
   postChapterMessage:   (id, body)      => api.post(`/api/chapters/${id}/messages`, body),
 };
@@ -5451,8 +5452,8 @@ function TopChartsPage({ username, currentUser }) {
   const [chartRep, setChartRep] = useState(1);
   const [chartsTab, setChartsTab] = useState("global"); // "global" | "chapter"
   const [membership, setMembership] = useState(null);
-  const [chapterStats, setChapterStats] = useState([]);
-  const [chapterStatsLoading, setChapterStatsLoading] = useState(false);
+  const [chapterCommunityUsers, setChapterCommunityUsers] = useState([]);
+  const [chapterUsersLoading, setChapterUsersLoading] = useState(false);
   const { communityUsers } = useCommunityUsers(username);
   const isPullup = chartEx === "Pull-up";
   const isPushup = chartEx === "Push-up";
@@ -5469,11 +5470,11 @@ function TopChartsPage({ username, currentUser }) {
 
   useEffect(() => {
     if (chartsTab !== "chapter" || !membership) return;
-    setChapterStatsLoading(true);
-    api.getChapterStats(membership.chapter_id)
-      .then(setChapterStats)
+    setChapterUsersLoading(true);
+    api.getChapterCommunityUsers(membership.chapter_id)
+      .then(setChapterCommunityUsers)
       .catch(() => {})
-      .finally(() => setChapterStatsLoading(false));
+      .finally(() => setChapterUsersLoading(false));
   }, [chartsTab, membership]);
 
   // Build leaderboard for selected exercise + rep category
@@ -5509,6 +5510,38 @@ function TopChartsPage({ username, currentUser }) {
   const leaders = isBodyweightChart ? buildBodyweightLeaderboard(chartEx) : buildLeaderboard(chartEx, chartRep);
   const topWeight = leaders[0]?.weight || 0;
 
+  // Chapter-scoped versions using chapterCommunityUsers
+  const buildChapterLeaderboard = (exercise, repCat) => {
+    const entries = [];
+    const myBest = Math.max(0, ...userLogs.filter(l => l.exercise === exercise && l.repCat === repCat).map(l => l.weight));
+    if (myBest > 0) entries.push({ name: username, weight: myBest, isMe: true });
+    chapterCommunityUsers.forEach(u => {
+      const series = u.logs[exercise]?.[repCat];
+      if (series && series.length) {
+        const best = Math.max(...series.map(e => e.weight));
+        entries.push({ name: u.name, weight: best, isMe: false });
+      }
+    });
+    return entries.sort((a, b) => b.weight - a.weight);
+  };
+
+  const buildChapterBodyweightLeaderboard = (exercise) => {
+    const entries = [];
+    const myBest = Math.max(0, ...userLogs.filter(l => l.exercise === exercise).map(l => l.weight));
+    if (myBest > 0) entries.push({ name: username, weight: myBest, isMe: true });
+    chapterCommunityUsers.forEach(u => {
+      const series = u.logs[exercise]?.[0];
+      if (series && series.length) {
+        const best = Math.max(...series.map(e => e.weight));
+        entries.push({ name: u.name, weight: best, isMe: false });
+      }
+    });
+    return entries.sort((a, b) => b.weight - a.weight);
+  };
+
+  const chapterLeaders = isBodyweightChart ? buildChapterBodyweightLeaderboard(chartEx) : buildChapterLeaderboard(chartEx, chartRep);
+  const chapterTopWeight = chapterLeaders[0]?.weight || 0;
+
   const medalColors = ["#ffdd00", "#c0c8d4", "#ff9944"];
   const medalLabels = ["#1", "#2", "#3"];
 
@@ -5534,45 +5567,133 @@ function TopChartsPage({ username, currentUser }) {
       <div className="page-sub">&ldquo;Non nobis, Domine, non nobis, sed nomini Tuo da gloriam.&rdquo;</div>
 
       {chartsTab === "chapter" && membership ? (
-        /* ── Chapter leaderboard ── */
+        /* ── Chapter leaderboard — same UI as global, chapter-scoped data ── */
+        <>
+        {chapterUsersLoading ? (
+          <div style={{color:"var(--muted)",fontSize:12,padding:28,textAlign:"center",
+            fontFamily:"'Orbitron',sans-serif",letterSpacing:2}}>LOADING…</div>
+        ) : (
+        <>
+        <div style={{display:"flex",gap:20,marginBottom:24,flexWrap:"wrap"}}>
+        <div style={{flex:1,minWidth:220}}>
+          <div className="form-label" style={{marginBottom:8}}>Exercise</div>
+          <div className="tab-row" style={{flexWrap:"wrap"}}>
+            {EXERCISE_LIST.map(ex => (
+              <div key={ex} className={`tab ${chartEx===ex?"active":""}`} onClick={()=>setChartEx(ex)}>{ex}</div>
+            ))}
+          </div>
+        </div>
+        {!isBodyweightChart && (
         <div>
-          {chapterStatsLoading ? (
-            <div style={{color:"var(--muted)",fontSize:13,padding:20,textAlign:"center",
-              fontFamily:"'Orbitron',sans-serif",letterSpacing:2}}>LOADING…</div>
-          ) : chapterStats.length === 0 ? (
-            <div style={{color:"var(--muted)",fontSize:13,padding:20}}>No chapter workout data yet.</div>
-          ) : (
-            <div className="card">
-              <div className="card-title">{membership.chapter_name} — Leaderboard</div>
-              <div style={{overflowX:"auto"}}>
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-                  <thead>
-                    <tr style={{borderBottom:"1px solid rgba(136,255,0,0.15)"}}>
-                      {["Rank","Member","Total Lifts","Days Logged","Max Weight"].map(h => (
-                        <th key={h} style={{padding:"8px 10px",textAlign:"left",fontFamily:"'Orbitron',sans-serif",
-                          fontSize:9,letterSpacing:1,color:"var(--muted)",fontWeight:600}}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {chapterStats.map((s,i) => (
-                      <tr key={s.id} style={{borderBottom:"1px solid rgba(136,255,0,0.05)",
-                        background: s.id===currentUser?.id ? "rgba(136,255,0,0.04)" : "transparent"}}>
-                        <td style={{padding:"8px 10px",color:"var(--muted)",fontWeight:700}}>#{i+1}</td>
-                        <td style={{padding:"8px 10px",fontWeight:s.id===currentUser?.id?700:400}}>
-                          {s.displayName}{s.id===currentUser?.id?" (you)":""}
-                        </td>
-                        <td style={{padding:"8px 10px"}}>{s.totalLifts}</td>
-                        <td style={{padding:"8px 10px"}}>{s.daysLogged}</td>
-                        <td style={{padding:"8px 10px"}}>{s.maxWeight > 0 ? `${s.maxWeight} lbs` : "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <div className="form-label" style={{marginBottom:8}}>Rep Category</div>
+          <div style={{display:"flex",gap:8}}>
+            {REP_CATS.map(r => (
+              <div key={r} onClick={() => setChartRep(r)}
+                style={{
+                  padding:"8px 16px", borderRadius:8, cursor:"pointer", fontWeight:700, fontSize:13,
+                  border:`2px solid ${chartRep===r ? REP_COLORS[r] : "var(--border)"}`,
+                  background: chartRep===r ? `${REP_COLORS[r]}18` : "var(--surface2)",
+                  color: chartRep===r ? REP_COLORS[r] : "var(--muted)",
+                  transition:"all 0.15s"
+                }}>
+                {r} Rep{r>1?"s":""}
               </div>
+            ))}
+          </div>
+        </div>
+        )}
+        </div>
+
+        {isBodyweightChart
+          ? <BodyweightRankCard username={username} exercise={chartEx} userLogs={userLogs} communityUsers={chapterCommunityUsers} />
+          : <MyRankCard username={username} exercise={chartEx} repCat={chartRep} userLogs={userLogs} communityUsers={chapterCommunityUsers} />}
+
+        <div className="card">
+          <div className="card-title">
+            <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:11,color:"var(--accent)",letterSpacing:2,marginRight:8}}>▲▲▲</span>
+            {isBodyweightChart ? `${chartEx} Count Leaderboard` : `${chartEx} — ${chartRep} Rep${chartRep>1?"s":""} Leaderboard`}
+            <span style={{fontSize:10,color:"var(--muted)",marginLeft:8,fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>· {membership.chapter_name}</span>
+          </div>
+          {chapterLeaders.length === 0 ? (
+            <div style={{textAlign:"center",padding:"32px 0",color:"var(--muted)"}}>No data yet for this exercise in your chapter.</div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {chapterLeaders.map((entry, i) => {
+                const barPct = chapterTopWeight > 0 ? (entry.weight / chapterTopWeight) * 100 : 0;
+                const isTop = i === 0;
+                return (
+                  <div key={entry.name} style={{
+                    background: entry.isMe ? "rgba(181,240,60,0.06)" : "var(--surface2)",
+                    border: `1px solid ${entry.isMe ? "var(--accent)" : "var(--border)"}`,
+                    borderRadius:10, padding:"14px 18px",
+                    position:"relative", overflow:"hidden"
+                  }}>
+                    <div style={{
+                      position:"absolute", left:0, top:0, bottom:0,
+                      width:`${barPct}%`,
+                      background: isTop ? "rgba(181,240,60,0.08)" : "rgba(255,255,255,0.02)",
+                      borderRadius:10, transition:"width 0.6s ease", pointerEvents:"none"
+                    }} />
+                    <div style={{position:"relative",display:"flex",alignItems:"center",gap:14}}>
+                      <div style={{fontSize:22,width:30,textAlign:"center"}}>
+                        {i < 3
+                          ? <span style={{fontFamily:"'Orbitron',sans-serif",fontWeight:900,fontSize:13,color:medalColors[i],textShadow:`0 0 8px ${medalColors[i]}99`,letterSpacing:1}}>{medalLabels[i]}</span>
+                          : <span style={{color:"var(--muted)",fontWeight:700,fontSize:13,fontFamily:"'Orbitron',sans-serif"}}>#{i+1}</span>}
+                      </div>
+                      <div className="avatar sm" style={{background: entry.isMe ? "var(--accent)" : "var(--surface)"}}>
+                        {initials(entry.name)}
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:700,fontSize:14,color: entry.isMe ? "var(--accent)" : "var(--text)"}}>
+                          {entry.name}{entry.isMe ? " (You)" : ""}
+                        </div>
+                        <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>
+                          {barPct < 100 ? `${Math.round(barPct)}% of top ${isBodyweightChart ? "count" : "lift"}` : "◈ CURRENT LEADER"}
+                        </div>
+                      </div>
+                      <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:22,fontWeight:900,color: isTop ? "var(--accent)" : "var(--chrome)",letterSpacing:2,textShadow: isTop ? "var(--glow-sm)" : "none"}}>
+                        {entry.weight} <span style={{fontSize:11,color:"var(--muted)",fontFamily:"'Rajdhani',sans-serif",fontWeight:400}}>{isBodyweightChart ? "reps" : "lbs"}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
+
+        <div className="card">
+          <div className="card-title"><span style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,color:"var(--accent)",letterSpacing:2,marginRight:8}}>▐▌</span>All Exercises Snapshot — {chartRep} Rep{chartRep>1?"s":""} <span style={{fontSize:10,color:"var(--muted)",marginLeft:8,fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>· {membership.chapter_name}</span></div>
+          <div style={{fontSize:12,color:"var(--muted)",marginBottom:16}}>Top lift across your chapter for each exercise.</div>
+          <table className="log-table">
+            <thead><tr><th>Exercise</th><th>Leader</th><th>Top</th></tr></thead>
+            <tbody>
+              {EXERCISE_LIST.map(ex => {
+                const board = (ex === "Pull-up" || ex === "Push-up") ? buildChapterBodyweightLeaderboard(ex) : buildChapterLeaderboard(ex, chartRep);
+                const top = board[0];
+                return (
+                  <tr key={ex}>
+                    <td><span className="badge">{ex}</span></td>
+                    <td>
+                      {top ? (
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <div className="avatar sm" style={{background: top.isMe ? "var(--accent)" : "var(--surface2)"}}>
+                            {initials(top.name)}
+                          </div>
+                          <span style={{fontWeight:600,color: top.isMe ? "var(--accent)" : "var(--text)"}}>{top.name}{top.isMe?" (You)":""}</span>
+                        </div>
+                      ) : <span style={{color:"var(--muted)"}}>—</span>}
+                    </td>
+                    <td style={{fontWeight:700,color:"var(--accent)"}}>{top ? `${top.weight} ${ex === "Pull-up" ? "reps" : "lbs"}` : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        </>
+        )}
+        </>
       ) : (
         <>
         <div style={{display:"flex",gap:20,marginBottom:24,flexWrap:"wrap"}}>

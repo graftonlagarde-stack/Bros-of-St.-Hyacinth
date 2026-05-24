@@ -1553,6 +1553,46 @@ app.delete("/api/chapters/:id/leave", requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/chapters/:id/community-users — lift logs for chapter members (same shape as /api/community/users)
+app.get("/api/chapters/:id/community-users", requireAuth, async (req, res) => {
+  try {
+    const chapterId = Number(req.params.id);
+    // Must be approved member or arch-admin
+    const { rows: roleRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    const isArchAdmin = roleRows[0]?.role === "arch_admin";
+    if (!isArchAdmin) {
+      const { rows: cmRows } = await db.query(
+        "SELECT id FROM chapter_memberships WHERE chapter_id = $1 AND user_id = $2 AND status = 'approved'",
+        [chapterId, req.userId]
+      );
+      if (!cmRows[0]) return res.status(403).json({ error: "Forbidden." });
+    }
+    const { rows: users } = await db.query(`
+      SELECT u.* FROM users u
+      JOIN chapter_memberships cm ON cm.user_id = u.id
+      WHERE cm.chapter_id = $1 AND cm.status = 'approved' AND u.id != $2
+    `, [chapterId, req.userId]);
+    const result = await Promise.all(users.map(async (u) => {
+      const { rows: logs } = await db.query(
+        "SELECT exercise, rep_cat, weight, ts FROM lift_logs WHERE user_id = $1 ORDER BY ts ASC",
+        [u.id]
+      );
+      const shaped = {};
+      for (const l of logs) {
+        if (!shaped[l.exercise]) shaped[l.exercise] = {};
+        const key = String(l.rep_cat);
+        if (!shaped[l.exercise][key]) shaped[l.exercise][key] = [];
+        shaped[l.exercise][key].push({ weight: Number(l.weight), ts: Number(l.ts) });
+      }
+      return { name: displayName(u), logs: shaped };
+    }));
+    return res.json(result);
+  } catch (err) {
+    console.error("GET /api/chapters/:id/community-users:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // GET /api/chapters/:id/stats — workout leaderboard for chapter members
 app.get("/api/chapters/:id/stats", requireAuth, async (req, res) => {
   try {
