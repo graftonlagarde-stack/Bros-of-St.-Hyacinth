@@ -1,6 +1,30 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 
+// ─── POLLING HOOK ─────────────────────────────────────────────────────────────
+// Runs a callback at a fixed interval, pausing when the tab is hidden.
+function usePolling(callback, intervalMs, active = true) {
+  const cbRef = useRef(callback);
+  useEffect(() => { cbRef.current = callback; }, [callback]);
+  useEffect(() => {
+    if (!active) return;
+    let timerId = null;
+    const tick = () => {
+      if (document.visibilityState !== "hidden") cbRef.current();
+      timerId = setTimeout(tick, intervalMs);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") cbRef.current();
+    };
+    timerId = setTimeout(tick, intervalMs);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      clearTimeout(timerId);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [intervalMs, active]);
+}
+
 const useIsMobile = () => {
   const [mobile, setMobile] = useState(() => window.innerWidth <= 768);
   useEffect(() => {
@@ -134,7 +158,7 @@ const api = {
   getCommunityUsers: () => api.get("/api/community/users"),
 
   // Board
-  getMessages:   ()     => api.get("/api/board/messages"),
+  getMessages:   (since) => api.get(since ? `/api/board/messages?since=${since}` : "/api/board/messages"),
   postMessage:   (body) => api.post("/api/board/messages", body),
   postReaction:  (body) => api.post("/api/board/reactions", body),
   deleteMessage: (id)   => api.delete(`/api/board/messages/${id}`),
@@ -158,7 +182,7 @@ const api = {
   leaveChapter:         (id)            => api.delete(`/api/chapters/${id}/leave`),
   getChapterStats:      (id)            => api.get(`/api/chapters/${id}/stats`),
   getChapterCommunityUsers: (id)        => api.get(`/api/chapters/${id}/community-users`),
-  getChapterMessages:   (id)            => api.get(`/api/chapters/${id}/messages`),
+  getChapterMessages:   (id, since)     => api.get(since ? `/api/chapters/${id}/messages?since=${since}` : `/api/chapters/${id}/messages`),
   postChapterMessage:   (id, body)      => api.post(`/api/chapters/${id}/messages`, body),
 };
 
@@ -499,29 +523,58 @@ function useCommunityUsers(currentUsername) {
     return () => { cancelled = true; };
   }, [currentUsername]);
 
+  // Poll community users every 45 seconds
+  usePolling(() => {
+    api.getCommunityUsers().then(setCommunityUsers).catch(() => {});
+  }, 45000);
+
   return { communityUsers, loading };
 }
 
 function useBoardMessages() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading]   = useState(false);
+  const latestTs = useRef(0);
 
   const fetchMessages = () => {
     setLoading(true);
     api.getMessages()
-      .then(data => setMessages(data))
+      .then(data => {
+        setMessages(data);
+        if (data.length > 0) latestTs.current = Math.max(...data.map(m => m.ts));
+      })
       .catch(err => console.warn("useBoardMessages:", err))
       .finally(() => setLoading(false));
   };
 
-  // Posts a new message to the backend; optimistically prepends it to state
+  // Poll for new messages every 8 seconds using the since param
+  usePolling(() => {
+    if (latestTs.current === 0) return; // haven't loaded yet
+    api.getMessages(latestTs.current)
+      .then(newMsgs => {
+        if (newMsgs.length === 0) return;
+        setMessages(prev => {
+          const ids = new Set(prev.map(m => m.id));
+          const fresh = newMsgs.filter(m => !ids.has(m.id));
+          if (fresh.length === 0) return prev;
+          const updated = [...prev, ...fresh];
+          latestTs.current = Math.max(...updated.map(m => m.ts));
+          return updated;
+        });
+      })
+      .catch(() => {});
+  }, 8000);
+
+  // Posts a new message to the backend; appends to state and updates latestTs
   const saveMessage = async (msg) => {
     try {
       const saved = await api.postMessage({
-        text:  msg.text,
-        media: msg.media,
+        text:       msg.text,
+        media:      msg.media,
+        mediaExtra: msg.mediaExtra ?? [],
       });
       setMessages(prev => [...prev, saved]);
+      latestTs.current = Math.max(latestTs.current, saved.ts);
     } catch (err) {
       console.warn("saveMessage failed:", err);
     }
@@ -912,6 +965,7 @@ function BoardPage({ username, currentUser }) {
   const [chapterMembership, setChapterMembership] = useState(null);
   const [chapterMessages, setChapterMessages]     = useState([]);
   const [chapterMsgLoading, setChapterMsgLoading] = useState(false);
+  const chapterLatestTs = useRef(0);
 
   useEffect(() => {
     api.getMyMembership().then(m => {
@@ -921,9 +975,13 @@ function BoardPage({ username, currentUser }) {
 
   useEffect(() => {
     if (chatTab !== "chapter" || !chapterMembership) return;
+    chapterLatestTs.current = 0;
     setChapterMsgLoading(true);
     api.getChapterMessages(chapterMembership.chapter_id)
-      .then(msgs => setChapterMessages(msgs))
+      .then(msgs => {
+        setChapterMessages(msgs);
+        if (msgs.length > 0) chapterLatestTs.current = Math.max(...msgs.map(m => m.ts));
+      })
       .catch(() => {})
       .finally(() => setChapterMsgLoading(false));
     // Clear chapter-chat notifications
@@ -936,6 +994,23 @@ function BoardPage({ username, currentUser }) {
       }).catch(() => {});
     }
   }, [chatTab, chapterMembership]);
+
+  // Poll chapter chat every 8s when on chapter tab
+  usePolling(() => {
+    if (!chapterMembership || chapterLatestTs.current === 0) return;
+    api.getChapterMessages(chapterMembership.chapter_id, chapterLatestTs.current)
+      .then(newMsgs => {
+        if (newMsgs.length === 0) return;
+        const maxTs = Math.max(...newMsgs.map(m => m.ts));
+        chapterLatestTs.current = Math.max(chapterLatestTs.current, maxTs);
+        setChapterMessages(prev => {
+          const ids = new Set(prev.map(m => m.id));
+          const fresh = newMsgs.filter(m => !ids.has(m.id));
+          return fresh.length > 0 ? [...fresh, ...prev] : prev;
+        });
+      })
+      .catch(() => {});
+  }, 8000, chatTab === "chapter" && !!chapterMembership);
   const [text, setText]                 = useState("");
   const [mediaFiles, setMediaFiles]     = useState([]);
   const [attachWarning, setAttachWarning] = useState(false);
@@ -5468,6 +5543,11 @@ function TopChartsPage({ username, currentUser }) {
     }).catch(() => {});
   }, [username]);
 
+  // Poll leaderboard data every 45 seconds
+  usePolling(() => {
+    api.getLogs().then(setUserLogs).catch(() => {});
+  }, 45000);
+
   useEffect(() => {
     if (chartsTab !== "chapter" || !membership) return;
     setChapterUsersLoading(true);
@@ -6141,6 +6221,14 @@ function ProfilePage({ user, onDeleted, onLogout }) {
     if (!membership || membership.status !== "approved") return;
     api.getChapterRequests(membership.chapter_id).then(setRequests).catch(() => {});
   }, [membership]);
+
+  // Poll membership and pending requests every 30 seconds
+  usePolling(() => {
+    api.getMyMembership().then(m => setMembership(m)).catch(() => {});
+    if (membership?.status === "approved") {
+      api.getChapterRequests(membership.chapter_id).then(setRequests).catch(() => {});
+    }
+  }, 30000);
 
   const handleDelete = async () => {
     setDelError("");

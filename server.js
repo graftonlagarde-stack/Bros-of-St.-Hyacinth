@@ -986,9 +986,12 @@ app.post("/api/badge/clear", requireAuth, async (req, res) => {
 
 app.get("/api/board/messages", requireAuth, async (req, res) => {
   try {
-    const { rows } = await db.query("SELECT * FROM messages WHERE chapter_id IS NULL ORDER BY ts ASC");
+    const since = req.query.since ? Number(req.query.since) : null;
+    const { rows } = since
+      ? await db.query("SELECT * FROM messages WHERE chapter_id IS NULL AND ts > $1 ORDER BY ts ASC", [since])
+      : await db.query("SELECT * FROM messages WHERE chapter_id IS NULL ORDER BY ts ASC");
     const ids = rows.map(r => Number(r.id));
-    const reactionsMap = await loadReactions(ids);
+    const reactionsMap = ids.length > 0 ? await loadReactions(ids) : {};
     return res.json(rows.map(r => shapeMessage(r, reactionsMap)));
   } catch (err) {
     console.error("getMessages:", err);
@@ -1647,10 +1650,10 @@ app.get("/api/chapters/:id/messages", requireAuth, async (req, res) => {
       );
       if (!cmRows[0]) return res.status(403).json({ error: "Forbidden." });
     }
-    const { rows } = await db.query(
-      "SELECT * FROM messages WHERE chapter_id = $1 ORDER BY ts DESC LIMIT 200",
-      [chapterId]
-    );
+    const since = req.query.since ? Number(req.query.since) : null;
+    const { rows } = since
+      ? await db.query("SELECT * FROM messages WHERE chapter_id = $1 AND ts > $2 ORDER BY ts DESC", [chapterId, since])
+      : await db.query("SELECT * FROM messages WHERE chapter_id = $1 ORDER BY ts DESC LIMIT 200", [chapterId]);
     const reactionsMap = await loadReactions(rows.map(r => r.id));
     res.json(rows.map(r => shapeMessage(r, reactionsMap)));
   } catch (err) {
