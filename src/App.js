@@ -2669,42 +2669,6 @@ const css = `
     text-shadow: 0 0 10px rgba(136,255,0,0.7);
   }
 
-  /* ── COMPARE ── */
-  .compare-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
-  .compare-card {
-    background: linear-gradient(160deg, rgba(0,22,13,0.52) 0%, rgba(0,10,5,0.32) 50%, rgba(0,3,2,0.40) 100%);
-    border: 1px solid rgba(6,51,34,0.9);
-    border-top: 1px solid rgba(136,255,0,0.15);
-    border-left: 1px solid rgba(136,255,0,0.08);
-    border-radius: var(--radius); padding: 14px; cursor: pointer; transition: all 0.25s;
-    position: relative; overflow: hidden;
-    box-shadow:
-      0 2px 0 rgba(136,255,0,0.06),
-      0 6px 18px rgba(0,0,0,0.5),
-      0 16px 40px rgba(0,0,0,0.4),
-      inset 0 1px 0 rgba(136,255,0,0.10);
-  }
-  .compare-card::before {
-    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
-    background: linear-gradient(90deg,
-      transparent 0%, transparent 35%,
-      rgba(136,255,0,0.7) 47%,
-      rgba(136,255,0,0.7) 53%,
-      transparent 65%, transparent 100%
-    );
-    background-size: 300% 100%;
-    animation: trace 5s linear infinite;
-  }
-  .compare-card:hover { border-color: rgba(136,255,0,0.25); box-shadow: var(--glow-sm); transform: translateY(-2px); }
-  .compare-card.sel { border-color: rgba(136,255,0,0.5); box-shadow: var(--glow), inset 0 0 30px rgba(136,255,0,0.025); }
-  .compare-card .cname {
-    font-weight: 700; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase;
-    background: var(--chrome-grad);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
-    font-family: 'Orbitron', sans-serif;
-  }
-  .compare-card .csub { font-size: 12px; color: var(--muted); margin-top: 4px; letter-spacing: 0.5px; }
-
   /* ── AUDIO PLAYER ── */
   .player-bar {
     position: fixed;
@@ -3218,7 +3182,7 @@ const css = `
   ::selection { background: rgba(136,255,0,0.3); color: #fff; }
 
   * { cursor: crosshair; }
-  button, a, [role="button"], .nav-item, .tab, .track-row, .compare-card, select { cursor: pointer; }
+  button, a, [role="button"], .nav-item, .tab, .track-row, select { cursor: pointer; }
 `;
 
 // ─── UTILS ────────────────────────────────────────────────────────────────────
@@ -4982,9 +4946,7 @@ function WorkoutPage({ username }) {
   const isPushup = form.exercise === "Push-up";
   const isBodyweight = isPullup || isPushup;
   const [chartEx, setChartEx] = useState("Bench Press");
-  const [compareUser, setCompareUser] = useState(null);
   const [dupError, setDupError] = useState(null);
-  const { communityUsers } = useCommunityUsers(username);
 
   useEffect(() => {
     api.getLogs()
@@ -5049,37 +5011,13 @@ function WorkoutPage({ username }) {
   };
 
   // Build compare chart data for a specific rep cat overlay
-  const buildCompareData = (repCat) => {
-    // My entries — keep real timestamps for the x-axis
-    const myEntries = logs
-      .filter(l => l.exercise === chartEx && l.repCat === repCat)
-      .map(l => ({ ts: l.ts || Date.now(), [username]: l.weight }));
-
-    // Other user's entries — synthesise evenly-spaced timestamps so they
-    // plot on the same time-scale axis (spaced 7 days apart ending today)
-    const otherWeights = compareUser
-      ? (communityUsers.find(u => u.name === compareUser)?.logs[chartEx]?.[repCat] || []).map(e => e.weight)
-      : [];
-    const now = Date.now();
-    const otherEntries = otherWeights.map((w, i) => ({
-      ts: now - (otherWeights.length - 1 - i) * 7 * 86400000,
-      [compareUser]: w,
-    }));
-
-    // Merge into a single sorted array keyed by ts
-    const merged = {};
-    myEntries.forEach(e => { merged[e.ts] = { ...merged[e.ts], ts: e.ts, [username]: e[username] }; });
-    otherEntries.forEach(e => { merged[e.ts] = { ...merged[e.ts], ts: e.ts, [compareUser]: e[compareUser] }; });
-    return Object.values(merged).sort((a, b) => a.ts - b.ts);
-  };
-
   const totalSessions = new Set(logs.map(l => l.date)).size;
   const totalEntries = logs.length;
   const exercisesTracked = new Set(logs.map(l => l.exercise)).size;
 
   const chartData = buildChartData();
   // Show charts if the user has their own data OR a compare user is selected
-  const hasAnyData = chartData.length > 0 || !!compareUser;
+  const hasAnyData = chartData.length > 0;
 
   return (
     <div className="page">
@@ -5200,7 +5138,7 @@ function WorkoutPage({ username }) {
         })() : hasAnyData ? (
           <div className="workout-chart-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
             {REP_CATS.map(repCat => {
-              const data = compareUser ? buildCompareData(repCat) : (() => {
+              const data = (() => {
                 const entries = logs.filter(l => l.exercise === chartEx && l.repCat === repCat);
                 return entries.map(l => ({ label: l.date, [username]: l.weight }));
               })();
@@ -5215,12 +5153,10 @@ function WorkoutPage({ username }) {
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={data}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#2a2a32" />
-                          <XAxis dataKey={compareUser ? "ts" : "label"} type={compareUser ? "number" : "category"} scale={compareUser ? "time" : "auto"} domain={compareUser ? ["auto","auto"] : undefined} stroke="#7a7a8a" tick={{fontSize:9}} angle={-30} textAnchor="end" height={36} tickFormatter={compareUser ? ((v) => new Date(v).toLocaleDateString("en-US",{month:"short",day:"numeric"})) : undefined} />
+                          <XAxis dataKey="label" stroke="#7a7a8a" tick={{fontSize:9}} angle={-30} textAnchor="end" height={36} />
                           <YAxis stroke="#7a7a8a" tick={{fontSize:10}} width={38} />
                           <Tooltip contentStyle={{background:"#141417",border:"1px solid #2a2a32",borderRadius:8,fontSize:11}} formatter={(v) => [`${v} lbs`]} />
                           <Line type="monotone" dataKey={username} stroke={color} strokeWidth={2.5} dot={{fill:color,r:3}} name={username} />
-                          {compareUser && <Line type="monotone" dataKey={compareUser} stroke="#60a5fa" strokeWidth={2} dot={{fill:"#60a5fa",r:2}} strokeDasharray="4 4" name={compareUser} />}
-                          {compareUser && <Legend wrapperStyle={{fontSize:10,fontFamily:"'Orbitron',sans-serif",paddingTop:6}} />}
                         </LineChart>
                       </ResponsiveContainer>
                     ) : (
@@ -5240,24 +5176,6 @@ function WorkoutPage({ username }) {
         )}
       </div>
 
-      <div className="card">
-        <div className="card-title"><span style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,color:"var(--accent)",letterSpacing:2,marginRight:8}}>◈◈</span>Compare with Others</div>
-        <div className="compare-grid">
-          {communityUsers.length === 0 ? (
-            <div style={{color:"var(--muted)",fontSize:13,padding:"8px 0"}}>
-              No other brothers have logged data yet.
-            </div>
-          ) : communityUsers.map(u => (
-            <div key={u.name} className={`compare-card ${compareUser===u.name?"sel":""}`} onClick={() => setCompareUser(compareUser===u.name?null:u.name)}>
-              <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <div className="avatar sm">{initials(u.name)}</div>
-                <div><div className="cname">{u.name}</div><div className="csub">{Object.keys(u.logs).length} exercises tracked</div></div>
-              </div>
-            </div>
-          ))}
-        </div>
-        {compareUser && <div style={{fontSize:13,color:"var(--muted)",marginTop:4}}>Showing <span style={{color:"#60a5fa"}}>{compareUser}</span> as dashed lines on each chart above.</div>}
-      </div>
     </div>
   );
 }
