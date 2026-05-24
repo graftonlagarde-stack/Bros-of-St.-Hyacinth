@@ -930,7 +930,7 @@ function LinkPreview({ url, onLoad }) {
 
   useEffect(() => {
     let cancelled = false;
-    const token = localStorage.getItem("auth_token");
+    const token = api.getToken();
     fetch(`${API_BASE}/api/link-preview?url=${encodeURIComponent(url)}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
@@ -990,9 +990,6 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
   // On mobile, chatTab is derived directly from mobileScreen to avoid render-cycle lag.
   // On desktop, it's driven by the internal tab buttons via chatTabInternal.
   const [chatTabInternal, setChatTabInternal] = useState("global");
-  const [chatTransDir, setChatTransDir]       = useState(null); // "ltr"|"rtl" during transition
-  const chatTransTimer                        = useRef(null);
-  const prevChatTabRef                        = useRef(null);
   const chatTab = (isMobile && mobileScreen !== null)
     ? (mobileScreen === "chapter" ? "chapter" : "global")
     : chatTabInternal;
@@ -1033,17 +1030,6 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
     }
   }, [mobileScreen, chatTabInternal, chapterMembership]);
 
-  useEffect(() => {
-    if (!chapterMembership || !isMobile) return;
-    if (prevChatTabRef.current === null) { prevChatTabRef.current = chatTab; return; }
-    if (prevChatTabRef.current === chatTab) return;
-    const dir = chatTab === "chapter" ? "ltr" : "rtl";
-    prevChatTabRef.current = chatTab;
-    clearTimeout(chatTransTimer.current);
-    setChatTransDir(dir);
-    chatTransTimer.current = setTimeout(() => setChatTransDir(null), 340);
-  }, [chatTab]);
-
   // Poll chapter chat every 8s when on chapter tab
   usePolling(() => {
     if (!chapterMembership || chapterLatestTs.current === 0) return;
@@ -1063,6 +1049,13 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
   const [text, setText]                 = useState("");
   const [mediaFiles, setMediaFiles]     = useState([]);
   const [attachWarning, setAttachWarning] = useState(false);
+  const attachWarningTimer = useRef(null);
+  const showAttachWarning = () => {
+    setAttachWarning(true);
+    clearTimeout(attachWarningTimer.current);
+    attachWarningTimer.current = setTimeout(() => setAttachWarning(false), 3000);
+  };
+  useEffect(() => () => clearTimeout(attachWarningTimer.current), []);
   const [uploading, setUploading]       = useState(false);
   const [emojiPickerFor, setEmojiPickerFor] = useState(null); // msgId of open quick bar
   const [showFullPicker, setShowFullPicker] = useState(null);  // msgId of open full picker
@@ -1230,8 +1223,7 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
     if (!file) return;
     e.target.value = "";
     if (mediaFiles.length >= 3) {
-      setAttachWarning(true);
-      setTimeout(() => setAttachWarning(false), 3000);
+      showAttachWarning();
       return;
     }
     if (file.size > CHAT_MAX_FILE_BYTES) {
@@ -1840,7 +1832,7 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
 
       <div style={{ display:"flex", gap:8, alignItems:"flex-end" }}>
         <input ref={fileRef} type="file" accept="image/*,video/*,audio/*" style={{ display:"none" }} onChange={handleFile} />
-        <button onClick={() => { if (mediaFiles.length >= 3) { setAttachWarning(true); setTimeout(() => setAttachWarning(false), 3000); } else fileRef.current?.click(); }}
+        <button onClick={() => { if (mediaFiles.length >= 3) { showAttachWarning(); } else fileRef.current?.click(); }}
           style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:2, padding:"0 10px", height:40,
             cursor:"pointer", color: uploading ? "var(--accent)" : "var(--muted)", fontSize:16, flexShrink:0, transition:"all 0.15s" }}
           title="Attach photo, video, or audio">📎</button>
@@ -1986,7 +1978,7 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
         {/* Desktop input bar */}
         <div style={{ position:"fixed", bottom:0, left:360, right:0, padding:"12px 28px", borderTop:"1px solid var(--border)", background:"rgba(0,8,4,0.45)", display:"flex", gap:10, alignItems:"stretch", zIndex:10 }}>
           <input ref={fileRef} type="file" accept="image/*,video/*,audio/*" style={{ display:"none" }} onChange={handleFile} />
-          <button onClick={() => { if (mediaFiles.length >= 3) { setAttachWarning(true); setTimeout(() => setAttachWarning(false), 3000); } else fileRef.current?.click(); }}
+          <button onClick={() => { if (mediaFiles.length >= 3) { showAttachWarning(); } else fileRef.current?.click(); }}
             style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:2, padding:"0 12px", cursor:"pointer", color: uploading ? "var(--accent)" : "var(--muted)", fontSize:16, flexShrink:0, transition:"all 0.15s" }}
             title="Attach photo, video, or audio">📎</button>
           <textarea
@@ -5728,14 +5720,19 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
     api.getLogs().then(setUserLogs).catch(() => {});
   }, 45000);
 
+  usePolling(() => {
+    if (!membership) return;
+    api.getChapterCommunityUsers(membership.chapter_id).then(setChapterCommunityUsers).catch(() => {});
+  }, 45000);
+
   useEffect(() => {
-    if (chartsTab !== "chapter" || !membership) return;
+    if (!membership) return;
     setChapterUsersLoading(true);
     api.getChapterCommunityUsers(membership.chapter_id)
       .then(setChapterCommunityUsers)
       .catch(() => {})
       .finally(() => setChapterUsersLoading(false));
-  }, [mobileScreen, chartsTabInternal, membership]);
+  }, [membership]);
 
   // Build leaderboard for selected exercise + rep category
   const buildLeaderboard = (exercise, repCat) => {
@@ -5850,7 +5847,10 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
           alignItems: "flex-start",
         }}>
           {/* Global panel */}
-          <div style={{width: isMobileTC && membership ? "50%" : "100%", flexShrink: 0}}>
+          <div style={{
+            width: isMobileTC && membership ? "50%" : "100%", flexShrink: 0,
+            display: !isMobileTC && membership && chartsTab === "chapter" ? "none" : "block",
+          }}>
         <div style={{display:"flex",gap:20,marginBottom:24,flexWrap:"wrap"}}>
         <div style={{flex:1,minWidth:220}}>
           <div className="form-label" style={{marginBottom:8}}>Exercise</div>
@@ -5967,7 +5967,10 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
 
           {/* Chapter panel */}
           {membership && (
-            <div style={{width: isMobileTC ? "50%" : "100%", flexShrink: 0}}>
+            <div style={{
+              width: isMobileTC ? "50%" : "100%", flexShrink: 0,
+              display: !isMobileTC && chartsTab === "global" ? "none" : "block",
+            }}>
         {chapterUsersLoading ? (
           <div style={{color:"var(--muted)",fontSize:12,padding:28,textAlign:"center",
             fontFamily:"'Orbitron',sans-serif",letterSpacing:2}}>LOADING…</div>
@@ -7010,7 +7013,6 @@ function AdminSection({ currentUser, cardStyle, sectionTitle }) {
 export default function App() {
   const isMobile = useIsMobile();
   const [user, setUser]                         = useState(null);   // { id, firstName, lastName, email, displayName }
-  const [showProfile, setShowProfile]           = useState(false); // kept for compat, now unused
   const [page, setPage]                         = useState("workout");
   const [pressedId, setPressedId]               = useState(null); // mobile: instant active highlight on touch
   // Backdrops are always mounted (keep-alive). Visibility driven by page state.
@@ -7230,7 +7232,6 @@ export default function App() {
   };
 
   const handleDeleted = () => {
-    setShowProfile(false);
     setUser(null);
   };
 
@@ -7403,16 +7404,16 @@ export default function App() {
               );
             })}
             <div className={`nav-item-wrap${page === "profile" ? " active-wrap" : ""}`}
-              onTouchStart={() => { setPressedId("profile"); setPage("profile"); }}
-              onClick={() => setPage("profile")}>
+              onTouchStart={() => { setPressedId("profile"); handleSetPage("profile"); }}
+              onClick={() => handleSetPage("profile")}>
               <div className={`nav-item${page === "profile" ? " active" : ""}`}>{username}</div>
             </div>
           </div>
         </div>
         <div ref={mainRef} className={`main${isMobile ? (navExpanded ? " nav-open" : " nav-closed") : ""}${isMobile && page === "boards" ? " chat-active" : ""}`} style={{display:"flex", flexDirection:"column"}}>
-          {page === "workout" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><WorkoutPage username={username} /></div>}
-          {page === "topcharts" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
-          {page === "boards" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><BoardPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
+          {page === "workout" && <div><WorkoutPage username={username} /></div>}
+          {page === "topcharts" && <div><TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
+          {page === "boards" && <div><BoardPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
           {page === "rule" && <RulePage user={user} />}
           {page === "profile" && <ProfilePage user={user} onDeleted={() => { api.clearToken(); setUser(null); }} onLogout={() => { handleLogout(); setPage("workout"); }} />}
