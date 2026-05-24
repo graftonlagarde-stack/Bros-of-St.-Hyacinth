@@ -1835,15 +1835,23 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
               {["global","chapter"].map(tab => (
                 <div key={tab} style={{
                   width: chatTab===tab ? 18 : 6,
-                  height:6, borderRadius:3,
+                  height:6, borderRadius:3, flexShrink:0,
                   background: chatTab===tab ? "#88ff00" : "rgba(136,255,0,0.25)",
                   transition:"all 0.25s ease",
                 }} />
               ))}
-              <span style={{fontSize:9,fontFamily:"'Orbitron',sans-serif",letterSpacing:1,
-                color:"rgba(136,255,0,0.7)",whiteSpace:"nowrap"}}>
-                {showChapter ? chapterMembership.chapter_name.toUpperCase() : "GLOBAL"}
-              </span>
+              {(() => {
+                const label = showChapter ? chapterMembership.chapter_name.toUpperCase() : "GLOBAL";
+                const needsScroll = label.length > 6;
+                return (
+                  <div className={`tab-pill-text${needsScroll ? " scrolling" : ""}`}>
+                    <div className={`tab-pill-scroll-track${needsScroll ? " needs-scroll" : ""}`}>
+                      <span className="tab-pill-inner">{label}</span>
+                      {needsScroll && <span className="tab-pill-inner">{label}</span>}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
           <div
@@ -2052,18 +2060,65 @@ const css = `
   .tab-pill {
     position: fixed;
     top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
+    right: 14px;
     z-index: 200;
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 5px 14px;
-    background: rgba(0,10,5,0.92);
+    padding: 5px 12px;
+    background: rgba(0,10,5,0.4);
     border: 1px solid rgba(136,255,0,0.35);
     border-radius: 999px;
     box-shadow: 0 0 12px rgba(136,255,0,0.2), inset 0 0 8px rgba(136,255,0,0.04);
     pointer-events: none;
+    overflow: hidden;
+  }
+  .tab-pill-text {
+    position: relative;
+    overflow: hidden;
+    width: 48px;
+    flex-shrink: 0;
+  }
+  .tab-pill-text::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 12px;
+    background: linear-gradient(to right, rgba(0,10,5,0.9), transparent);
+    z-index: 1;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .tab-pill-text::after {
+    content: '';
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    width: 12px;
+    background: linear-gradient(to left, rgba(0,10,5,0.9), transparent);
+    z-index: 1;
+  }
+  .tab-pill-text.scrolling::before { opacity: 1; }
+  .tab-pill-scroll-track {
+    display: flex;
+    white-space: nowrap;
+  }
+  @keyframes pillScroll {
+    0%    { transform: translateX(0); }
+    30%   { transform: translateX(0); }
+    70%   { transform: translateX(-50%); }
+    100%  { transform: translateX(-50%); }
+  }
+  .tab-pill-scroll-track.needs-scroll {
+    animation: pillScroll 3s linear 2s infinite;
+  }
+  .tab-pill-inner {
+    display: inline-block;
+    white-space: nowrap;
+    font-size: 9px;
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 1px;
+    color: rgba(136,255,0,0.7);
+    padding-right: 24px;
   }
 
   /* ── BASE ── */
@@ -5708,15 +5763,23 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
           <div className="tab-pill">
             {["global","chapter"].map(tab => (
               <div key={tab} style={{
-                width: chartsTab===tab ? 18 : 6, height:6, borderRadius:3,
+                width: chartsTab===tab ? 18 : 6, height:6, borderRadius:3, flexShrink:0,
                 background: chartsTab===tab ? "#88ff00" : "rgba(136,255,0,0.25)",
                 transition:"all 0.25s ease",
               }} />
             ))}
-            <span style={{fontSize:9,fontFamily:"'Orbitron',sans-serif",
-              letterSpacing:1,color:"rgba(136,255,0,0.7)",whiteSpace:"nowrap"}}>
-              {chartsTab === "global" ? "GLOBAL" : membership.chapter_name.toUpperCase()}
-            </span>
+            {(() => {
+              const label = chartsTab === "global" ? "GLOBAL" : membership.chapter_name.toUpperCase();
+              const needsScroll = label.length > 6;
+              return (
+                <div className={`tab-pill-text${needsScroll ? " scrolling" : ""}`}>
+                  <div className={`tab-pill-scroll-track${needsScroll ? " needs-scroll" : ""}`}>
+                    <span className="tab-pill-inner">{label}</span>
+                    {needsScroll && <span className="tab-pill-inner">{label}</span>}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
