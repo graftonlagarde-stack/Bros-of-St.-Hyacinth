@@ -958,7 +958,7 @@ function LinkPreview({ url, onLoad }) {
 }
 
 // ─── BOARD PAGE ───────────────────────────────────────────────────────────────
-function BoardPage({ username, currentUser }) {
+function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
   const isMobile = useIsMobile();
   const { messages, fetchMessages, saveMessage, saveReaction, deleteMessage } = useBoardMessages();
   const [chatTab, setChatTab]           = useState("global"); // "global" | "chapter"
@@ -967,9 +967,19 @@ function BoardPage({ username, currentUser }) {
   const [chapterMsgLoading, setChapterMsgLoading] = useState(false);
   const chapterLatestTs = useRef(0);
 
+  // On mobile, mobileScreen drives the tab; on desktop, internal buttons drive it
+  useEffect(() => {
+    if (mobileScreen !== null) {
+      setChatTab(mobileScreen === "chapter" ? "chapter" : "global");
+    }
+  }, [mobileScreen]);
+
   useEffect(() => {
     api.getMyMembership().then(m => {
-      if (m && m.status === "approved") setChapterMembership(m);
+      if (m && m.status === "approved") {
+        setChapterMembership(m);
+        if (onHasChapter) onHasChapter(true);
+      }
     }).catch(() => {});
   }, []);
 
@@ -1821,18 +1831,22 @@ function BoardPage({ username, currentUser }) {
         {lightbox}
         <div ref={chatRootRef} className="chat-mobile-root">
           {chapterMembership && (
-            <div style={{display:"flex",justifyContent:"flex-end",borderBottom:"1px solid rgba(136,255,0,0.12)",
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,
+              padding:"8px 0",borderBottom:"1px solid rgba(136,255,0,0.12)",
               background:"rgba(0,8,4,0.98)",zIndex:5,flexShrink:0}}>
               {["global","chapter"].map(tab => (
-                <button key={tab} onClick={()=>setChatTab(tab)}
-                  style={{flex:1,padding:"10px 0",border:"none",background:"none",cursor:"pointer",
-                    fontFamily:"'Orbitron',sans-serif",fontSize:9,letterSpacing:2,textTransform:"uppercase",
-                    color: chatTab===tab ? "#88ff00" : "var(--muted)",
-                    borderBottom: chatTab===tab ? "2px solid #88ff00" : "2px solid transparent",
-                    transition:"all 0.2s"}}>
-                  {tab === "global" ? "Global" : chapterMembership.chapter_name}
-                </button>
+                <div key={tab} style={{
+                  width: chatTab===tab ? 18 : 6,
+                  height:6, borderRadius:3,
+                  background: chatTab===tab ? "#88ff00" : "rgba(136,255,0,0.25)",
+                  transition:"all 0.25s ease",
+                }} />
               ))}
+              <div style={{position:"absolute",right:12,fontSize:9,
+                fontFamily:"'Orbitron',sans-serif",letterSpacing:1,
+                color:"rgba(136,255,0,0.4)"}}>
+                {chatTab === "global" ? "GLOBAL" : chapterMembership.chapter_name.toUpperCase()}
+              </div>
             </div>
           )}
           <div ref={scrollContainerRef} className="chat-mobile-messages" style={{ padding: "60px 14px 20px", display: "flex", flexDirection: "column-reverse", willChange: "transform" }}>
@@ -2898,6 +2912,7 @@ const css = `
     }
     .main.nav-open  { transform: translateX(100vw) !important; }
     .main.nav-closed { transform: translateX(0)    !important; }
+    .main.nav-closed.chapter-screen { transform: translateX(-100vw) !important; }
 
     /* ── Page: compact padding, smaller title ── */
     .page { padding: 20px 14px !important; }
@@ -5530,7 +5545,7 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack, navExpand
 }
 
 // ─── TOP CHARTS PAGE ──────────────────────────────────────────────────────────
-function TopChartsPage({ username, currentUser }) {
+function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
   const [userLogs, setUserLogs] = useState([]);
   const [chartEx, setChartEx] = useState("Bench Press");
   const [chartRep, setChartRep] = useState(1);
@@ -5539,6 +5554,13 @@ function TopChartsPage({ username, currentUser }) {
   const [chapterCommunityUsers, setChapterCommunityUsers] = useState([]);
   const [chapterUsersLoading, setChapterUsersLoading] = useState(false);
   const { communityUsers } = useCommunityUsers(username);
+
+  // On mobile, mobileScreen drives the tab
+  useEffect(() => {
+    if (mobileScreen !== null) {
+      setChartsTab(mobileScreen === "chapter" ? "chapter" : "global");
+    }
+  }, [mobileScreen]);
   const isPullup = chartEx === "Pull-up";
   const isPushup = chartEx === "Push-up";
   const isBodyweightChart = isPullup || isPushup;
@@ -5548,7 +5570,10 @@ function TopChartsPage({ username, currentUser }) {
       .then(data => setUserLogs(data))
       .catch(err => console.warn("TopCharts getLogs:", err));
     api.getMyMembership().then(m => {
-      if (m && m.status === "approved") setMembership(m);
+      if (m && m.status === "approved") {
+        setMembership(m);
+        if (onHasChapter) onHasChapter(true);
+      }
     }).catch(() => {});
   }, [username]);
 
@@ -5634,11 +5659,13 @@ function TopChartsPage({ username, currentUser }) {
   const medalColors = ["#ffdd00", "#c0c8d4", "#ff9944"];
   const medalLabels = ["#1", "#2", "#3"];
 
+  const isMobile = useIsMobile();
+
   return (
     <div className="page" style={{position:"relative"}}>
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:4}}>
         <div className="page-title" style={{marginBottom:0}}>TOP <span className="accentText">CHARTS</span></div>
-        {membership && (
+        {membership && !isMobile && (
           <div style={{display:"flex",borderBottom:"1px solid rgba(136,255,0,0.12)",alignSelf:"flex-end"}}>
             {["global","chapter"].map(tab => (
               <button key={tab} onClick={()=>setChartsTab(tab)}
@@ -5650,6 +5677,21 @@ function TopChartsPage({ username, currentUser }) {
                 {tab === "global" ? "Global" : membership.chapter_name}
               </button>
             ))}
+          </div>
+        )}
+        {membership && isMobile && (
+          <div style={{display:"flex",alignItems:"center",gap:6,alignSelf:"center",position:"relative"}}>
+            {["global","chapter"].map(tab => (
+              <div key={tab} style={{
+                width: chartsTab===tab ? 18 : 6, height:6, borderRadius:3,
+                background: chartsTab===tab ? "#88ff00" : "rgba(136,255,0,0.25)",
+                transition:"all 0.25s ease",
+              }} />
+            ))}
+            <span style={{marginLeft:4,fontSize:9,fontFamily:"'Orbitron',sans-serif",
+              letterSpacing:1,color:"rgba(136,255,0,0.5)"}}>
+              {chartsTab === "global" ? "GLOBAL" : membership.chapter_name.toUpperCase()}
+            </span>
           </div>
         )}
       </div>
@@ -6821,6 +6863,8 @@ export default function App() {
   const [pressedId, setPressedId]               = useState(null); // mobile: instant active highlight on touch
   // Backdrops are always mounted (keep-alive). Visibility driven by page state.
   const [navExpanded, setNavExpanded]           = useState(true);
+  const [mobileScreen, setMobileScreen]         = useState("global"); // "global" | "chapter" — for split pages on mobile
+  const [hasMobileChapter, setHasMobileChapter] = useState(false); // true when user has an approved chapter
   const [loaded, setLoaded]                     = useState(false);
   const mainRef = useRef(null);
   const glbCanvasRef = useRef(null);
@@ -7040,6 +7084,9 @@ export default function App() {
 
   const handleSetPage = (id) => {
     setPage(id);
+    setMobileScreen("global");
+    setHasMobileChapter(false); // reset until new page reports its chapter status
+    if (!navExpanded) setNavExpanded(false);
     if (id === "boards") clearBadge(["global-chat", "reaction"]);
   };
 
@@ -7144,10 +7191,24 @@ export default function App() {
             const dx = e.changedTouches[0].clientX - swipeTouchRef.current.x;
             const dy = e.changedTouches[0].clientY - swipeTouchRef.current.y;
             swipeTouchRef.current = null;
-            // Only trigger if horizontal movement dominates and exceeds threshold
             if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-            if (dx < 0 && navExpanded)  setNavExpanded(false); // swipe left → collapse
-            if (dx > 0 && !navExpanded) setNavExpanded(true);  // swipe right → expand
+            const isSplitPage = hasMobileChapter && (page === "boards" || page === "topcharts");
+            if (dx < 0) {
+              // Swipe left
+              if (navExpanded) {
+                setNavExpanded(false);
+                setMobileScreen("global");
+              } else if (isSplitPage && mobileScreen === "global") {
+                setMobileScreen("chapter");
+              }
+            } else {
+              // Swipe right
+              if (isSplitPage && mobileScreen === "chapter") {
+                setMobileScreen("global");
+              } else if (!navExpanded) {
+                setNavExpanded(true);
+              }
+            }
           } : undefined}
         >
         <div className={`sidebar${navExpanded ? "" : " nav-collapsed"}`}>
@@ -7196,10 +7257,10 @@ export default function App() {
             </div>
           </div>
         </div>
-        <div ref={mainRef} className={`main${isMobile ? (navExpanded ? " nav-open" : " nav-closed") : ""}${isMobile && page === "boards" ? " chat-active" : ""}`} style={{display:"flex", flexDirection:"column"}}>
+        <div ref={mainRef} className={`main${isMobile ? (navExpanded ? " nav-open" : " nav-closed") : ""}${isMobile && page === "boards" ? " chat-active" : ""}${isMobile && mobileScreen === "chapter" && !navExpanded ? " chapter-screen" : ""}`} style={{display:"flex", flexDirection:"column"}}>
           {page === "workout" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><WorkoutPage username={username} /></div>}
-          {page === "topcharts" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><TopChartsPage username={username} currentUser={user} /></div>}
-          {page === "boards" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><BoardPage username={username} currentUser={user} /></div>}
+          {page === "topcharts" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
+          {page === "boards" && <div style={{paddingLeft: navExpanded ? 0 : 0, transition:"padding-left 0.4s cubic-bezier(0.4,0,0.2,1)"}}><BoardPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
           {page === "rule" && <RulePage user={user} />}
           {page === "profile" && <ProfilePage user={user} onDeleted={() => { api.clearToken(); setUser(null); }} onLogout={() => { handleLogout(); setPage("workout"); }} />}
