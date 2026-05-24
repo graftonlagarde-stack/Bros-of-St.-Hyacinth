@@ -990,6 +990,9 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
   // On mobile, chatTab is derived directly from mobileScreen to avoid render-cycle lag.
   // On desktop, it's driven by the internal tab buttons via chatTabInternal.
   const [chatTabInternal, setChatTabInternal] = useState("global");
+  const [chatTransDir, setChatTransDir]       = useState(null); // "ltr"|"rtl" during transition
+  const chatTransTimer                        = useRef(null);
+  const prevChatTabRef                        = useRef(null);
   const chatTab = (isMobile && mobileScreen !== null)
     ? (mobileScreen === "chapter" ? "chapter" : "global")
     : chatTabInternal;
@@ -1029,6 +1032,17 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
       }).catch(() => {});
     }
   }, [mobileScreen, chatTabInternal, chapterMembership]);
+
+  useEffect(() => {
+    if (!chapterMembership || !isMobile) return;
+    if (prevChatTabRef.current === null) { prevChatTabRef.current = chatTab; return; }
+    if (prevChatTabRef.current === chatTab) return;
+    const dir = chatTab === "chapter" ? "ltr" : "rtl";
+    prevChatTabRef.current = chatTab;
+    clearTimeout(chatTransTimer.current);
+    setChatTransDir(dir);
+    chatTransTimer.current = setTimeout(() => setChatTransDir(null), 340);
+  }, [chatTab]);
 
   // Poll chapter chat every 8s when on chapter tab
   usePolling(() => {
@@ -1353,12 +1367,10 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
   // Rendered into a column-reverse container, so we reverse the array here
   // to keep chronological order (oldest top → newest bottom) visually correct.
   const activeMessages = chatTab === "chapter" && chapterMembership ? chapterMessages : [...messages].reverse();
-  const messageList = activeMessages.map((msg, i, arr) => {
+  function buildMessageList(msgs) { return msgs.map((msg, i, arr) => {
     const isMe = msg.author === username;
-    // In the reversed array, the "previous" message is the one after in the array (older)
-    // and the "next" message is the one before (newer)
-    const prevMsg = arr[i + 1]; // older message
-    const nextMsg = arr[i - 1]; // newer message
+    const prevMsg = arr[i + 1];
+    const nextMsg = arr[i - 1];
     const sameDay = (a, b) => {
       const da = new Date(a), db = new Date(b);
       return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
@@ -1779,7 +1791,10 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
         </div>
       </div>
     );
-  });
+  }); }
+  const messageList = buildMessageList(activeMessages);
+  const globalMessageList = chapterMembership ? buildMessageList([...messages].reverse()) : messageList;
+  const chapterMessageList = chapterMembership ? buildMessageList(chapterMessages) : [];
 
   // ── Input bar (shared desktop + mobile) ─────────────────────────────────
   const inputBar = (
@@ -1852,6 +1867,8 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
   // ── Mobile layout: fixed full-screen flex column ─────────────────────────
   if (isMobile) {
     const showChapter = chatTab === "chapter";
+    // Callback ref — always points to the active scroll container
+    const setActiveScrollRef = (el) => { scrollContainerRef.current = el; };
     return (
       <>
         {lightbox}
@@ -1869,14 +1886,36 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
               <PillScrollText label={showChapter ? chapterMembership.chapter_name.toUpperCase() : "GLOBAL"} />
             </div>
           )}
-          <div
-            key={chatTab}
-            className={chapterMembership ? (showChapter ? "slide-in-right" : "slide-in-left") : ""}
-            style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-            <div ref={scrollContainerRef} className="chat-mobile-messages" style={{ padding: "60px 14px 20px", display: "flex", flexDirection: "column-reverse", willChange: "transform" }}>
-              {chapterMsgLoading
-                ? <div style={{color:"var(--muted)",fontSize:13,textAlign:"center",padding:20}}>Loading…</div>
-                : messageList}
+          {/* Carousel track — slides between global (0%) and chapter (-50%) */}
+          <div style={{flex:1, overflow:"hidden", minHeight:0}}>
+            <div style={{
+              display:"flex", height:"100%",
+              width: chapterMembership ? "200%" : "100%",
+              transform: showChapter && chapterMembership ? "translateX(-50%)" : "translateX(0)",
+              transition: chapterMembership ? "transform 0.32s cubic-bezier(0.4,0,0.2,1)" : "none",
+            }}>
+              {/* Global panel — always renders global messages */}
+              <div style={{width: chapterMembership ? "50%" : "100%", flexShrink:0, display:"flex", flexDirection:"column", minHeight:0}}>
+                <div
+                  ref={!showChapter ? setActiveScrollRef : undefined}
+                  className="chat-mobile-messages"
+                  style={{ padding: "60px 14px 20px", display: "flex", flexDirection: "column-reverse", willChange: "transform" }}>
+                  {globalMessageList}
+                </div>
+              </div>
+              {/* Chapter panel — always renders chapter messages */}
+              {chapterMembership && (
+                <div style={{width:"50%", flexShrink:0, display:"flex", flexDirection:"column", minHeight:0}}>
+                  <div
+                    ref={showChapter ? setActiveScrollRef : undefined}
+                    className="chat-mobile-messages"
+                    style={{ padding: "60px 14px 20px", display: "flex", flexDirection: "column-reverse", willChange: "transform" }}>
+                    {chapterMsgLoading
+                      ? <div style={{color:"var(--muted)",fontSize:13,textAlign:"center",padding:20}}>Loading…</div>
+                      : chapterMessageList}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <div className="chat-mobile-input">
@@ -2063,15 +2102,25 @@ const css = `
     50%     { box-shadow: 0 0 40px rgba(136,255,0,0.45), inset 0 0 60px rgba(136,255,0,0.07); }
   }
   @keyframes slideInFromRight {
-    from { transform: translateX(100vw); opacity: 0; }
-    to   { transform: translateX(0);    opacity: 1; }
+    from { transform: translateX(100%); }
+    to   { transform: translateX(0); }
   }
   @keyframes slideInFromLeft {
-    from { transform: translateX(-100vw); opacity: 0; }
-    to   { transform: translateX(0);     opacity: 1; }
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(0); }
   }
-  .slide-in-right { animation: slideInFromRight 0.32s cubic-bezier(0.4,0,0.2,1) both; }
-  .slide-in-left  { animation: slideInFromLeft  0.32s cubic-bezier(0.4,0,0.2,1) both; }
+  @keyframes slideOutToLeft {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-100%); }
+  }
+  @keyframes slideOutToRight {
+    from { transform: translateX(0); }
+    to   { transform: translateX(100%); }
+  }
+  .slide-in-right  { animation: slideInFromRight 0.32s cubic-bezier(0.4,0,0.2,1) both; }
+  .slide-in-left   { animation: slideInFromLeft  0.32s cubic-bezier(0.4,0,0.2,1) both; }
+  .slide-out-left  { animation: slideOutToLeft   0.32s cubic-bezier(0.4,0,0.2,1) both; }
+  .slide-out-right { animation: slideOutToRight  0.32s cubic-bezier(0.4,0,0.2,1) both; }
   .tab-pill {
     position: fixed;
     top: 10px;
@@ -5791,9 +5840,134 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
       </div>
       <div className="page-sub">&ldquo;Non nobis, Domine, non nobis, sed nomini Tuo da gloriam.&rdquo;</div>
 
-      {chartsTab === "chapter" && membership ? (
-        /* ── Chapter leaderboard ── */
-        <div key="chapter" className={isMobile ? "slide-in-right" : ""}>
+      {/* Two-panel carousel — slides between global (0) and chapter (-50%) on mobile */}
+      <div style={{overflow: isMobileTC ? "hidden" : "visible"}}>
+        <div style={{
+          display: isMobileTC && membership ? "flex" : "block",
+          width:   isMobileTC && membership ? "200%" : "100%",
+          transform: isMobileTC && membership && chartsTab === "chapter" ? "translateX(-50%)" : "translateX(0)",
+          transition: isMobileTC && membership ? "transform 0.32s cubic-bezier(0.4,0,0.2,1)" : "none",
+          alignItems: "flex-start",
+        }}>
+          {/* Global panel */}
+          <div style={{width: isMobileTC && membership ? "50%" : "100%", flexShrink: 0}}>
+        <div style={{display:"flex",gap:20,marginBottom:24,flexWrap:"wrap"}}>
+        <div style={{flex:1,minWidth:220}}>
+          <div className="form-label" style={{marginBottom:8}}>Exercise</div>
+          <div className="tab-row" style={{flexWrap:"wrap"}}>
+            {EXERCISE_LIST.map(ex => (
+              <div key={ex} className={`tab ${chartEx===ex?"active":""}`} onClick={()=>setChartEx(ex)}>{ex}</div>
+            ))}
+          </div>
+        </div>
+        {!isBodyweightChart && (
+        <div>
+          <div className="form-label" style={{marginBottom:8}}>Rep Category</div>
+          <div style={{display:"flex",gap:8}}>
+            {REP_CATS.map(r => (
+              <div key={r} onClick={() => setChartRep(r)}
+                style={{
+                  padding:"8px 16px", borderRadius:8, cursor:"pointer", fontWeight:700, fontSize:13,
+                  border:`2px solid ${chartRep===r ? REP_COLORS[r] : "var(--border)"}`,
+                  background: chartRep===r ? `${REP_COLORS[r]}18` : "var(--surface2)",
+                  color: chartRep===r ? REP_COLORS[r] : "var(--muted)",
+                  transition:"all 0.15s"
+                }}>
+                {r} Rep{r>1?"s":""}
+              </div>
+            ))}
+          </div>
+        </div>
+        )}
+        </div>
+
+      {isBodyweightChart ? <BodyweightRankCard username={username} exercise={chartEx} userLogs={userLogs} communityUsers={communityUsers} /> : <MyRankCard username={username} exercise={chartEx} repCat={chartRep} userLogs={userLogs} communityUsers={communityUsers} />}
+
+      <div className="card">
+        <div className="card-title">
+          <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:11,color:"var(--accent)",letterSpacing:2,marginRight:8}}>▲▲▲</span>
+          {isBodyweightChart ? `${chartEx} Count Leaderboard` : `${chartEx} — ${chartRep} Rep${chartRep>1?"s":""} Leaderboard`}
+        </div>
+        {leaders.length === 0 ? (
+          <div style={{textAlign:"center",padding:"32px 0",color:"var(--muted)"}}>No data yet for this exercise.</div>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {leaders.map((entry, i) => {
+              const barPct = topWeight > 0 ? (entry.weight / topWeight) * 100 : 0;
+              const isTop = i === 0;
+              return (
+                <div key={entry.name} style={{
+                  background: entry.isMe ? "rgba(181,240,60,0.06)" : "var(--surface2)",
+                  border: `1px solid ${entry.isMe ? "var(--accent)" : "var(--border)"}`,
+                  borderRadius:10, padding:"14px 18px",
+                  position:"relative", overflow:"hidden"
+                }}>
+                  <div style={{
+                    position:"absolute", left:0, top:0, bottom:0,
+                    width:`${barPct}%`,
+                    background: isTop ? "rgba(181,240,60,0.08)" : "rgba(255,255,255,0.02)",
+                    borderRadius:10, transition:"width 0.6s ease", pointerEvents:"none"
+                  }} />
+                  <div style={{position:"relative",display:"flex",alignItems:"center",gap:14}}>
+                    <div style={{fontSize:22,width:30,textAlign:"center"}}>
+                      {i < 3 ? <span style={{fontFamily:"'Orbitron',sans-serif",fontWeight:900,fontSize:13,color:medalColors[i],textShadow:`0 0 8px ${medalColors[i]}99`,letterSpacing:1}}>{medalLabels[i]}</span> : <span style={{color:"var(--muted)",fontWeight:700,fontSize:13,fontFamily:"'Orbitron',sans-serif"}}>#{i+1}</span>}
+                    </div>
+                    <div className="avatar sm" style={{background: entry.isMe ? "var(--accent)" : "var(--surface)"}}>
+                      {initials(entry.name)}
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:700,fontSize:14,color: entry.isMe ? "var(--accent)" : "var(--text)"}}>
+                        {entry.name}{entry.isMe ? " (You)" : ""}
+                      </div>
+                      <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>
+                        {barPct < 100 ? `${Math.round(barPct)}% of top ${isBodyweightChart ? "count" : "lift"}` : "◈ CURRENT LEADER"}
+                      </div>
+                    </div>
+                    <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:22,fontWeight:900,color: isTop ? "var(--accent)" : "var(--chrome)",letterSpacing:2,textShadow: isTop ? "var(--glow-sm)" : "none"}}>
+                      {entry.weight} <span style={{fontSize:11,color:"var(--muted)",fontFamily:"'Rajdhani',sans-serif",fontWeight:400}}>{isBodyweightChart ? "reps" : "lbs"}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="card-title"><span style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,color:"var(--accent)",letterSpacing:2,marginRight:8}}>▐▌</span>All Exercises Snapshot — {chartRep} Rep{chartRep>1?"s":""}</div>
+        <div style={{fontSize:12,color:"var(--muted)",marginBottom:16}}>Top lift across the community for each exercise.</div>
+        <table className="log-table">
+          <thead><tr><th>Exercise</th><th>Leader</th><th>Top</th></tr></thead>
+          <tbody>
+            {EXERCISE_LIST.map(ex => {
+              const board = (ex === "Pull-up" || ex === "Push-up") ? buildBodyweightLeaderboard(ex) : buildLeaderboard(ex, chartRep);
+              const top = board[0];
+              return (
+                <tr key={ex}>
+                  <td><span className="badge">{ex}</span></td>
+                  <td>
+                    {top ? (
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <div className="avatar sm" style={{background: top.isMe ? "var(--accent)" : "var(--surface2)"}}>
+                          {initials(top.name)}
+                        </div>
+                        <span style={{fontWeight:600,color: top.isMe ? "var(--accent)" : "var(--text)"}}>{top.name}{top.isMe?" (You)":""}</span>
+                      </div>
+                    ) : <span style={{color:"var(--muted)"}}>—</span>}
+                  </td>
+                  <td style={{fontWeight:700,color:"var(--accent)"}}>{top ? `${top.weight} ${ex === "Pull-up" ? "reps" : "lbs"}` : "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+          </div>
+
+          {/* Chapter panel */}
+          {membership && (
+            <div style={{width: isMobileTC ? "50%" : "100%", flexShrink: 0}}>
         {chapterUsersLoading ? (
           <div style={{color:"var(--muted)",fontSize:12,padding:28,textAlign:"center",
             fontFamily:"'Orbitron',sans-serif",letterSpacing:2}}>LOADING…</div>
@@ -5918,126 +6092,10 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
         </div>
         </>
         )}
+            </div>
+          )}
         </div>
-      ) : (
-        <div key="global" className={isMobile ? "slide-in-left" : ""}>
-        <div style={{display:"flex",gap:20,marginBottom:24,flexWrap:"wrap"}}>
-        <div style={{flex:1,minWidth:220}}>
-          <div className="form-label" style={{marginBottom:8}}>Exercise</div>
-          <div className="tab-row" style={{flexWrap:"wrap"}}>
-            {EXERCISE_LIST.map(ex => (
-              <div key={ex} className={`tab ${chartEx===ex?"active":""}`} onClick={()=>setChartEx(ex)}>{ex}</div>
-            ))}
-          </div>
-        </div>
-        {!isBodyweightChart && (
-        <div>
-          <div className="form-label" style={{marginBottom:8}}>Rep Category</div>
-          <div style={{display:"flex",gap:8}}>
-            {REP_CATS.map(r => (
-              <div key={r}
-                onClick={() => setChartRep(r)}
-                style={{
-                  padding:"8px 16px", borderRadius:8, cursor:"pointer", fontWeight:700, fontSize:13,
-                  border:`2px solid ${chartRep===r ? REP_COLORS[r] : "var(--border)"}`,
-                  background: chartRep===r ? `${REP_COLORS[r]}18` : "var(--surface2)",
-                  color: chartRep===r ? REP_COLORS[r] : "var(--muted)",
-                  transition:"all 0.15s"
-                }}>
-                {r} Rep{r>1?"s":""}
-              </div>
-            ))}
-          </div>
-        </div>
-        )}
-        </div>
-
-      {/* ── YOUR RANK CARD ── */}
-      {isBodyweightChart ? <BodyweightRankCard username={username} exercise={chartEx} userLogs={userLogs} communityUsers={communityUsers} /> : <MyRankCard username={username} exercise={chartEx} repCat={chartRep} userLogs={userLogs} communityUsers={communityUsers} />}
-
-      <div className="card">
-        <div className="card-title">
-          <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:11,color:"var(--accent)",letterSpacing:2,marginRight:8}}>▲▲▲</span>
-          {isBodyweightChart ? `${chartEx} Count Leaderboard` : `${chartEx} — ${chartRep} Rep${chartRep>1?"s":""} Leaderboard`}
-        </div>
-        {leaders.length === 0 ? (
-          <div style={{textAlign:"center",padding:"32px 0",color:"var(--muted)"}}>No data yet for this exercise.</div>
-        ) : (
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {leaders.map((entry, i) => {
-              const barPct = topWeight > 0 ? (entry.weight / topWeight) * 100 : 0;
-              const isTop = i === 0;
-              return (
-                <div key={entry.name} style={{
-                  background: entry.isMe ? "rgba(181,240,60,0.06)" : "var(--surface2)",
-                  border: `1px solid ${entry.isMe ? "var(--accent)" : "var(--border)"}`,
-                  borderRadius:10, padding:"14px 18px",
-                  position:"relative", overflow:"hidden"
-                }}>
-                  {/* background bar */}
-                  <div style={{
-                    position:"absolute", left:0, top:0, bottom:0,
-                    width:`${barPct}%`,
-                    background: isTop ? "rgba(181,240,60,0.08)" : "rgba(255,255,255,0.02)",
-                    borderRadius:10, transition:"width 0.6s ease", pointerEvents:"none"
-                  }} />
-                  <div style={{position:"relative",display:"flex",alignItems:"center",gap:14}}>
-                    <div style={{fontSize:22,width:30,textAlign:"center"}}>
-                      {i < 3 ? <span style={{fontFamily:"'Orbitron',sans-serif",fontWeight:900,fontSize:13,color:medalColors[i],textShadow:`0 0 8px ${medalColors[i]}99`,letterSpacing:1}}>{medalLabels[i]}</span> : <span style={{color:"var(--muted)",fontWeight:700,fontSize:13,fontFamily:"'Orbitron',sans-serif"}}>#{i+1}</span>}
-                    </div>
-                    <div className="avatar sm" style={{background: entry.isMe ? "var(--accent)" : "var(--surface)"}}>
-                      {initials(entry.name)}
-                    </div>
-                    <div style={{flex:1}}>
-                      <div style={{fontWeight:700,fontSize:14,color: entry.isMe ? "var(--accent)" : "var(--text)"}}>
-                        {entry.name}{entry.isMe ? " (You)" : ""}
-                      </div>
-                      <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>
-                        {barPct < 100 ? `${Math.round(barPct)}% of top ${isBodyweightChart ? "count" : "lift"}` : "◈ CURRENT LEADER"}
-                      </div>
-                    </div>
-                    <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:22,fontWeight:900,color: isTop ? "var(--accent)" : "var(--chrome)",letterSpacing:2,textShadow: isTop ? "var(--glow-sm)" : "none"}}>
-                      {entry.weight} <span style={{fontSize:11,color:"var(--muted)",fontFamily:"'Rajdhani',sans-serif",fontWeight:400}}>{isBodyweightChart ? "reps" : "lbs"}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
-
-      <div className="card">
-        <div className="card-title"><span style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,color:"var(--accent)",letterSpacing:2,marginRight:8}}>▐▌</span>All Exercises Snapshot — {chartRep} Rep{chartRep>1?"s":""}</div>
-        <div style={{fontSize:12,color:"var(--muted)",marginBottom:16}}>Top lift across the community for each exercise.</div>
-        <table className="log-table">
-          <thead><tr><th>Exercise</th><th>Leader</th><th>Top</th></tr></thead>
-          <tbody>
-            {EXERCISE_LIST.map(ex => {
-              const board = (ex === "Pull-up" || ex === "Push-up") ? buildBodyweightLeaderboard(ex) : buildLeaderboard(ex, chartRep);
-              const top = board[0];
-              return (
-                <tr key={ex}>
-                  <td><span className="badge">{ex}</span></td>
-                  <td>
-                    {top ? (
-                      <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <div className="avatar sm" style={{background: top.isMe ? "var(--accent)" : "var(--surface2)"}}>
-                          {initials(top.name)}
-                        </div>
-                        <span style={{fontWeight:600,color: top.isMe ? "var(--accent)" : "var(--text)"}}>{top.name}{top.isMe?" (You)":""}</span>
-                      </div>
-                    ) : <span style={{color:"var(--muted)"}}>—</span>}
-                  </td>
-                  <td style={{fontWeight:700,color:"var(--accent)"}}>{top ? `${top.weight} ${ex === "Pull-up" ? "reps" : "lbs"}` : "—"}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-        </div>
-      )}
     </div>
   );
 }
