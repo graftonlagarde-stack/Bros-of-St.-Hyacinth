@@ -1831,41 +1831,29 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
         {lightbox}
         <div ref={chatRootRef} className="chat-mobile-root">
           {chapterMembership && (
-            <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",
-              padding:"8px 14px",borderBottom:"1px solid rgba(136,255,0,0.12)",
-              background:"rgba(0,8,4,0.98)",zIndex:5,flexShrink:0}}>
-              <div />
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                {["global","chapter"].map(tab => (
-                  <div key={tab} style={{
-                    width: chatTab===tab ? 18 : 6,
-                    height:6, borderRadius:3,
-                    background: chatTab===tab ? "#88ff00" : "rgba(136,255,0,0.25)",
-                    transition:"all 0.25s ease",
-                  }} />
-                ))}
-              </div>
-              <div style={{textAlign:"right",fontSize:9,fontFamily:"'Orbitron',sans-serif",
-                letterSpacing:1,color:"rgba(136,255,0,0.4)",
-                whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+            <div className="tab-pill">
+              {["global","chapter"].map(tab => (
+                <div key={tab} style={{
+                  width: chatTab===tab ? 18 : 6,
+                  height:6, borderRadius:3,
+                  background: chatTab===tab ? "#88ff00" : "rgba(136,255,0,0.25)",
+                  transition:"all 0.25s ease",
+                }} />
+              ))}
+              <span style={{fontSize:9,fontFamily:"'Orbitron',sans-serif",letterSpacing:1,
+                color:"rgba(136,255,0,0.7)",whiteSpace:"nowrap"}}>
                 {showChapter ? chapterMembership.chapter_name.toUpperCase() : "GLOBAL"}
-              </div>
+              </span>
             </div>
           )}
-          <div style={{flex:1,overflow:"hidden",position:"relative"}}>
-            <div style={{
-              display:"flex",height:"100%",
-              transform: showChapter && chapterMembership ? "translateX(-100%)" : "translateX(0)",
-              transition:"transform 0.35s cubic-bezier(0.4,0,0.2,1)",
-            }}>
-              <div ref={scrollContainerRef} className="chat-mobile-messages" style={{
-                minWidth:"100%",padding:"60px 14px 20px",
-                display:"flex",flexDirection:"column-reverse",willChange:"transform",
-              }}>
-                {chapterMsgLoading
-                  ? <div style={{color:"var(--muted)",fontSize:13,textAlign:"center",padding:20}}>Loading…</div>
-                  : messageList}
-              </div>
+          <div
+            key={chatTab}
+            className={chapterMembership ? (showChapter ? "slide-in-right" : "slide-in-left") : ""}
+            style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            <div ref={scrollContainerRef} className="chat-mobile-messages" style={{ padding: "60px 14px 20px", display: "flex", flexDirection: "column-reverse", willChange: "transform" }}>
+              {chapterMsgLoading
+                ? <div style={{color:"var(--muted)",fontSize:13,textAlign:"center",padding:20}}>Loading…</div>
+                : messageList}
             </div>
           </div>
           <div className="chat-mobile-input">
@@ -2050,6 +2038,32 @@ const css = `
   @keyframes rankGlow {
     0%,100% { box-shadow: 0 0 20px rgba(136,255,0,0.2), inset 0 0 40px rgba(136,255,0,0.03); }
     50%     { box-shadow: 0 0 40px rgba(136,255,0,0.45), inset 0 0 60px rgba(136,255,0,0.07); }
+  }
+  @keyframes slideInFromRight {
+    from { transform: translateX(100vw); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+  }
+  @keyframes slideInFromLeft {
+    from { transform: translateX(-100vw); opacity: 0; }
+    to   { transform: translateX(0);     opacity: 1; }
+  }
+  .slide-in-right { animation: slideInFromRight 0.32s cubic-bezier(0.4,0,0.2,1) both; }
+  .slide-in-left  { animation: slideInFromLeft  0.32s cubic-bezier(0.4,0,0.2,1) both; }
+  .tab-pill {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 14px;
+    background: rgba(0,10,5,0.92);
+    border: 1px solid rgba(136,255,0,0.35);
+    border-radius: 999px;
+    box-shadow: 0 0 12px rgba(136,255,0,0.2), inset 0 0 8px rgba(136,255,0,0.04);
+    pointer-events: none;
   }
 
   /* ── BASE ── */
@@ -5691,39 +5705,26 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
           </div>
         )}
         {membership && isMobile && (
-          <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",
-            alignSelf:"center",minWidth:130}}>
-            <div />
-            <div style={{display:"flex",alignItems:"center",gap:6}}>
-              {["global","chapter"].map(tab => (
-                <div key={tab} style={{
-                  width: chartsTab===tab ? 18 : 6, height:6, borderRadius:3,
-                  background: chartsTab===tab ? "#88ff00" : "rgba(136,255,0,0.25)",
-                  transition:"all 0.25s ease",
-                }} />
-              ))}
-            </div>
-            <div style={{textAlign:"right",fontSize:9,fontFamily:"'Orbitron',sans-serif",
-              letterSpacing:1,color:"rgba(136,255,0,0.5)",
-              whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:90}}>
+          <div className="tab-pill">
+            {["global","chapter"].map(tab => (
+              <div key={tab} style={{
+                width: chartsTab===tab ? 18 : 6, height:6, borderRadius:3,
+                background: chartsTab===tab ? "#88ff00" : "rgba(136,255,0,0.25)",
+                transition:"all 0.25s ease",
+              }} />
+            ))}
+            <span style={{fontSize:9,fontFamily:"'Orbitron',sans-serif",
+              letterSpacing:1,color:"rgba(136,255,0,0.7)",whiteSpace:"nowrap"}}>
               {chartsTab === "global" ? "GLOBAL" : membership.chapter_name.toUpperCase()}
-            </div>
+            </span>
           </div>
         )}
       </div>
       <div className="page-sub">&ldquo;Non nobis, Domine, non nobis, sed nomini Tuo da gloriam.&rdquo;</div>
 
-      <div style={{
-        overflow: isMobile && membership ? "hidden" : "visible",
-        position: isMobile && membership ? "relative" : "static",
-      }}>
-      <div style={{
-        transform: isMobile && membership && chartsTab === "chapter" ? "translateX(-100%)" : "translateX(0)",
-        transition: isMobile && membership ? "transform 0.35s cubic-bezier(0.4,0,0.2,1)" : "none",
-      }}>
       {chartsTab === "chapter" && membership ? (
-        /* ── Chapter leaderboard — same UI as global, chapter-scoped data ── */
-        <>
+        /* ── Chapter leaderboard ── */
+        <div key="chapter" className={isMobile ? "slide-in-right" : ""}>
         {chapterUsersLoading ? (
           <div style={{color:"var(--muted)",fontSize:12,padding:28,textAlign:"center",
             fontFamily:"'Orbitron',sans-serif",letterSpacing:2}}>LOADING…</div>
@@ -5848,9 +5849,9 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
         </div>
         </>
         )}
-        </>
+        </div>
       ) : (
-        <>
+        <div key="global" className={isMobile ? "slide-in-left" : ""}>
         <div style={{display:"flex",gap:20,marginBottom:24,flexWrap:"wrap"}}>
         <div style={{flex:1,minWidth:220}}>
           <div className="form-label" style={{marginBottom:8}}>Exercise</div>
@@ -5966,10 +5967,8 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
           </tbody>
         </table>
       </div>
-        </>
+        </div>
       )}
-      </div>
-      </div>
     </div>
   );
 }
