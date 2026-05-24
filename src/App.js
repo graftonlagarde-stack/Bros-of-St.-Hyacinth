@@ -1024,6 +1024,12 @@ function BoardPage({ username, currentUser }) {
   const [deleteHover, setDeleteHover] = useState(null); // msgId shown delete button
   const lastTapRef = useRef({}); // { [msgId]: timestamp } for double-tap detection
   const isArchAdmin = currentUser?.role === "arch_admin";
+  const isChapterAdmin = chapterMembership?.role === "admin";
+  const canDelete = (msg) => {
+    if (isArchAdmin) return true;
+    if (isChapterAdmin && msg.chapterId) return true;
+    return false;
+  };
 
   // ── Most-used emoji (localStorage per user) ────────────────────────────
   const MOST_USED_KEY = `emoji_usage_${username}`;
@@ -1359,26 +1365,29 @@ function BoardPage({ username, currentUser }) {
 
           <div
             className="msg-bubble"
-            onMouseEnter={() => { if (isArchAdmin && !isMobile) setDeleteHover(msg.id); }}
-            onMouseLeave={() => { if (isArchAdmin && !isMobile) setDeleteHover(null); }}
-            onMouseDown={e => { if (isArchAdmin && deleteHover === msg.id) e.stopPropagation(); }}
+            onMouseEnter={() => { if (canDelete(msg) && !isMobile) setDeleteHover(msg.id); }}
+            onMouseLeave={() => { if (canDelete(msg) && !isMobile) setDeleteHover(null); }}
+            onMouseDown={e => { if (canDelete(msg) && deleteHover === msg.id) e.stopPropagation(); }}
             onTouchStart={(e) => {
-              if (!isArchAdmin) return;
+              if (!canDelete(msg)) return;
+              e.preventDefault(); // suppress native text selection on long-press
               const id = msg.id;
               lastTapRef.current[id] = setTimeout(() => {
                 setDeleteHover(prev => prev === id ? null : id);
               }, 600);
             }}
             onTouchEnd={() => {
-              if (!isArchAdmin) return;
+              if (!canDelete(msg)) return;
               clearTimeout(lastTapRef.current[msg.id]);
             }}
             onTouchMove={() => {
-              if (!isArchAdmin) return;
+              if (!canDelete(msg)) return;
               clearTimeout(lastTapRef.current[msg.id]);
             }}
             style={{
             position: "relative",
+            userSelect: canDelete(msg) ? "none" : "text",
+            WebkitUserSelect: canDelete(msg) ? "none" : "text",
             background: isMe
               ? `radial-gradient(ellipse 90% 50% at 50% -10%, rgba(255,255,255,0.35) 0%, transparent 60%),
                  radial-gradient(ellipse 60% 40% at 80% 90%, rgba(0,255,200,0.15) 0%, transparent 70%),
@@ -1453,7 +1462,7 @@ function BoardPage({ username, currentUser }) {
             ))}
             {/* Arch-admin delete overlay — desktop: appears on bubble hover via CSS;
                 mobile: appears after long-press sets deleteHover */}
-            {isArchAdmin && (
+            {canDelete(msg) && (
               <div
                 className="delete-overlay"
                 style={{

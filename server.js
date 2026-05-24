@@ -450,6 +450,7 @@ const shapeMessage = (row, reactionsMap) => ({
   author:    row.author,
   ts:        Number(row.ts),
   text:      row.text,
+  chapterId: row.chapter_id ? Number(row.chapter_id) : null,
   media:     row.media_url ? {
     dataUrl:  row.media_url,
     type:     row.media_type,
@@ -1058,20 +1059,31 @@ app.post("/api/board/messages", requireAuth, async (req, res) => {
   }
 });
 
-// DELETE /api/board/messages/:id — arch_admin only
+// DELETE /api/board/messages/:id — arch_admin always; chapter admin for chapter messages
 app.delete("/api/board/messages/:id", requireAuth, async (req, res) => {
   try {
     const { rows: userRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
-    if (!userRows[0] || userRows[0].role !== "arch_admin")
-      return res.status(403).json({ error: "Forbidden" });
+    const role = userRows[0]?.role;
+    if (!role) return res.status(403).json({ error: "Forbidden" });
     const { id } = req.params;
-    const { rows } = await db.query("SELECT media_public_id, media_extra FROM messages WHERE id = $1", [id]);
+    const { rows } = await db.query("SELECT media_public_id, media_extra, chapter_id FROM messages WHERE id = $1", [id]);
     if (!rows[0]) return res.status(404).json({ error: "Not found" });
-    if (rows[0].media_public_id) {
-      try { await cloudinary.uploader.destroy(rows[0].media_public_id, { resource_type: "auto" }); } catch (_) {}
+    const msg = rows[0];
+    // Arch-admin can delete anything
+    if (role !== "arch_admin") {
+      // Chapter admin can only delete messages in their own chapter
+      if (!msg.chapter_id) return res.status(403).json({ error: "Forbidden" });
+      const { rows: cmRows } = await db.query(
+        "SELECT id FROM chapter_memberships WHERE user_id = $1 AND chapter_id = $2 AND role = 'admin' AND status = 'approved'",
+        [req.userId, msg.chapter_id]
+      );
+      if (!cmRows[0]) return res.status(403).json({ error: "Forbidden" });
     }
-    if (rows[0].media_extra) {
-      const extras = JSON.parse(rows[0].media_extra);
+    if (msg.media_public_id) {
+      try { await cloudinary.uploader.destroy(msg.media_public_id, { resource_type: "auto" }); } catch (_) {}
+    }
+    if (msg.media_extra) {
+      const extras = JSON.parse(msg.media_extra);
       for (const m of extras) {
         if (m.publicId) {
           try { await cloudinary.uploader.destroy(m.publicId, { resource_type: "auto" }); } catch (_) {}
