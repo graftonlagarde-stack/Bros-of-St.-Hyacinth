@@ -1002,7 +1002,7 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
         body: JSON.stringify({ types: ["chapter-chat"] }),
       }).catch(() => {});
     }
-  }, [chatTab, chapterMembership]);
+  }, [mobileScreen, chatTabInternal, chapterMembership]);
 
   // Poll chapter chat every 8s when on chapter tab
   usePolling(() => {
@@ -5586,7 +5586,7 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
       .then(setChapterCommunityUsers)
       .catch(() => {})
       .finally(() => setChapterUsersLoading(false));
-  }, [chartsTab, membership]);
+  }, [mobileScreen, chartsTabInternal, membership]);
 
   // Build leaderboard for selected exercise + rep category
   const buildLeaderboard = (exercise, repCat) => {
