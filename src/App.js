@@ -1401,13 +1401,15 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
         onMouseLeave={() => setEmojiPickerFor(null)}>
 
         {!isMe && (
-          <div style={{ width:32, flexShrink:0 }}>
+          <div style={{ width:48, flexShrink:0 }}>
             {isLastInGroup && (
-              <div className="avatar sm" style={{ background:"linear-gradient(135deg,#001a10,#002e1a)", color:"#88ff00", overflow:"hidden", padding:0 }}>
-                {msg.avatarUrl
-                  ? <img src={msg.avatarUrl} alt={msg.author} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:"50%"}} />
-                  : initials(msg.author)}
-              </div>
+              msg.avatarUrl
+                ? <div className="avatar-photo sm">
+                    <img src={msg.avatarUrl} alt={msg.author} />
+                  </div>
+                : <div className="avatar sm" style={{ background:"linear-gradient(135deg,#001a10,#002e1a)", color:"#88ff00" }}>
+                    {initials(msg.author)}
+                  </div>
             )}
           </div>
         )}
@@ -2548,8 +2550,75 @@ const css = `
     box-shadow: inset 0 0 16px rgba(136,255,0,0.06), 0 0 10px rgba(136,255,0,0.12);
     animation: energyBeat 5s ease-in-out infinite;
   }
-  .avatar.sm { width: 30px; height: 30px; font-size: 9px; }
+  .avatar.sm { width: 45px; height: 45px; font-size: 12px; }
   .avatar.lg { width: 48px; height: 48px; font-size: 14px; }
+
+  /* Avatar with photo — circular with PS Vita-style glass sphere effect */
+  .avatar-photo {
+    position: relative;
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+    border: 1px solid rgba(136,255,0,0.35);
+    box-shadow:
+      /* Tight ambient occlusion ring */
+      0 0 0 1px rgba(0,0,0,0.55),
+      /* Deep cast shadow — the primary 3D cue, image floats above surface */
+      0 10px 20px rgba(0,0,0,0.85),
+      0 20px 40px rgba(0,0,0,0.45),
+      /* Accent glow */
+      0 0 14px rgba(136,255,0,0.3),
+      0 0 32px rgba(136,255,0,0.12);
+    animation: energyBeat 5s ease-in-out infinite;
+  }
+  .avatar-photo img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+  }
+  /* Minimal rim darkening only — just the very edge, not the body of the image */
+  .avatar-photo::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(
+      circle at 50% 50%,
+      transparent 70%,
+      rgba(0,0,0,0.15) 82%,
+      rgba(0,0,0,0.55) 100%
+    );
+    pointer-events: none;
+    z-index: 1;
+  }
+  /* Specular highlight only — no bottom shadow overlay on the image */
+  .avatar-photo::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background:
+      /* Hard white core — tight */
+      radial-gradient(
+        ellipse 14% 10% at 34% 22%,
+        rgba(255,255,255,1.0) 0%,
+        rgba(255,255,255,0.0) 100%
+      ),
+      /* Cool-white penumbra — tight falloff */
+      radial-gradient(
+        ellipse 30% 22% at 33% 26%,
+        rgba(220,240,255,0.42) 0%,
+        transparent 70%
+      ),
+      /* Bottom shadow — tight to the bottom rim only */
+      radial-gradient(
+        ellipse 60% 18% at 50% 100%,
+        rgba(0,0,0,0.38) 0%,
+        transparent 65%
+      );
+    pointer-events: none;
+    z-index: 2;
+  }
+  .avatar-photo.sm { width: 45px; height: 45px; }
+  .avatar-photo.lg { width: 48px; height: 48px; }
 
   /* ── MAIN ── */
   .main { flex: 1; overflow-y: auto; position: relative; padding-bottom: 10px; z-index: 20; margin-left: 80px; }
@@ -6391,8 +6460,18 @@ function AvatarUpload({ user, onUpdate }) {
   const onImgLoad = () => {
     const img = imgRef.current;
     if (!img) return;
-    setImgSize({ w: img.naturalWidth, h: img.naturalHeight });
+    const w = img.naturalWidth;
+    const h = img.naturalHeight;
+    setImgSize({ w, h });
+    // Set initial scale so the image fills the crop window (shorter side = CROP_SIZE)
+    const fitScale = CROP_SIZE / Math.min(w, h);
+    setScale(fitScale);
   };
+
+  // Minimum scale: image fits entirely within crop window (longer side = CROP_SIZE)
+  const minScale = imgSize.w && imgSize.h
+    ? CROP_SIZE / Math.max(imgSize.w, imgSize.h)
+    : 0.1;
 
   const drawCanvas = () => {
     const canvas = canvasRef.current;
@@ -6475,7 +6554,7 @@ function AvatarUpload({ user, onUpdate }) {
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10,marginTop:12,maxWidth:CROP_SIZE}}>
           <span style={{fontSize:11,color:"var(--muted)"}}>−</span>
-          <input type="range" min="0.3" max="3" step="0.01" value={scale}
+          <input type="range" min={minScale} max="3" step="0.01" value={scale}
             onChange={e => setScale(Number(e.target.value))}
             style={{flex:1,accentColor:"var(--accent)"}} />
           <span style={{fontSize:11,color:"var(--muted)"}}>+</span>
@@ -6703,11 +6782,12 @@ function ProfilePage({ user, onDeleted, onLogout, onAvatarUpdate }) {
           opacity:0.5,animation:"sheen 2.5s ease-in-out infinite"}} />
         {sectionTitle("Account")}
         <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:20}}>
-          <div className="avatar" style={{width:52,height:52,fontSize:18,overflow:"hidden",padding:0,position:"relative"}}>
-            {user.avatarUrl
-              ? <img src={user.avatarUrl} alt={user.displayName} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:"50%"}} />
-              : initials(user.displayName)}
-          </div>
+          {user.avatarUrl
+            ? <div className="avatar-photo" style={{width:52,height:52}}>
+                <img src={user.avatarUrl} alt={user.displayName} />
+              </div>
+            : <div className="avatar" style={{width:52,height:52,fontSize:18}}>{initials(user.displayName)}</div>
+          }
           <div>
             <div style={{fontWeight:700,fontSize:16,marginBottom:2}}>{user.displayName}</div>
             <div style={{color:"var(--muted)",fontSize:12}}>{user.email}</div>
