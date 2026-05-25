@@ -2244,7 +2244,7 @@ const css = `
   }
 
   /* ── Portrait lock — block landscape on mobile ── */
-  @media (orientation: landscape) and (max-width: 900px) {
+  @media (orientation: landscape) and (max-width: 900px) and (pointer: coarse) {
     .landscape-block {
       display: flex !important;
     }
@@ -7290,7 +7290,7 @@ function MeetPage({ currentUser }) {
       setCallToken(data.token); setCallRoom(data.roomName);
       setActiveMeeting(meeting); setView("call");
     } catch (err) {
-      setJoinError("Could not join call. Please try again.");
+      setJoinError(err.message || "Could not join call. Please try again.");
       console.warn("joinMeeting:", err);
     }
   };

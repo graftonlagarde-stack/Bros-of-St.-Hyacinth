@@ -2261,25 +2261,47 @@ app.post("/api/meetings/:id/token", requireAuth, async (req, res) => {
     const { rows: userRows } = await db.query("SELECT * FROM users WHERE id = $1", [req.userId]);
     const user = userRows[0];
 
-    let token = null;
-    if (process.env.DAILY_API_KEY) {
-      const result = await dailyRequest("POST", "/meeting-tokens", {
-        properties: {
-          room_name:   meeting.daily_room_name,
-          user_name:   displayName(user),
-          user_id:     String(req.userId),
-          avatar_url:  user.avatar_url || null,
-          exp:         Math.floor((Number(meeting.scheduled_at) + 3600000) / 1000),
-          is_owner:    meeting.created_by === req.userId,
-        },
-      });
-      token = result.token;
+    // If Daily not configured, return null token — client shows helpful message
+    if (!process.env.DAILY_API_KEY) {
+      return res.json({ token: null, roomUrl: meeting.daily_room_url, roomName: meeting.daily_room_name });
     }
-    // token may be null if Daily not configured — client handles this
-    res.json({ token, roomUrl: meeting.daily_room_url, roomName: meeting.daily_room_name });
+
+    // If this meeting was created before Daily was configured, the room doesn't
+    // exist on Daily yet — create it now on the fly
+    let roomName = meeting.daily_room_name;
+    if (roomName.startsWith("bshm-") && roomName.length > 20) {
+      // This is a fallback name — create a real Daily room with this name
+      try {
+        await dailyRequest("POST", "/rooms", {
+          name: roomName,
+          properties: {
+            exp:               Math.floor((Number(meeting.scheduled_at) + 3600000) / 1000),
+            enable_prejoin_ui: false,
+            start_video_off:   true,
+            start_audio_off:   false,
+            enable_chat:       false,
+          },
+        });
+      } catch (e) {
+        // Room may already exist — that's fine
+        if (!e.message.includes("already")) console.warn("Room creation on join:", e.message);
+      }
+    }
+
+    const result = await dailyRequest("POST", "/meeting-tokens", {
+      properties: {
+        room_name:  roomName,
+        user_name:  displayName(user),
+        user_id:    String(req.userId),
+        avatar_url: user.avatar_url || null,
+        exp:        Math.floor((Number(meeting.scheduled_at) + 3600000) / 1000),
+        is_owner:   meeting.created_by === req.userId,
+      },
+    });
+    res.json({ token: result.token, roomUrl: meeting.daily_room_url, roomName });
   } catch (err) {
-    console.error("POST /api/meetings/:id/token:", err);
-    res.status(500).json({ error: "Server error" });
+    console.error("POST /api/meetings/:id/token:", err.message, err.stack);
+    res.status(500).json({ error: err.message || "Server error" });
   }
 });
 
