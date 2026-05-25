@@ -821,19 +821,6 @@ async function updatePrIfBetter(userId, exercise, prValue) {
   return false;
 }
 
-// DEBUG — remove after diagnosis
-app.get("/api/debug/sets", requireAuth, async (req, res) => {
-  const { rows } = await db.query(`
-    SELECT ss.id, ss.exercise, ss.set_type, ss.weight, ss.reps, ss.migrated,
-           ss.created_at, ws.date
-    FROM session_sets ss
-    JOIN workout_sessions ws ON ws.id = ss.session_id
-    WHERE ss.user_id = $1
-    ORDER BY ws.date, ss.exercise, ss.created_at
-  `, [req.userId]);
-  res.json(rows);
-});
-
 // GET /api/workout/session/today — get or create today's session with all sets
 app.get("/api/workout/session/today", requireAuth, async (req, res) => {
   try {

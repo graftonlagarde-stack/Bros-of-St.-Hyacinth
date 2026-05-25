@@ -185,11 +185,6 @@ const api = {
   getWorkoutHistory:  ()              => api.get("/api/workout/history"),
   getMyPrs:           ()              => api.get("/api/workout/prs"),
   getCommunityPrs:    ()              => api.get("/api/community/prs"),
-  // Legacy (kept for backward compat)
-  getLogs:    ()     => api.get("/api/logs"),
-  addLog:     (body) => api.post("/api/logs", body),
-  deleteLog:  (id)   => api.delete(`/api/logs/${id}`),
-
   // Board
   getMessages:   (since) => api.get(since ? `/api/board/messages?since=${since}` : "/api/board/messages"),
   postMessage:   (body) => api.post("/api/board/messages", body),
@@ -653,8 +648,7 @@ function useBoardMessages() {
 
 // ─── COMMUNITY USER SHAPE (for reference) ─────────────────────────────────────
 // { name: string, logs: { [exercise]: { [repCat]: [{weight,ts}] } } }
-const OTHER_USERS_REPS = []; // removed — real data comes from useCommunityUsers()
-
+// ─── LINK PREVIEW ────────────────────────────────────────────────────────────
 const fmtChatTime = (ts) => {
   const diff = Date.now() - ts;
   if (diff < 60000)    return "just now";
@@ -1377,7 +1371,6 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
   // ── Message list ────────────────────────────────────────────────────────
   // Rendered into a column-reverse container, so we reverse the array here
   // to keep chronological order (oldest top → newest bottom) visually correct.
-  const activeMessages = chatTab === "chapter" && chapterMembership ? chapterMessages : [...messages].reverse();
   function buildMessageList(msgs) { return msgs.map((msg, i, arr) => {
     const isMe = msg.author === username;
     const prevMsg = arr[i + 1];
@@ -1803,9 +1796,10 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
       </div>
     );
   }); }
-  const messageList = buildMessageList(activeMessages);
-  const globalMessageList = chapterMembership ? buildMessageList([...messages].reverse()) : messageList;
+  const globalMessageList = buildMessageList([...messages].reverse());
   const chapterMessageList = chapterMembership ? buildMessageList(chapterMessages) : [];
+  // Desktop uses global list (or chapter list if on chapter tab); mobile carousel uses both
+  const messageList = chatTab === "chapter" && chapterMembership ? chapterMessageList : globalMessageList;
 
   // ── Input bar (shared desktop + mobile) ─────────────────────────────────
   const inputBar = (
@@ -2054,6 +2048,9 @@ const EXERCISES = [
 const EXERCISE_GROUPS = ["Chest","Back","Shoulders","Arms","Legs","Core"];
 const EXERCISE_MAP    = Object.fromEntries(EXERCISES.map(e => [e.name, e]));
 const EXERCISE_LIST   = EXERCISES.map(e => e.name); // backward compat
+
+// Normalize date strings — old system used "Mar 8", new uses "Mar 8, 2026"
+const normDate = (d) => d ? d.replace(/,\s*\d{4}$/, "").trim() : d;
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 const css = `
@@ -4790,10 +4787,6 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
 }
 
 
-const REP_CATS = [1, 5, 10, 15];
-const REP_COLORS = { 1: "#b5f03c", 5: "#60a5fa", 10: "#f97316", 15: "#a78bfa" };
-
-
 // ─── RANK CARD ─────────────────────────────────────────────────────────────────
 // Unified rank card using PR data. myPr and communityPrs are plain numbers.
 function RankCard({ username, exercise, myPr, communityPrs = [] }) {
@@ -5000,10 +4993,6 @@ function WorkoutPage({ username }) {
   };
 
   // ── Chart data ────────────────────────────────────────────────────────────
-  // Normalize date strings — old system used "Mar 8", new uses "Mar 8, 2026"
-  // Strip the year portion so both map to the same key e.g. "Mar 8"
-  const normDate = (d) => d ? d.replace(/,\s*\d{4}$/, "").trim() : d;
-
   const buildVolumeData = (ex) => {
     const byDate = {};
     for (const sess of history) {
@@ -5076,13 +5065,6 @@ function WorkoutPage({ username }) {
     : exDef.type === "bodyweight" ? `${currentPr} reps`
     : formatDuration(currentPr)
     : null;
-
-  // Today's sets grouped by exercise
-  const setsByExercise = {};
-  for (const s of sets) {
-    if (!setsByExercise[s.exercise]) setsByExercise[s.exercise] = [];
-    setsByExercise[s.exercise].push(s);
-  }
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -5198,42 +5180,41 @@ function WorkoutPage({ username }) {
           </button>
         </div>
 
-        {/* Today's logged sets */}
-        {Object.keys(setsByExercise).length > 0 && (
-          <div style={{marginTop:16}}>
-            <div className="form-label" style={{marginBottom:8}}>Today's Sets</div>
-            {Object.entries(setsByExercise).map(([ex, exSets]) => (
-              <div key={ex} style={{marginBottom:12}}>
-                <div style={{fontSize:12,fontWeight:700,color:"var(--accent)",
-                  fontFamily:"'Orbitron',sans-serif",letterSpacing:1,marginBottom:6}}>
-                  {ex}
+        {/* Recent sets — last 4 logged, always deletable */}
+        {(() => {
+          const allSets = history
+            .flatMap(sess => sess.sets.map(s => ({ ...s, sessionDate: sess.date })))
+            .filter(s => !s.migrated)
+            .sort((a, b) => b.createdAt - a.createdAt)
+            .slice(0, 4);
+          if (allSets.length === 0 && !loading) return (
+            <div style={{color:"var(--muted)",fontSize:13,padding:"12px 0"}}>
+              No sets logged yet. Start above!
+            </div>
+          );
+          return allSets.length > 0 ? (
+            <div style={{marginTop:16}}>
+              <div className="form-label" style={{marginBottom:8}}>Recent Sets</div>
+              {allSets.map((s, i) => (
+                <div key={s.id} style={{display:"flex",justifyContent:"space-between",
+                  alignItems:"center",padding:"6px 0",
+                  borderBottom:"1px solid rgba(136,255,0,0.05)"}}>
+                  <span style={{fontSize:12,color:"var(--muted)",flex:1}}>{s.exercise}</span>
+                  <span style={{fontSize:12,color:"var(--muted)",marginRight:12}}>{s.sessionDate}</span>
+                  <span style={{fontSize:13,fontWeight:600,marginRight:8}}>
+                    {s.setType === "weighted"   && `${s.weight} lbs × ${s.reps}`}
+                    {s.setType === "bodyweight" && `${s.reps} reps`}
+                    {s.setType === "duration"   && formatDuration(s.durationSeconds)}
+                  </span>
+                  <button onClick={() => deleteSet(s.id)}
+                    style={{background:"none",border:"none",color:"rgba(255,68,85,0.6)",
+                      cursor:"pointer",fontSize:16,padding:"4px 10px",
+                      minWidth:36,minHeight:36,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
                 </div>
-                {exSets.map((s, i) => (
-                  <div key={s.id} style={{display:"flex",justifyContent:"space-between",
-                    alignItems:"center",padding:"6px 0",
-                    borderBottom:"1px solid rgba(136,255,0,0.05)"}}>
-                    <span style={{fontSize:13,color:"var(--muted)"}}>Set {i+1}</span>
-                    <span style={{fontSize:13,fontWeight:600}}>
-                      {s.setType === "weighted"   && `${s.weight} lbs × ${s.reps}`}
-                      {s.setType === "bodyweight" && `${s.reps} reps`}
-                      {s.setType === "duration"   && formatDuration(s.durationSeconds)}
-                    </span>
-                    <button onClick={() => deleteSet(s.id)}
-                      style={{background:"none",border:"none",color:"rgba(255,68,85,0.6)",
-                        cursor:"pointer",fontSize:16,padding:"4px 10px",
-                        minWidth:36,minHeight:36,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {Object.keys(setsByExercise).length === 0 && !loading && (
-          <div style={{color:"var(--muted)",fontSize:13,padding:"12px 0"}}>
-            No sets logged today yet. Start above!
-          </div>
-        )}
+              ))}
+            </div>
+          ) : null;
+        })()}
       </div>
 
       {/* ── Progress Charts ── */}
