@@ -178,10 +178,17 @@ const api = {
   resetPassword:  (body) => api.post("/api/auth/reset-password",  body),
 
   // Lift logs
+  // Workout (new session-based)
+  getTodaySession:    ()              => api.get("/api/workout/session/today"),
+  addSet:             (sessionId, body) => api.post(`/api/workout/session/${sessionId}/sets`, body),
+  deleteSet:          (setId)         => api.delete(`/api/workout/sets/${setId}`),
+  getWorkoutHistory:  ()              => api.get("/api/workout/history"),
+  getMyPrs:           ()              => api.get("/api/workout/prs"),
+  getCommunityPrs:    ()              => api.get("/api/community/prs"),
+  // Legacy (kept for backward compat)
   getLogs:    ()     => api.get("/api/logs"),
   addLog:     (body) => api.post("/api/logs", body),
   deleteLog:  (id)   => api.delete(`/api/logs/${id}`),
-  getCommunityUsers: () => api.get("/api/community/users"),
 
   // Board
   getMessages:   (since) => api.get(since ? `/api/board/messages?since=${since}` : "/api/board/messages"),
@@ -535,26 +542,38 @@ const EMOJI_NAMES = [
 //   },
 //   ...
 // ]
-function useCommunityUsers(currentUsername) {
-  const [communityUsers, setCommunityUsers] = useState([]);
-  const [loading, setLoading]               = useState(false);
+function useCommunityPrs(currentUsername) {
+  const [communityPrs, setCommunityPrs] = useState([]); // [{ name, prs: { exercise: value } }]
+  const [myPrs, setMyPrs]               = useState({}); // { exercise: value }
+  const [loading, setLoading]           = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    api.getCommunityUsers()
-      .then(data => { if (!cancelled) setCommunityUsers(data); })
-      .catch(err => console.warn("useCommunityUsers:", err))
+    Promise.all([api.getCommunityPrs(), api.getMyPrs()])
+      .then(([community, mine]) => {
+        if (cancelled) return;
+        setCommunityPrs(community);
+        const myMap = {};
+        for (const p of mine) myMap[p.exercise] = p.value;
+        setMyPrs(myMap);
+      })
+      .catch(err => console.warn("useCommunityPrs:", err))
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [currentUsername]);
 
-  // Poll community users every 45 seconds
   usePolling(() => {
-    api.getCommunityUsers().then(setCommunityUsers).catch(() => {});
+    Promise.all([api.getCommunityPrs(), api.getMyPrs()])
+      .then(([community, mine]) => {
+        setCommunityPrs(community);
+        const myMap = {};
+        for (const p of mine) myMap[p.exercise] = p.value;
+        setMyPrs(myMap);
+      }).catch(() => {});
   }, 45000);
 
-  return { communityUsers, loading };
+  return { communityPrs, myPrs, loading };
 }
 
 function useBoardMessages() {
@@ -2004,7 +2023,37 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
 }
 
 
-const EXERCISE_LIST = ["Bench Press", "Squat", "Deadlift", "Hex-Bar Deadlift", "Curls", "Overhead Press", "Pull-up", "Push-up", "Row"];
+// ─── EXERCISE DEFINITIONS ─────────────────────────────────────────────────────
+const EXERCISES = [
+  // Chest
+  { name:"Bench Press",       group:"Chest",     type:"weighted"   },
+  { name:"Incline Bench Press",group:"Chest",    type:"weighted"   },
+  { name:"Dumbbell Press",    group:"Chest",     type:"weighted"   },
+  { name:"Push-up",           group:"Chest",     type:"bodyweight" },
+  // Back
+  { name:"Pull-up",           group:"Back",      type:"bodyweight" },
+  { name:"Weighted Pull-up",  group:"Back",      type:"weighted"   },
+  { name:"Lat Pulldown",      group:"Back",      type:"weighted"   },
+  { name:"Cable Row",         group:"Back",      type:"weighted"   },
+  // Shoulders
+  { name:"Overhead Press",    group:"Shoulders", type:"weighted"   },
+  // Arms
+  { name:"Curl",              group:"Arms",      type:"weighted"   },
+  { name:"Dips",              group:"Arms",      type:"bodyweight" },
+  // Legs
+  { name:"Squat",             group:"Legs",      type:"weighted"   },
+  { name:"Deadlift",          group:"Legs",      type:"weighted"   },
+  { name:"Hex-Bar Deadlift",  group:"Legs",      type:"weighted"   },
+  { name:"Leg Press",         group:"Legs",      type:"weighted"   },
+  { name:"Leg Curl",          group:"Legs",      type:"weighted"   },
+  { name:"Leg Extension",     group:"Legs",      type:"weighted"   },
+  { name:"Bulgarian Split Squat", group:"Legs",  type:"weighted"   },
+  // Core
+  { name:"Plank",             group:"Core",      type:"duration"   },
+];
+const EXERCISE_GROUPS = ["Chest","Back","Shoulders","Arms","Legs","Core"];
+const EXERCISE_MAP    = Object.fromEntries(EXERCISES.map(e => [e.name, e]));
+const EXERCISE_LIST   = EXERCISES.map(e => e.name); // backward compat
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 const css = `
@@ -4745,32 +4794,42 @@ const REP_CATS = [1, 5, 10, 15];
 const REP_COLORS = { 1: "#b5f03c", 5: "#60a5fa", 10: "#f97316", 15: "#a78bfa" };
 
 
-// ─── MY RANK CARD ─────────────────────────────────────────────────────────────
-function BodyweightRankCard({ username, exercise, userLogs, communityUsers = [] }) {
+// ─── RANK CARD ─────────────────────────────────────────────────────────────────
+// Unified rank card using PR data. myPr and communityPrs are plain numbers.
+function RankCard({ username, exercise, myPr, communityPrs = [] }) {
+  const exDef = EXERCISE_MAP[exercise] || { type: "weighted" };
+
   const leaderboard = useMemo(() => {
     const entries = [];
-    const myBest = Math.max(0, ...userLogs.filter(l => l.exercise === exercise).map(l => l.weight));
-    if (myBest > 0) entries.push({ name: username, weight: myBest, isMe: true });
-    communityUsers.forEach(u => {
-      const series = u.logs[exercise]?.[0];
-      if (series?.length) entries.push({ name: u.name, weight: Math.max(...series.map(e => e.weight)), isMe: false });
+    if (myPr != null && myPr > 0) entries.push({ name: username, value: myPr, isMe: true });
+    communityPrs.forEach(u => {
+      const v = u.prs?.[exercise];
+      if (v != null && v > 0) entries.push({ name: u.name, value: v, isMe: false });
     });
-    return entries.sort((a, b) => b.weight - a.weight);
-  }, [username, exercise, userLogs, communityUsers]);
+    return entries.sort((a, b) => b.value - a.value);
+  }, [username, exercise, myPr, communityPrs]);
 
-  const myEntry  = leaderboard.find(e => e.isMe);
-  const rank     = myEntry ? leaderboard.findIndex(e => e.isMe) + 1 : null;
-  const total    = leaderboard.length;
-  const ordinal  = n => { const s = ["th","st","nd","rd"], v = n % 100; return n + (s[(v-20)%10] || s[v] || s[0]); };
+  const myEntry    = leaderboard.find(e => e.isMe);
+  const rank       = myEntry ? leaderboard.findIndex(e => e.isMe) + 1 : null;
+  const total      = leaderboard.length;
+  const ordinal    = n => { const s = ["th","st","nd","rd"], v = n % 100; return n + (s[(v-20)%10] || s[v] || s[0]); };
   const percentile = rank && total > 1 ? Math.round(((total - rank) / (total - 1)) * 100) : rank === 1 && total === 1 ? 100 : null;
   const MEDALS = [
     { color: "#ffdd00", label: "GOLD",   shadow: "0 0 16px #ffdd0099" },
     { color: "#c8d4de", label: "SILVER", shadow: "0 0 12px #c8d4de55" },
     { color: "#ff9944", label: "BRONZE", shadow: "0 0 12px #ff994455" },
   ];
-  const medal  = rank && rank <= 3 ? MEDALS[rank - 1] : null;
-  const barPct = percentile !== null ? Math.max(2, percentile) : 0;
+  const medal   = rank && rank <= 3 ? MEDALS[rank - 1] : null;
+  const barPct  = percentile !== null ? Math.max(2, percentile) : 0;
   const numSize = !rank ? 68 : rank >= 100 ? 46 : rank >= 10 ? 56 : 68;
+  const valueLabel = myEntry
+    ? exDef.type === "weighted"   ? `${myEntry.value} lbs est. 1RM`
+    : exDef.type === "bodyweight" ? `${myEntry.value} reps`
+    : formatDuration(myEntry.value)
+    : null;
+  const subtitle = exDef.type === "weighted"   ? "Est. 1RM"
+                 : exDef.type === "bodyweight" ? "Max Reps"
+                 : "Best Duration";
 
   return (
     <div style={{
@@ -4789,12 +4848,12 @@ function BodyweightRankCard({ username, exercise, userLogs, communityUsers = [] 
           <span style={{ color:"var(--lime)" }}>◆</span> Your Rank
         </div>
         <div style={{ fontFamily:"'Orbitron',sans-serif", fontSize:10, color:"var(--muted)", letterSpacing:1.5, textTransform:"uppercase", background:"rgba(136,255,0,.05)", border:"1px solid var(--border)", padding:"3px 10px", borderRadius:2 }}>
-          {exercise} · Rep Count
+          {exercise} · {subtitle}
         </div>
       </div>
       {!myEntry ? (
         <div style={{ textAlign:"center", padding:"28px 0", color:"var(--muted)", fontSize:12, fontFamily:"'Orbitron',sans-serif", letterSpacing:2, textTransform:"uppercase" }}>
-          Log a {exercise} entry to see your rank
+          Log a {exercise} set to see your rank
         </div>
       ) : (
         <div style={{ display:"flex", alignItems:"center", gap:28, flexWrap:"wrap" }}>
@@ -4810,7 +4869,7 @@ function BodyweightRankCard({ username, exercise, userLogs, communityUsers = [] 
             <div>
               <div style={{ fontSize:10, color:"var(--muted)", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, textTransform:"uppercase", marginBottom:4 }}>Your best</div>
               <div style={{ fontFamily:"'Orbitron',sans-serif", fontWeight:700, fontSize:16, color:"var(--accent)", textShadow:"var(--glow-sm)" }}>
-                {myEntry.weight} <span style={{ fontSize:11, color:"var(--muted)", fontWeight:400, fontFamily:"'Rajdhani',sans-serif" }}>reps</span>
+                {valueLabel}
               </div>
             </div>
             <div>
@@ -4824,107 +4883,7 @@ function BodyweightRankCard({ username, exercise, userLogs, communityUsers = [] 
               <div style={{ height:5, background:"rgba(136,255,0,.06)", border:"1px solid rgba(136,255,0,.1)", overflow:"hidden", marginBottom:4 }}>
                 <div style={{ height:"100%", width:barPct+"%", background:"var(--energy-grad)", backgroundSize:"300% 300%", animation:"sheen 2s ease-in-out infinite", boxShadow:"0 0 10px #88ff0077", transition:"width 1s cubic-bezier(.16,1,.3,1)" }} />
               </div>
-              <div style={{ fontSize:11, color:"var(--muted)" }}>{percentile !== null ? "Does more than "+percentile+"% of logged athletes" : ""}</div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MyRankCard({ username, exercise, repCat, userLogs, communityUsers = [] }) {
-  const leaderboard = useMemo(() => {
-    const entries = [];
-    const myBest = Math.max(0, ...userLogs
-      .filter(l => l.exercise === exercise && l.repCat === repCat)
-      .map(l => l.weight));
-    if (myBest > 0) entries.push({ name: username, weight: myBest, isMe: true });
-    communityUsers.forEach(u => {
-      const series = u.logs[exercise]?.[repCat];
-      if (series?.length) entries.push({ name: u.name, weight: Math.max(...series.map(e => e.weight)), isMe: false });
-    });
-    return entries.sort((a, b) => b.weight - a.weight);
-  }, [username, exercise, repCat, userLogs, communityUsers]);
-
-  const myEntry  = leaderboard.find(e => e.isMe);
-  const rank     = myEntry ? leaderboard.findIndex(e => e.isMe) + 1 : null;
-  const total    = leaderboard.length;
-  const ordinal  = n => { const s = ["th","st","nd","rd"], v = n % 100; return n + (s[(v-20)%10] || s[v] || s[0]); };
-  const percentile = rank && total > 1
-    ? Math.round(((total - rank) / (total - 1)) * 100)
-    : rank === 1 && total === 1 ? 100 : null;
-  const MEDALS = [
-    { color: "#ffdd00", label: "GOLD",   shadow: "0 0 16px #ffdd0099" },
-    { color: "#c8d4de", label: "SILVER", shadow: "0 0 12px #c8d4de55" },
-    { color: "#ff9944", label: "BRONZE", shadow: "0 0 12px #ff994455" },
-  ];
-  const medal   = rank && rank <= 3 ? MEDALS[rank - 1] : null;
-  const barPct  = percentile !== null ? Math.max(2, percentile) : 0;
-  const numSize = !rank ? 68 : rank >= 100 ? 46 : rank >= 10 ? 56 : 68;
-
-  return (
-    <div style={{
-      background: "linear-gradient(160deg,rgba(0,22,13,.55),rgba(0,12,7,.38) 50%,rgba(0,4,2,.45))",
-      border: "1px solid rgba(136,255,0,.28)",
-      borderTop: "1px solid rgba(136,255,0,.30)",
-      borderLeft: "1px solid rgba(136,255,0,.18)",
-      boxShadow: "0 2px 0 rgba(136,255,0,0.10), 0 8px 24px rgba(0,0,0,0.6), 0 28px 64px rgba(0,0,0,0.5), inset 0 1px 0 rgba(136,255,0,0.15), inset 0 0 60px rgba(136,255,0,0.025)", borderRadius: "var(--radius)",
-      padding: "26px 30px 24px", marginBottom: 24, position: "relative",
-      overflow: "hidden", animation: "rankGlow 4s ease-in-out infinite",
-    }}>
-      <div style={{ position:"absolute", top:0, left:0, width:18, height:18, borderTop:"2px solid var(--lime)", borderLeft:"2px solid var(--lime)" }} />
-      <div style={{ position:"absolute", bottom:0, right:0, width:18, height:18, borderBottom:"2px solid var(--cyan)", borderRight:"2px solid var(--cyan)" }} />
-      <div style={{ position:"absolute", top:0, left:0, right:0, height:1, background:"var(--energy-grad)", backgroundSize:"300% 300%", animation:"sheen 2s ease-in-out infinite" }} />
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:22 }}>
-        <div style={{ fontFamily:"'Orbitron',sans-serif", fontWeight:700, fontSize:11, letterSpacing:2, textTransform:"uppercase", color:"var(--accent)", display:"flex", alignItems:"center", gap:8 }}>
-          <span style={{ color:"var(--lime)" }}>◆</span> Your Rank
-        </div>
-        <div style={{ fontFamily:"'Orbitron',sans-serif", fontSize:10, color:"var(--muted)", letterSpacing:1.5, textTransform:"uppercase", background:"rgba(136,255,0,.05)", border:"1px solid var(--border)", padding:"3px 10px", borderRadius:2 }}>
-          {exercise} · {repCat} Rep{repCat > 1 ? "s" : ""}
-        </div>
-      </div>
-      {!myEntry ? (
-        <div style={{ textAlign:"center", padding:"28px 0", color:"var(--muted)", fontSize:12, fontFamily:"'Orbitron',sans-serif", letterSpacing:2, textTransform:"uppercase" }}>
-          Log a {exercise} {repCat}-rep set to see your rank
-        </div>
-      ) : (
-        <div style={{ display:"flex", alignItems:"center", gap:28, flexWrap:"wrap" }}>
-          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, flexShrink:0 }}>
-            <div style={{ fontFamily:"'Orbitron',sans-serif", fontWeight:900, fontSize:numSize, lineHeight:1, letterSpacing:-2, background:"var(--chrome-grad)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", backgroundClip:"text", filter: medal ? "drop-shadow(0 0 28px "+medal.color+"cc)" : "drop-shadow(0 0 22px rgba(136,255,0,.9))" }}>
-              {ordinal(rank)}
-            </div>
-            <div style={{ fontSize:11, color:"var(--muted)", fontFamily:"'Orbitron',sans-serif", letterSpacing:1.5, textTransform:"uppercase" }}>
-              of {total} athlete{total !== 1 ? "s" : ""}
-            </div>
-            {medal && (
-              <div style={{ fontSize:10, fontFamily:"'Orbitron',sans-serif", fontWeight:700, letterSpacing:2, textTransform:"uppercase", padding:"3px 10px", borderRadius:2, color:medal.color, border:"1px solid "+medal.color+"55", background:medal.color+"10", boxShadow:medal.shadow }}>
-                {medal.label}
-              </div>
-            )}
-          </div>
-          <div style={{ width:1, height:64, flexShrink:0, background:"linear-gradient(180deg,transparent,rgba(136,255,0,.25),transparent)" }} />
-          <div style={{ display:"flex", flexDirection:"column", gap:16, flex:1, minWidth:190 }}>
-            <div>
-              <div style={{ fontSize:10, color:"var(--muted)", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, textTransform:"uppercase", marginBottom:4 }}>Your best lift</div>
-              <div style={{ fontFamily:"'Orbitron',sans-serif", fontWeight:700, fontSize:16, color:"var(--accent)", textShadow:"var(--glow-sm)" }}>
-                {myEntry.weight} <span style={{ fontSize:11, color:"var(--muted)", fontWeight:400, fontFamily:"'Rajdhani',sans-serif" }}>lbs</span>
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize:10, color:"var(--muted)", fontFamily:"'Orbitron',sans-serif", letterSpacing:2, textTransform:"uppercase", marginBottom:4 }}>Percentile rank</div>
-              <div style={{ display:"flex", alignItems:"baseline", gap:8, marginBottom:6 }}>
-                <span style={{ fontFamily:"'Orbitron',sans-serif", fontWeight:900, fontSize:22, color: percentile >= 90 ? "var(--lime)" : percentile >= 50 ? "var(--accent)" : "var(--muted)", textShadow: percentile >= 90 ? "var(--glow-lime)" : percentile >= 50 ? "var(--glow-sm)" : "none" }}>
-                  {percentile !== null ? percentile+"th" : "—"}
-                </span>
-                <span style={{ fontSize:11, color:"var(--muted)", fontFamily:"'Orbitron',sans-serif", letterSpacing:1 }}>percentile</span>
-              </div>
-              <div style={{ height:5, background:"rgba(136,255,0,.06)", border:"1px solid rgba(136,255,0,.1)", overflow:"hidden", marginBottom:4 }}>
-                <div style={{ height:"100%", width:barPct+"%", background:"var(--energy-grad)", backgroundSize:"300% 300%", animation:"sheen 2s ease-in-out infinite", boxShadow:"0 0 10px #88ff0077", transition:"width 1s cubic-bezier(.16,1,.3,1)" }} />
-              </div>
-              <div style={{ fontSize:11, color:"var(--muted)" }}>
-                {percentile !== null ? "Lifts more than "+percentile+"% of logged athletes" : ""}
-              </div>
+              <div style={{ fontSize:11, color:"var(--muted)" }}>{percentile !== null ? `Ahead of ${percentile}% of logged athletes` : ""}</div>
             </div>
           </div>
         </div>
@@ -4935,250 +4894,365 @@ function MyRankCard({ username, exercise, repCat, userLogs, communityUsers = [] 
 
 // ─── WORKOUT PAGE ─────────────────────────────────────────────────────────────
 function WorkoutPage({ username }) {
-  const [logs, setLogs] = useState([]);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ exercise: "Bench Press", repCat: 1, weight: "" });
+  const isMobile = useIsMobile();
 
-  // When switching to/from Pull-up, reset the weight field
-  const setExercise = (ex) => setForm(f => ({ ...f, exercise: ex, repCat: (ex === "Pull-up" || ex === "Push-up") ? null : (f.repCat === null ? 1 : f.repCat), weight: "" }));
+  // ── Session state ──────────────────────────────────────────────────────────
+  const [session, setSession]     = useState(null);
+  const [sets, setSets]           = useState([]);
+  const [prs, setPrs]             = useState({});     // { exercise: value }
+  const [newPrEx, setNewPrEx]     = useState(null);   // flash exercise name on new PR
+  const [loading, setLoading]     = useState(true);
 
-  const isPullup = form.exercise === "Pull-up";
-  const isPushup = form.exercise === "Push-up";
-  const isBodyweight = isPullup || isPushup;
-  const [chartEx, setChartEx] = useState("Bench Press");
-  const [dupError, setDupError] = useState(null);
+  // ── Form state ─────────────────────────────────────────────────────────────
+  const [group, setGroup]         = useState("Chest");
+  const [exercise, setExercise]   = useState("Bench Press");
+  const [weight, setWeight]       = useState("");
+  const [reps, setReps]           = useState("");
+  const [duration, setDuration]   = useState(""); // seconds
+  const [adding, setAdding]       = useState(false);
 
+  // ── History + chart state ──────────────────────────────────────────────────
+  const [history, setHistory]     = useState([]);
+  const [chartEx, setChartEx]     = useState("Bench Press");
+  const [chartGroup, setChartGroup] = useState("Chest");
+  const [chartView, setChartView] = useState("volume"); // "volume" | "pr"
+
+  const exDef = EXERCISE_MAP[exercise] || EXERCISES[0];
+  const chartExDef = EXERCISE_MAP[chartEx] || EXERCISES[0];
+
+  // ── Load on mount ──────────────────────────────────────────────────────────
   useEffect(() => {
-    api.getLogs()
-      .then(data => setLogs(data))
-      .catch(err => console.warn("getLogs:", err));
+    Promise.all([
+      api.getTodaySession(),
+      api.getMyPrs(),
+      api.getWorkoutHistory(),
+    ]).then(([todayData, prData, histData]) => {
+      setSession(todayData.session);
+      setSets(todayData.sets);
+      const prMap = {};
+      for (const p of prData) prMap[p.exercise] = p.value;
+      setPrs(prMap);
+      setHistory(histData);
+    }).catch(err => console.warn("WorkoutPage load:", err))
+      .finally(() => setLoading(false));
   }, [username]);
 
-  useEffect(() => { setDupError(null); }, [form.exercise, form.repCat, isBodyweight]);
+  // Poll for today's sets every 30s
+  usePolling(() => {
+    if (!session) return;
+    api.getTodaySession().then(d => setSets(d.sets)).catch(() => {});
+  }, 30000);
 
-  const addLog = async () => {
-    if (!form.weight) return;
-    const today = new Date();
-    const todayStr = today.toLocaleDateString("en-US", { month:"short", day:"numeric" });
-    const duplicate = logs.find(l => l.exercise === form.exercise && (isBodyweight ? l.exercise === form.exercise : l.repCat === Number(form.repCat)) && l.date === todayStr);
-    if (duplicate) {
-      setDupError(isBodyweight
-        ? `You already logged ${form.exercise} today — come back tomorrow!`
-        : `You already logged ${form.exercise} at ${Number(form.repCat)} rep${Number(form.repCat)>1?"s":""} today — come back tomorrow!`);
-      return;
-    }
-    setDupError(null);
-    const ts = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0).getTime();
-    const entry = {
-      exercise: form.exercise,
-      repCat: isBodyweight ? 0 : Number(form.repCat),
-      weight:   Number(form.weight),
-      date:     todayStr,
-      ts,
-    };
+  // ── Add a set ─────────────────────────────────────────────────────────────
+  const addSet = async () => {
+    if (!session) return;
+    if (exDef.type === "weighted"   && (!weight || !reps)) return;
+    if (exDef.type === "bodyweight" && !reps) return;
+    if (exDef.type === "duration"   && !duration) return;
+    setAdding(true);
     try {
-      const { id } = await api.addLog(entry);
-      setLogs(prev => [...prev, { ...entry, id }]);
-      setForm({ exercise: "Bench Press", repCat: 1, weight: "" });
-      setShowForm(false);
-    } catch (err) {
-      alert(`Could not save log: ${err.message}`);
-    }
+      const body = {
+        exercise,
+        setType: exDef.type,
+        weight:          exDef.type === "weighted"   ? Number(weight)   : null,
+        reps:            exDef.type !== "duration"   ? Number(reps)     : null,
+        durationSeconds: exDef.type === "duration"   ? Number(duration) : null,
+      };
+      const { set, isNewPr } = await api.addSet(session.id, body);
+      setSets(prev => [...prev, set]);
+      if (isNewPr) {
+        setPrs(prev => ({ ...prev, [exercise]: set.setType === "weighted"
+          ? (Number(reps) === 1 ? Number(weight) : Math.round(Number(weight) * (1 + Number(reps) / 30)))
+          : set.setType === "duration" ? Number(duration) : Number(reps) }));
+        setNewPrEx(exercise);
+        setTimeout(() => setNewPrEx(null), 3000);
+      }
+      // Refresh history for charts
+      api.getWorkoutHistory().then(setHistory).catch(() => {});
+      setWeight(""); setReps(""); setDuration("");
+    } catch (err) { console.warn("addSet:", err); }
+    finally { setAdding(false); }
   };
 
-  const delLog = async (id) => {
+  // ── Delete a set ──────────────────────────────────────────────────────────
+  const deleteSet = async (setId) => {
     try {
-      await api.deleteLog(id);
-      setLogs(prev => prev.filter(l => l.id !== id));
-    } catch (err) {
-      console.warn("delLog:", err);
-    }
+      await api.deleteSet(setId);
+      setSets(prev => prev.filter(s => s.id !== setId));
+      api.getWorkoutHistory().then(setHistory).catch(() => {});
+    } catch (err) { console.warn("deleteSet:", err); }
   };
 
-  // Build chart data for selected exercise: 4 lines, one per rep category
-  const buildChartData = () => {
-    const byRep = {};
-    REP_CATS.forEach(r => {
-      byRep[r] = logs.filter(l => l.exercise === chartEx && l.repCat === r).map((l, i) => ({ session: i+1, weight: l.weight, date: l.date }));
-    });
-    const maxLen = Math.max(...REP_CATS.map(r => byRep[r].length), 0);
-    if (!maxLen) return [];
-    return Array.from({ length: maxLen }, (_, i) => {
-      const pt = { session: i + 1 };
-      REP_CATS.forEach(r => { if (byRep[r][i]) pt[`${r} Rep`] = byRep[r][i].weight; });
-      return pt;
-    });
+  // ── Chart data ────────────────────────────────────────────────────────────
+  const buildVolumeData = (ex) => {
+    return history.map(sess => {
+      const sessSets = sess.sets.filter(s => s.exercise === ex);
+      if (sessSets.length === 0) return null;
+      let vol = 0;
+      for (const s of sessSets) {
+        if (s.setType === "weighted")   vol += (s.weight || 0) * (s.reps || 0);
+        if (s.setType === "bodyweight") vol += s.reps || 0;
+        if (s.setType === "duration")   vol += s.durationSeconds || 0;
+      }
+      return { date: sess.date, value: vol };
+    }).filter(Boolean);
   };
 
-  // Build compare chart data for a specific rep cat overlay
-  const totalSessions = new Set(logs.map(l => l.date)).size;
-  const totalEntries = logs.length;
-  const exercisesTracked = new Set(logs.map(l => l.exercise)).size;
+  const buildPrData = (ex, def) => {
+    let best = null;
+    return history.map(sess => {
+      const sessSets = sess.sets.filter(s => s.exercise === ex);
+      if (sessSets.length === 0) return null;
+      let sessionBest = null;
+      for (const s of sessSets) {
+        let v = def.type === "weighted"
+          ? (s.reps === 1 ? s.weight : Math.round(s.weight * (1 + s.reps / 30)))
+          : def.type === "duration" ? s.durationSeconds : s.reps;
+        if (sessionBest === null || v > sessionBest) sessionBest = v;
+      }
+      if (best === null || sessionBest > best) best = sessionBest;
+      return { date: sess.date, value: best };
+    }).filter(Boolean);
+  };
 
-  const chartData = buildChartData();
-  // Show charts if the user has their own data OR a compare user is selected
-  const hasAnyData = chartData.length > 0;
+  const chartData = chartView === "volume"
+    ? buildVolumeData(chartEx)
+    : buildPrData(chartEx, chartExDef);
 
+  // ── Stat tiles ────────────────────────────────────────────────────────────
+  const totalSessions  = history.length;
+  const totalSetsCount = history.reduce((n, s) => n + s.sets.length, 0);
+  const prCount        = Object.keys(prs).length;
+
+  // Current PR label for selected exercise
+  const currentPr = prs[exercise];
+  const prLabel = currentPr != null
+    ? exDef.type === "weighted"   ? `${currentPr} lbs est. 1RM`
+    : exDef.type === "bodyweight" ? `${currentPr} reps`
+    : formatDuration(currentPr)
+    : null;
+
+  // Today's sets grouped by exercise
+  const setsByExercise = {};
+  for (const s of sets) {
+    if (!setsByExercise[s.exercise]) setsByExercise[s.exercise] = [];
+    setsByExercise[s.exercise].push(s);
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="page">
       <div className="page-title">WORKOUT <span className="accentText">TRACKER</span></div>
       <div className="page-sub">&ldquo;The Lord is my strength and my praise: and he is become my salvation.&rdquo; &mdash; Psalms 117:14</div>
 
+      {/* Stat tiles */}
       <div className="stat-grid">
-        <div className="stat-tile"><div className="stat-num">{totalEntries}</div><div className="stat-label">Total Entries</div></div>
-        <div className="stat-tile"><div className="stat-num">{totalSessions}</div><div className="stat-label">Training Days</div></div>
-        <div className="stat-tile"><div className="stat-num">{exercisesTracked}</div><div className="stat-label">Exercises Tracked</div></div>
+        <div className="stat-tile"><div className="stat-num">{totalSessions}</div><div className="stat-label">Sessions</div></div>
+        <div className="stat-tile"><div className="stat-num">{totalSetsCount}</div><div className="stat-label">Total Sets</div></div>
+        <div className="stat-tile"><div className="stat-num">{prCount}</div><div className="stat-label">PRs Held</div></div>
       </div>
 
-      {showForm && (
-        <div className="modal-bg" onClick={() => setShowForm(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">LOG A <span className="accentText">LIFT</span></div>
-            <div className="form-label" style={{marginBottom:6}}>Exercise</div>
-            <select value={form.exercise} onChange={e => setExercise(e.target.value)} style={{marginBottom:14}}>
-              {EXERCISE_LIST.map(ex => <option key={ex}>{ex}</option>)}
-            </select>
-            {!isBodyweight && (<>
-            <div className="form-label" style={{marginBottom:8}}>Rep Category</div>
-            <div style={{display:"flex",gap:8,marginBottom:14}}>
-              {REP_CATS.map(r => (
-                <div key={r}
-                  onClick={() => setForm({...form, repCat: r})}
-                  style={{
-                    flex:1, textAlign:"center", padding:"10px 0", borderRadius:8, cursor:"pointer",
-                    border:`2px solid ${form.repCat===r ? REP_COLORS[r] : "var(--border)"}`,
-                    background: form.repCat===r ? `${REP_COLORS[r]}18` : "var(--surface2)",
-                    color: form.repCat===r ? REP_COLORS[r] : "var(--muted)",
-                    fontWeight:700, fontSize:14, transition:"all 0.15s"
-                  }}>
-                  {r} Rep{r > 1 ? "s" : ""}
-                </div>
-              ))}
+      {/* ── Today's Session ── */}
+      <div className="card">
+        <div className="card-title">
+          <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,color:"var(--accent)",letterSpacing:2,marginRight:8}}>◈</span>
+          Today's Session
+        </div>
+
+        {/* Exercise group selector */}
+        <div className="form-label" style={{marginBottom:6}}>Muscle Group</div>
+        <div className="tab-row" style={{flexWrap:"wrap",marginBottom:14}}>
+          {EXERCISE_GROUPS.map(g => (
+            <div key={g} className={`tab ${group===g?"active":""}`}
+              onClick={() => {
+                setGroup(g);
+                const first = EXERCISES.find(e => e.group === g);
+                if (first) setExercise(first.name);
+                setWeight(""); setReps(""); setDuration("");
+              }}>{g}</div>
+          ))}
+        </div>
+
+        {/* Exercise selector */}
+        <div className="form-label" style={{marginBottom:6}}>Exercise</div>
+        <div className="tab-row" style={{flexWrap:"wrap",marginBottom:14}}>
+          {EXERCISES.filter(e => e.group === group).map(e => (
+            <div key={e.name} className={`tab ${exercise===e.name?"active":""}`}
+              onClick={() => { setExercise(e.name); setWeight(""); setReps(""); setDuration(""); }}>
+              {e.name}
             </div>
-            <div className="form-label" style={{marginBottom:6}}>Weight (lbs)</div>
-            <input type="number" inputMode="numeric" pattern="[0-9]*" placeholder="e.g. 225" value={form.weight} onChange={e=>setForm({...form,weight:e.target.value})}
-              onKeyDown={e => e.key==="Enter" && addLog()} style={{marginBottom:4, fontSize:16}} />
-            <div style={{fontSize:11,color:"var(--muted)",marginBottom:16}}>Enter the max weight you lifted for {form.repCat} rep{form.repCat>1?"s":""}.</div>
-            </>)}
-            {isBodyweight && (<>
-            <div className="form-label" style={{marginBottom:6}}>Number of {form.exercise}s</div>
-            <input type="number" inputMode="numeric" pattern="[0-9]*" placeholder="e.g. 12" min="1" value={form.weight} onChange={e=>setForm({...form,weight:e.target.value})}
-              onKeyDown={e => e.key==="Enter" && addLog()} style={{marginBottom:4, fontSize:16}} />
-            <div style={{fontSize:11,color:"var(--muted)",marginBottom:16}}>Enter the total number of {form.exercise.toLowerCase()}s you did.</div>
-            </>)}
-            {dupError && (
-              <div style={{background:"rgba(255,60,60,0.12)",border:"1px solid rgba(255,60,60,0.4)",borderRadius:4,padding:"9px 12px",marginBottom:12,fontSize:12,color:"#ff6666",fontFamily:"'Rajdhani',sans-serif",letterSpacing:0.5}}>
-                ⚠ {dupError}
+          ))}
+        </div>
+
+        {/* Current PR hint */}
+        {prLabel && (
+          <div style={{fontSize:12,color:"var(--muted)",marginBottom:10}}>
+            Your PR: <span style={{color:"var(--accent)",fontWeight:700}}>{prLabel}</span>
+          </div>
+        )}
+
+        {/* New PR flash */}
+        {newPrEx && (
+          <div style={{background:"rgba(136,255,0,0.1)",border:"1px solid rgba(136,255,0,0.4)",borderRadius:4,
+            padding:"8px 14px",marginBottom:12,fontSize:13,fontWeight:700,color:"#88ff00",
+            fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>
+            🏆 NEW PR — {newPrEx}
+          </div>
+        )}
+
+        {/* Input fields */}
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+          {exDef.type === "weighted" && (
+            <>
+              <div style={{flex:1,minWidth:100}}>
+                <div className="form-label" style={{marginBottom:4}}>Weight (lbs)</div>
+                <input type="number" value={weight} onChange={e => setWeight(e.target.value)}
+                  placeholder="e.g. 225" style={{width:"100%",boxSizing:"border-box"}}
+                  onKeyDown={e => e.key==="Enter" && addSet()} />
               </div>
-            )}
-            <div className="flex-end">
-              <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={addLog}>Save Entry</button>
+              <div style={{flex:1,minWidth:80}}>
+                <div className="form-label" style={{marginBottom:4}}>Reps</div>
+                <input type="number" value={reps} onChange={e => setReps(e.target.value)}
+                  placeholder="e.g. 5" style={{width:"100%",boxSizing:"border-box"}}
+                  onKeyDown={e => e.key==="Enter" && addSet()} />
+              </div>
+            </>
+          )}
+          {exDef.type === "bodyweight" && (
+            <div style={{flex:1,minWidth:80}}>
+              <div className="form-label" style={{marginBottom:4}}>Reps</div>
+              <input type="number" value={reps} onChange={e => setReps(e.target.value)}
+                placeholder="e.g. 10" style={{width:"100%",boxSizing:"border-box"}}
+                onKeyDown={e => e.key==="Enter" && addSet()} />
             </div>
+          )}
+          {exDef.type === "duration" && (
+            <div style={{flex:1,minWidth:100}}>
+              <div className="form-label" style={{marginBottom:4}}>Duration (seconds)</div>
+              <input type="number" value={duration} onChange={e => setDuration(e.target.value)}
+                placeholder="e.g. 60" style={{width:"100%",boxSizing:"border-box"}}
+                onKeyDown={e => e.key==="Enter" && addSet()} />
+            </div>
+          )}
+          <div style={{display:"flex",alignItems:"flex-end"}}>
+            <button className="btn btn-primary" onClick={addSet} disabled={adding}
+              style={{height:40,padding:"0 20px",fontSize:13}}>
+              {adding ? "…" : "Log Set"}
+            </button>
           </div>
         </div>
-      )}
 
-      <div className="card">
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-          <div className="card-title" style={{marginBottom:0}}>Recent Entries</div>
-          <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>+ Log Lift</button>
-        </div>
-        {logs.length === 0 ? (
-          <div style={{textAlign:"center",padding:"32px 0",color:"var(--muted)"}}>No entries yet \u2014 hit "Log Lift" to record your first lift!</div>
-        ) : (
-          <table className="log-table">
-            <thead><tr><th>Exercise</th><th>Rep Category</th><th>Weight</th><th>Date</th><th></th></tr></thead>
-            <tbody>
-              {[...logs].reverse().slice(0,4).map(l => (
-                <tr key={l.id}>
-                  <td><span className="badge">{l.exercise}</span></td>
-                  <td style={{color: l.exercise === "Pull-up" ? "var(--accent)" : REP_COLORS[l.repCat], fontWeight:700}}>
-                    {(l.exercise === "Pull-up" || l.exercise === "Push-up") ? l.exercise+"s" : `${l.repCat} Rep${l.repCat>1?"s":""}`}
-                  </td>
-                  <td style={{fontWeight:600}}>
-                    {(l.exercise === "Pull-up" || l.exercise === "Push-up") ? <>{l.weight} <span style={{fontSize:11,color:"var(--muted)",fontWeight:400}}>reps</span></> : <>{l.weight} <span style={{fontSize:11,color:"var(--muted)",fontWeight:400}}>lbs</span></>}
-                  </td>
-                  <td style={{color:"var(--muted)"}}>{l.date}</td>
-                  <td><button className="action-btn" onClick={() => delLog(l.id)} title="Delete" style={{fontSize:16, lineHeight:1, padding:"2px 6px", background:"none", border:"none", color:"var(--muted)", cursor:"pointer"}}>×</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* Today's logged sets */}
+        {Object.keys(setsByExercise).length > 0 && (
+          <div style={{marginTop:16}}>
+            <div className="form-label" style={{marginBottom:8}}>Today's Sets</div>
+            {Object.entries(setsByExercise).map(([ex, exSets]) => (
+              <div key={ex} style={{marginBottom:12}}>
+                <div style={{fontSize:12,fontWeight:700,color:"var(--accent)",
+                  fontFamily:"'Orbitron',sans-serif",letterSpacing:1,marginBottom:6}}>
+                  {ex}
+                </div>
+                {exSets.map((s, i) => (
+                  <div key={s.id} style={{display:"flex",justifyContent:"space-between",
+                    alignItems:"center",padding:"6px 0",
+                    borderBottom:"1px solid rgba(136,255,0,0.05)"}}>
+                    <span style={{fontSize:13,color:"var(--muted)"}}>Set {i+1}</span>
+                    <span style={{fontSize:13,fontWeight:600}}>
+                      {s.setType === "weighted"   && `${s.weight} lbs × ${s.reps}`}
+                      {s.setType === "bodyweight" && `${s.reps} reps`}
+                      {s.setType === "duration"   && formatDuration(s.durationSeconds)}
+                    </span>
+                    <button onClick={() => deleteSet(s.id)}
+                      style={{background:"none",border:"none",color:"rgba(255,68,85,0.6)",
+                        cursor:"pointer",fontSize:14,padding:"0 4px"}}>✕</button>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {Object.keys(setsByExercise).length === 0 && !loading && (
+          <div style={{color:"var(--muted)",fontSize:13,padding:"12px 0"}}>
+            No sets logged today yet. Start above!
+          </div>
         )}
       </div>
 
+      {/* ── Progress Charts ── */}
       <div className="card">
-        <div className="card-title">Progress by Exercise</div>
-        <div style={{fontSize:13,color:"var(--muted)",marginBottom:12}}>{chartEx === "Pull-up" ? "Your pull-up count over time." : "Select an exercise to see all 4 rep-range charts."}</div>
-        <div className="tab-row">
-          {EXERCISE_LIST.map(ex => <div key={ex} className={`tab ${chartEx===ex?"active":""}`} onClick={()=>setChartEx(ex)}>{ex}</div>)}
+        <div className="card-title">
+          <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,color:"var(--accent)",letterSpacing:2,marginRight:8}}>▲▲▲</span>
+          Progress
         </div>
 
-        {chartEx === "Pull-up" ? (() => {
-          const pullData = logs.filter(l => l.exercise === "Pull-up").map(l => ({ label: l.date, [username]: l.weight }));
-          return pullData.length > 0 ? (
-            <div style={{background:"linear-gradient(160deg,rgba(0,22,13,0.52),rgba(0,8,4,0.38))",boxShadow:"0 4px 16px rgba(0,0,0,0.5),0 12px 32px rgba(0,0,0,0.4),inset 0 1px 0 rgba(136,255,0,0.10)",borderTop:"1px solid rgba(136,255,0,0.14)",borderLeft:"1px solid rgba(136,255,0,0.08)",borderRadius:10,padding:"16px 12px",marginTop:16}}>
-              <div style={{fontWeight:700,fontSize:13,marginBottom:12,color:"var(--accent)"}}>Pull-up Count</div>
-              <div style={{height:220}}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={pullData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2a32" />
-                    <XAxis dataKey="label" stroke="#7a7a8a" tick={{fontSize:9}} angle={-30} textAnchor="end" height={36} />
-                    <YAxis stroke="#7a7a8a" tick={{fontSize:10}} width={38} />
-                    <Tooltip contentStyle={{background:"#141417",border:"1px solid #2a2a32",borderRadius:8,fontSize:11}} formatter={(v) => [`${v} reps`]} />
-                    <Line type="monotone" dataKey={username} stroke="var(--accent)" strokeWidth={2.5} dot={{fill:"var(--accent)",r:3}} name={username} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          ) : (
-            <div style={{textAlign:"center",padding:"32px 0",color:"var(--muted)",fontSize:13}}>Log some Pull-up entries to see your progress!</div>
-          );
-        })() : hasAnyData ? (
-          <div className="workout-chart-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
-            {REP_CATS.map(repCat => {
-              const data = (() => {
-                const entries = logs.filter(l => l.exercise === chartEx && l.repCat === repCat);
-                return entries.map(l => ({ label: l.date, [username]: l.weight }));
-              })();
-              const color = REP_COLORS[repCat];
-              return (
-                <div key={repCat} style={{background:"linear-gradient(160deg,rgba(0,22,13,0.52),rgba(0,8,4,0.38))",boxShadow:"0 4px 16px rgba(0,0,0,0.5),0 12px 32px rgba(0,0,0,0.4),inset 0 1px 0 rgba(136,255,0,0.10)",borderTop:"1px solid rgba(136,255,0,0.14)",borderLeft:"1px solid rgba(136,255,0,0.08)",borderRadius:10,padding:"16px 12px"}}>
-                  <div style={{fontWeight:700,fontSize:13,marginBottom:12,color}}>
-                    {repCat} Rep{repCat>1?"s":""}
-                  </div>
-                  <div style={{height:180}}>
-                    {data.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={data}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#2a2a32" />
-                          <XAxis dataKey="label" stroke="#7a7a8a" tick={{fontSize:9}} angle={-30} textAnchor="end" height={36} />
-                          <YAxis stroke="#7a7a8a" tick={{fontSize:10}} width={38} />
-                          <Tooltip contentStyle={{background:"#141417",border:"1px solid #2a2a32",borderRadius:8,fontSize:11}} formatter={(v) => [`${v} lbs`]} />
-                          <Line type="monotone" dataKey={username} stroke={color} strokeWidth={2.5} dot={{fill:color,r:3}} name={username} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",color:"var(--muted)",fontSize:12}}>
-                        No {repCat}-rep data yet
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+        {/* Chart type toggle */}
+        <div style={{display:"flex",gap:8,marginBottom:14}}>
+          {[["volume","Volume"],["pr","PR Trend"]].map(([v,l]) => (
+            <button key={v} onClick={() => setChartView(v)}
+              style={{padding:"6px 14px",border:`1px solid ${chartView===v?"var(--accent)":"var(--border)"}`,
+                background: chartView===v ? "rgba(136,255,0,0.08)" : "var(--surface2)",
+                color: chartView===v ? "var(--accent)" : "var(--muted)",
+                borderRadius:4,cursor:"pointer",fontSize:12,fontFamily:"'Orbitron',sans-serif",
+                letterSpacing:1}}>
+              {l}
+            </button>
+          ))}
+        </div>
+
+        {/* Chart exercise group */}
+        <div className="tab-row" style={{flexWrap:"wrap",marginBottom:8}}>
+          {EXERCISE_GROUPS.map(g => (
+            <div key={g} className={`tab ${chartGroup===g?"active":""}`}
+              onClick={() => {
+                setChartGroup(g);
+                const first = EXERCISES.find(e => e.group === g);
+                if (first) setChartEx(first.name);
+              }}>{g}</div>
+          ))}
+        </div>
+        <div className="tab-row" style={{flexWrap:"wrap",marginBottom:16}}>
+          {EXERCISES.filter(e => e.group === chartGroup).map(e => (
+            <div key={e.name} className={`tab ${chartEx===e.name?"active":""}`}
+              onClick={() => setChartEx(e.name)}>{e.name}</div>
+          ))}
+        </div>
+
+        {chartData.length > 1 ? (
+          <div style={{height:220}}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2a2a32" />
+                <XAxis dataKey="date" stroke="#7a7a8a" tick={{fontSize:9}} angle={-30} textAnchor="end" height={36} />
+                <YAxis stroke="#7a7a8a" tick={{fontSize:10}} width={42}
+                  tickFormatter={v => chartExDef.type === "duration" ? formatDuration(v) : v} />
+                <Tooltip contentStyle={{background:"#141417",border:"1px solid #2a2a32",borderRadius:8,fontSize:11}}
+                  formatter={v => [chartExDef.type === "duration" ? formatDuration(v)
+                    : chartView === "volume" && chartExDef.type === "weighted" ? `${v} lbs`
+                    : chartView === "volume" && chartExDef.type === "bodyweight" ? `${v} reps`
+                    : `${v}`, chartView === "volume" ? "Volume" : "Est. PR"]} />
+                <Line type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2.5}
+                  dot={{fill:"var(--accent)",r:3}} />
+              </LineChart>
+            </ResponsiveContainer>
           </div>
         ) : (
           <div style={{textAlign:"center",padding:"32px 0",color:"var(--muted)",fontSize:13}}>
-            Log some {chartEx} entries to see your progress charts!
+            {chartData.length === 1 ? "Log one more session to see your trend." : `Log some ${chartEx} sets to see your progress.`}
           </div>
         )}
       </div>
-
     </div>
   );
 }
+
+function formatDuration(seconds) {
+  if (!seconds) return "0s";
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
 
 // ─── PERMANENT TRACK LIST ─────────────────────────────────────────────────────
 // Audio files are served from /public/audio/.
@@ -5604,27 +5678,23 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack, navExpand
 
 // ─── TOP CHARTS PAGE ──────────────────────────────────────────────────────────
 function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
-  const [userLogs, setUserLogs] = useState([]);
-  const [chartEx, setChartEx] = useState("Bench Press");
-  const [chartRep, setChartRep] = useState(1);
+  const [chartEx, setChartEx]           = useState("Bench Press");
   const [chartsTabInternal, setChartsTabInternal] = useState("global");
   const isMobileTC = useIsMobile();
   const chartsTab = (isMobileTC && mobileScreen !== null)
     ? (mobileScreen === "chapter" ? "chapter" : "global")
     : chartsTabInternal;
   const setChartsTab = (val) => { if (!isMobileTC) setChartsTabInternal(val); };
-  const [membership, setMembership] = useState(null);
-  const [chapterCommunityUsers, setChapterCommunityUsers] = useState([]);
+  const [membership, setMembership]     = useState(null);
+  const [chapterCommunityPrs, setChapterCommunityPrs] = useState([]);
   const [chapterUsersLoading, setChapterUsersLoading] = useState(false);
-  const { communityUsers } = useCommunityUsers(username);
-  const isPullup = chartEx === "Pull-up";
-  const isPushup = chartEx === "Push-up";
-  const isBodyweightChart = isPullup || isPushup;
+
+  const { communityPrs, myPrs }         = useCommunityPrs(username);
+  const chartExDef = EXERCISE_MAP[chartEx] || EXERCISES[0];
+  const isBodyweightChart = chartExDef.type === "bodyweight";
+  const isDurationChart   = chartExDef.type === "duration";
 
   useEffect(() => {
-    api.getLogs()
-      .then(data => setUserLogs(data))
-      .catch(err => console.warn("TopCharts getLogs:", err));
     api.getMyMembership().then(m => {
       if (m && m.status === "approved") {
         setMembership(m);
@@ -5633,89 +5703,41 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
     }).catch(() => {});
   }, [username]);
 
-  // Poll leaderboard data every 45 seconds
-  usePolling(() => {
-    api.getLogs().then(setUserLogs).catch(() => {});
-  }, 45000);
-
-  usePolling(() => {
-    if (!membership) return;
-    api.getChapterCommunityUsers(membership.chapter_id).then(setChapterCommunityUsers).catch(() => {});
-  }, 45000);
-
   useEffect(() => {
     if (!membership) return;
     setChapterUsersLoading(true);
     api.getChapterCommunityUsers(membership.chapter_id)
-      .then(setChapterCommunityUsers)
+      .then(setChapterCommunityPrs)
       .catch(() => {})
       .finally(() => setChapterUsersLoading(false));
   }, [membership]);
 
-  // Build leaderboard for selected exercise + rep category
-  const buildLeaderboard = (exercise, repCat) => {
+  usePolling(() => {
+    if (!membership) return;
+    api.getChapterCommunityUsers(membership.chapter_id).then(setChapterCommunityPrs).catch(() => {});
+  }, 45000);
+
+  // Unified leaderboard builder using PR data
+  const buildLeaderboard = (exercise, communityData, myPrMap) => {
     const entries = [];
-    const myBest = Math.max(0, ...userLogs.filter(l => l.exercise === exercise && l.repCat === repCat).map(l => l.weight));
-    if (myBest > 0) entries.push({ name: username, weight: myBest, isMe: true });
-    communityUsers.forEach(u => {
-      const series = u.logs[exercise]?.[repCat];
-      if (series && series.length) {
-        const best = Math.max(...series.map(e => e.weight));
-        entries.push({ name: u.name, weight: best, isMe: false });
-      }
+    const myVal = myPrMap?.[exercise];
+    if (myVal != null && myVal > 0) entries.push({ name: username, weight: myVal, isMe: true });
+    (communityData || []).forEach(u => {
+      const v = u.prs?.[exercise];
+      if (v != null && v > 0) entries.push({ name: u.name, weight: v, isMe: false });
     });
     return entries.sort((a, b) => b.weight - a.weight);
   };
 
-  // Bodyweight leaderboard (pull-up or push-up)
-  const buildBodyweightLeaderboard = (exercise) => {
-    const entries = [];
-    const myBest = Math.max(0, ...userLogs.filter(l => l.exercise === exercise).map(l => l.weight));
-    if (myBest > 0) entries.push({ name: username, weight: myBest, isMe: true });
-    communityUsers.forEach(u => {
-      const series = u.logs[exercise]?.[0];
-      if (series && series.length) {
-        const best = Math.max(...series.map(e => e.weight));
-        entries.push({ name: u.name, weight: best, isMe: false });
-      }
-    });
-    return entries.sort((a, b) => b.weight - a.weight);
-  };
+  const leaders              = buildLeaderboard(chartEx, communityPrs, myPrs);
+  const topWeight            = leaders[0]?.weight || 0;
+  const chapterLeaders       = buildLeaderboard(chartEx, chapterCommunityPrs, myPrs);
+  const chapterTopWeight     = chapterLeaders[0]?.weight || 0;
 
-  const leaders = isBodyweightChart ? buildBodyweightLeaderboard(chartEx) : buildLeaderboard(chartEx, chartRep);
-  const topWeight = leaders[0]?.weight || 0;
-
-  // Chapter-scoped versions using chapterCommunityUsers
-  const buildChapterLeaderboard = (exercise, repCat) => {
-    const entries = [];
-    const myBest = Math.max(0, ...userLogs.filter(l => l.exercise === exercise && l.repCat === repCat).map(l => l.weight));
-    if (myBest > 0) entries.push({ name: username, weight: myBest, isMe: true });
-    chapterCommunityUsers.forEach(u => {
-      const series = u.logs[exercise]?.[repCat];
-      if (series && series.length) {
-        const best = Math.max(...series.map(e => e.weight));
-        entries.push({ name: u.name, weight: best, isMe: false });
-      }
-    });
-    return entries.sort((a, b) => b.weight - a.weight);
-  };
-
-  const buildChapterBodyweightLeaderboard = (exercise) => {
-    const entries = [];
-    const myBest = Math.max(0, ...userLogs.filter(l => l.exercise === exercise).map(l => l.weight));
-    if (myBest > 0) entries.push({ name: username, weight: myBest, isMe: true });
-    chapterCommunityUsers.forEach(u => {
-      const series = u.logs[exercise]?.[0];
-      if (series && series.length) {
-        const best = Math.max(...series.map(e => e.weight));
-        entries.push({ name: u.name, weight: best, isMe: false });
-      }
-    });
-    return entries.sort((a, b) => b.weight - a.weight);
-  };
-
-  const chapterLeaders = isBodyweightChart ? buildChapterBodyweightLeaderboard(chartEx) : buildChapterLeaderboard(chartEx, chartRep);
-  const chapterTopWeight = chapterLeaders[0]?.weight || 0;
+  // Snapshot table builders (for "All Exercises" card)
+  const buildBodyweightLeaderboard      = (ex) => buildLeaderboard(ex, communityPrs, myPrs);
+  const buildChapterLeaderboard         = (ex) => buildLeaderboard(ex, chapterCommunityPrs, myPrs);
+  const buildChapterBodyweightLeaderboard = buildChapterLeaderboard;
 
   const medalColors = ["#ffdd00", "#c0c8d4", "#ff9944"];
   const medalLabels = ["#1", "#2", "#3"];
@@ -5778,33 +5800,14 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
             ))}
           </div>
         </div>
-        {!isBodyweightChart && (
-        <div>
-          <div className="form-label" style={{marginBottom:8}}>Rep Category</div>
-          <div style={{display:"flex",gap:8}}>
-            {REP_CATS.map(r => (
-              <div key={r} onClick={() => setChartRep(r)}
-                style={{
-                  padding:"8px 16px", borderRadius:8, cursor:"pointer", fontWeight:700, fontSize:13,
-                  border:`2px solid ${chartRep===r ? REP_COLORS[r] : "var(--border)"}`,
-                  background: chartRep===r ? `${REP_COLORS[r]}18` : "var(--surface2)",
-                  color: chartRep===r ? REP_COLORS[r] : "var(--muted)",
-                  transition:"all 0.15s"
-                }}>
-                {r} Rep{r>1?"s":""}
-              </div>
-            ))}
-          </div>
-        </div>
-        )}
         </div>
 
-      {isBodyweightChart ? <BodyweightRankCard username={username} exercise={chartEx} userLogs={userLogs} communityUsers={communityUsers} /> : <MyRankCard username={username} exercise={chartEx} repCat={chartRep} userLogs={userLogs} communityUsers={communityUsers} />}
+      <RankCard username={username} exercise={chartEx} myPr={myPrs[chartEx]} communityPrs={communityPrs} />
 
       <div className="card">
         <div className="card-title">
           <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:11,color:"var(--accent)",letterSpacing:2,marginRight:8}}>▲▲▲</span>
-          {isBodyweightChart ? `${chartEx} Count Leaderboard` : `${chartEx} — ${chartRep} Rep${chartRep>1?"s":""} Leaderboard`}
+          {chartEx} Leaderboard
         </div>
         {leaders.length === 0 ? (
           <div style={{textAlign:"center",padding:"32px 0",color:"var(--muted)"}}>No data yet for this exercise.</div>
@@ -5838,11 +5841,11 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
                         {entry.name}{entry.isMe ? " (You)" : ""}
                       </div>
                       <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>
-                        {barPct < 100 ? `${Math.round(barPct)}% of top ${isBodyweightChart ? "count" : "lift"}` : "◈ CURRENT LEADER"}
+                        {barPct < 100 ? `${Math.round(barPct)}% of top ${isBodyweightChart ? "count" : isDurationChart ? "duration" : "lift"}` : "◈ CURRENT LEADER"}
                       </div>
                     </div>
                     <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:22,fontWeight:900,color: isTop ? "var(--accent)" : "var(--chrome)",letterSpacing:2,textShadow: isTop ? "var(--glow-sm)" : "none"}}>
-                      {entry.weight} <span style={{fontSize:11,color:"var(--muted)",fontFamily:"'Rajdhani',sans-serif",fontWeight:400}}>{isBodyweightChart ? "reps" : "lbs"}</span>
+                      {isDurationChart ? formatDuration(entry.weight) : entry.weight} <span style={{fontSize:11,color:"var(--muted)",fontFamily:"'Rajdhani',sans-serif",fontWeight:400}}>{isDurationChart ? "" : isBodyweightChart ? "reps" : "lbs"}</span>
                     </div>
                   </div>
                 </div>
@@ -5853,13 +5856,14 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
       </div>
 
       <div className="card">
-        <div className="card-title"><span style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,color:"var(--accent)",letterSpacing:2,marginRight:8}}>▐▌</span>All Exercises Snapshot — {chartRep} Rep{chartRep>1?"s":""}</div>
-        <div style={{fontSize:12,color:"var(--muted)",marginBottom:16}}>Top lift across the community for each exercise.</div>
+        <div className="card-title"><span style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,color:"var(--accent)",letterSpacing:2,marginRight:8}}>▐▌</span>All Exercises Snapshot</div>
+        <div style={{fontSize:12,color:"var(--muted)",marginBottom:16}}>Top PR across the community for each exercise.</div>
         <table className="log-table">
           <thead><tr><th>Exercise</th><th>Leader</th><th>Top</th></tr></thead>
           <tbody>
             {EXERCISE_LIST.map(ex => {
-              const board = (ex === "Pull-up" || ex === "Push-up") ? buildBodyweightLeaderboard(ex) : buildLeaderboard(ex, chartRep);
+              const exD = EXERCISE_MAP[ex] || { type: "weighted" };
+              const board = buildLeaderboard(ex, communityPrs, myPrs);
               const top = board[0];
               return (
                 <tr key={ex}>
@@ -5874,7 +5878,7 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
                       </div>
                     ) : <span style={{color:"var(--muted)"}}>—</span>}
                   </td>
-                  <td style={{fontWeight:700,color:"var(--accent)"}}>{top ? `${top.weight} ${ex === "Pull-up" ? "reps" : "lbs"}` : "—"}</td>
+                  <td style={{fontWeight:700,color:"var(--accent)"}}>{top ? (exD.type === "duration" ? formatDuration(top.weight) : `${top.weight} ${exD.type === "bodyweight" ? "reps" : "lbs"}`) : "—"}</td>
                 </tr>
               );
             })}
@@ -5903,35 +5907,14 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
             ))}
           </div>
         </div>
-        {!isBodyweightChart && (
-        <div>
-          <div className="form-label" style={{marginBottom:8}}>Rep Category</div>
-          <div style={{display:"flex",gap:8}}>
-            {REP_CATS.map(r => (
-              <div key={r} onClick={() => setChartRep(r)}
-                style={{
-                  padding:"8px 16px", borderRadius:8, cursor:"pointer", fontWeight:700, fontSize:13,
-                  border:`2px solid ${chartRep===r ? REP_COLORS[r] : "var(--border)"}`,
-                  background: chartRep===r ? `${REP_COLORS[r]}18` : "var(--surface2)",
-                  color: chartRep===r ? REP_COLORS[r] : "var(--muted)",
-                  transition:"all 0.15s"
-                }}>
-                {r} Rep{r>1?"s":""}
-              </div>
-            ))}
-          </div>
-        </div>
-        )}
         </div>
 
-        {isBodyweightChart
-          ? <BodyweightRankCard username={username} exercise={chartEx} userLogs={userLogs} communityUsers={chapterCommunityUsers} />
-          : <MyRankCard username={username} exercise={chartEx} repCat={chartRep} userLogs={userLogs} communityUsers={chapterCommunityUsers} />}
+        <RankCard username={username} exercise={chartEx} myPr={myPrs[chartEx]} communityPrs={chapterCommunityPrs} />
 
         <div className="card">
           <div className="card-title">
             <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:11,color:"var(--accent)",letterSpacing:2,marginRight:8}}>▲▲▲</span>
-            {isBodyweightChart ? `${chartEx} Count Leaderboard` : `${chartEx} — ${chartRep} Rep${chartRep>1?"s":""} Leaderboard`}
+            {chartEx} Leaderboard
             <span style={{fontSize:10,color:"var(--muted)",marginLeft:8,fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>· {membership.chapter_name}</span>
           </div>
           {chapterLeaders.length === 0 ? (
@@ -5941,6 +5924,7 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
               {chapterLeaders.map((entry, i) => {
                 const barPct = chapterTopWeight > 0 ? (entry.weight / chapterTopWeight) * 100 : 0;
                 const isTop = i === 0;
+                const exD = EXERCISE_MAP[chartEx] || { type: "weighted" };
                 return (
                   <div key={entry.name} style={{
                     background: entry.isMe ? "rgba(181,240,60,0.06)" : "var(--surface2)",
@@ -5968,11 +5952,11 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
                           {entry.name}{entry.isMe ? " (You)" : ""}
                         </div>
                         <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>
-                          {barPct < 100 ? `${Math.round(barPct)}% of top ${isBodyweightChart ? "count" : "lift"}` : "◈ CURRENT LEADER"}
+                          {barPct < 100 ? `${Math.round(barPct)}% of top ${exD.type === "bodyweight" ? "count" : exD.type === "duration" ? "duration" : "lift"}` : "◈ CURRENT LEADER"}
                         </div>
                       </div>
                       <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:22,fontWeight:900,color: isTop ? "var(--accent)" : "var(--chrome)",letterSpacing:2,textShadow: isTop ? "var(--glow-sm)" : "none"}}>
-                        {entry.weight} <span style={{fontSize:11,color:"var(--muted)",fontFamily:"'Rajdhani',sans-serif",fontWeight:400}}>{isBodyweightChart ? "reps" : "lbs"}</span>
+                        {exD.type === "duration" ? formatDuration(entry.weight) : entry.weight} <span style={{fontSize:11,color:"var(--muted)",fontFamily:"'Rajdhani',sans-serif",fontWeight:400}}>{exD.type === "duration" ? "" : exD.type === "bodyweight" ? "reps" : "lbs"}</span>
                       </div>
                     </div>
                   </div>
@@ -5983,13 +5967,14 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
         </div>
 
         <div className="card">
-          <div className="card-title"><span style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,color:"var(--accent)",letterSpacing:2,marginRight:8}}>▐▌</span>All Exercises Snapshot — {chartRep} Rep{chartRep>1?"s":""} <span style={{fontSize:10,color:"var(--muted)",marginLeft:8,fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>· {membership.chapter_name}</span></div>
-          <div style={{fontSize:12,color:"var(--muted)",marginBottom:16}}>Top lift across your chapter for each exercise.</div>
+          <div className="card-title"><span style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,color:"var(--accent)",letterSpacing:2,marginRight:8}}>▐▌</span>All Exercises Snapshot <span style={{fontSize:10,color:"var(--muted)",marginLeft:8,fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>· {membership.chapter_name}</span></div>
+          <div style={{fontSize:12,color:"var(--muted)",marginBottom:16}}>Top PR across your chapter for each exercise.</div>
           <table className="log-table">
             <thead><tr><th>Exercise</th><th>Leader</th><th>Top</th></tr></thead>
             <tbody>
               {EXERCISE_LIST.map(ex => {
-                const board = (ex === "Pull-up" || ex === "Push-up") ? buildChapterBodyweightLeaderboard(ex) : buildChapterLeaderboard(ex, chartRep);
+                const exD = EXERCISE_MAP[ex] || { type: "weighted" };
+                const board = buildChapterLeaderboard(ex);
                 const top = board[0];
                 return (
                   <tr key={ex}>
@@ -6004,7 +5989,7 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
                         </div>
                       ) : <span style={{color:"var(--muted)"}}>—</span>}
                     </td>
-                    <td style={{fontWeight:700,color:"var(--accent)"}}>{top ? `${top.weight} ${ex === "Pull-up" ? "reps" : "lbs"}` : "—"}</td>
+                    <td style={{fontWeight:700,color:"var(--accent)"}}>{top ? (exD.type === "duration" ? formatDuration(top.weight) : `${top.weight} ${exD.type === "bodyweight" ? "reps" : "lbs"}`) : "—"}</td>
                   </tr>
                 );
               })}

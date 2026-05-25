@@ -252,6 +252,35 @@ async function initDb() {
       created_at  BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
     );
 
+    CREATE TABLE IF NOT EXISTS workout_sessions (
+      id         SERIAL PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      date       TEXT NOT NULL,
+      created_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT,
+      UNIQUE(user_id, date)
+    );
+
+    CREATE TABLE IF NOT EXISTS session_sets (
+      id               SERIAL PRIMARY KEY,
+      session_id       INTEGER NOT NULL REFERENCES workout_sessions(id) ON DELETE CASCADE,
+      user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      exercise         TEXT NOT NULL,
+      set_type         TEXT NOT NULL, -- 'weighted' | 'bodyweight' | 'duration'
+      weight           NUMERIC,
+      reps             INTEGER,
+      duration_seconds INTEGER,
+      created_at       BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
+    );
+
+    CREATE TABLE IF NOT EXISTS personal_records (
+      id         SERIAL PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      exercise   TEXT NOT NULL,
+      value      NUMERIC NOT NULL,
+      updated_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT,
+      UNIQUE(user_id, exercise)
+    );
+
     CREATE TABLE IF NOT EXISTS messages (
       id               SERIAL PRIMARY KEY,
       user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -310,9 +339,60 @@ async function initDb() {
       expires_at BIGINT NOT NULL
     );
   `);
-  await db.query(`
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
-  `);
+  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';`);
+  // Seeds personal_records from best estimated 1RM (or max reps for bodyweight)
+  // and backfills workout_sessions/session_sets so history is preserved.
+  const BODYWEIGHT_EXERCISES = ["Pull-up", "Push-up", "Dips"];
+  const { rows: legacyLogs } = await db.query(
+    "SELECT * FROM lift_logs ORDER BY ts ASC"
+  );
+  for (const log of legacyLogs) {
+    const isBodyweight = BODYWEIGHT_EXERCISES.includes(log.exercise);
+    const isDuration   = false; // no duration exercises in legacy data
+    // Compute PR value
+    let prValue;
+    if (isBodyweight) {
+      prValue = Number(log.weight); // weight field stored reps for bodyweight
+    } else {
+      const reps = Number(log.rep_cat) || 1;
+      const w    = Number(log.weight);
+      prValue = reps === 1 ? w : Math.round(w * (1 + reps / 30));
+    }
+    // Upsert personal_record if this is a new best
+    await db.query(`
+      INSERT INTO personal_records (user_id, exercise, value, updated_at)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (user_id, exercise) DO UPDATE
+        SET value = GREATEST(personal_records.value, $3),
+            updated_at = CASE WHEN $3 > personal_records.value THEN $4 ELSE personal_records.updated_at END
+    `, [log.user_id, log.exercise, prValue, Number(log.ts)]);
+    // Backfill workout_sessions / session_sets
+    const { rows: sessRows } = await db.query(`
+      INSERT INTO workout_sessions (user_id, date, created_at)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (user_id, date) DO UPDATE SET date = EXCLUDED.date
+      RETURNING id
+    `, [log.user_id, log.date, Number(log.ts)]);
+    const sessionId = sessRows[0].id;
+    // Only insert if not already migrated (idempotent)
+    const { rows: existing } = await db.query(
+      "SELECT id FROM session_sets WHERE session_id = $1 AND exercise = $2 AND reps = $3 AND weight = $4",
+      [sessionId, log.exercise, isBodyweight ? Number(log.weight) : Number(log.rep_cat), isBodyweight ? null : Number(log.weight)]
+    );
+    if (existing.length === 0) {
+      await db.query(`
+        INSERT INTO session_sets (session_id, user_id, exercise, set_type, weight, reps, duration_seconds, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [
+        sessionId, log.user_id, log.exercise,
+        isBodyweight ? "bodyweight" : "weighted",
+        isBodyweight ? null : Number(log.weight),
+        isBodyweight ? Number(log.weight) : Number(log.rep_cat),
+        null,
+        Number(log.ts),
+      ]);
+    }
+  }
   await db.query(`
     ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_extra TEXT;
   `);
@@ -701,31 +781,166 @@ app.delete("/api/logs/:id", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/community/users", requireAuth, async (req, res) => {
+// ═════════════════════════════════════════════════════════════════════════════
+// WORKOUT ROUTES (new session-based system)
+// ═════════════════════════════════════════════════════════════════════════════
+
+const BODYWEIGHT_EXERCISES_SET = new Set(["Pull-up", "Push-up", "Dips"]);
+const DURATION_EXERCISES_SET   = new Set(["Plank"]);
+
+function computePrValue(exercise, setType, weight, reps, durationSeconds) {
+  if (setType === "duration")   return durationSeconds;
+  if (setType === "bodyweight") return reps;
+  // weighted: Epley estimated 1RM
+  const r = reps || 1;
+  return r === 1 ? weight : Math.round(weight * (1 + r / 30));
+}
+
+async function updatePrIfBetter(userId, exercise, prValue) {
+  const { rows } = await db.query(
+    "SELECT value FROM personal_records WHERE user_id = $1 AND exercise = $2",
+    [userId, exercise]
+  );
+  const existing = rows[0] ? Number(rows[0].value) : null;
+  if (existing === null || prValue > existing) {
+    await db.query(`
+      INSERT INTO personal_records (user_id, exercise, value, updated_at)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (user_id, exercise) DO UPDATE SET value = $3, updated_at = $4
+    `, [userId, exercise, prValue, Date.now()]);
+    return true; // new PR
+  }
+  return false;
+}
+
+// GET /api/workout/session/today — get or create today's session with all sets
+app.get("/api/workout/session/today", requireAuth, async (req, res) => {
   try {
-    const { rows: users } = await db.query(
-      "SELECT * FROM users WHERE id != $1", [req.userId]
+    const today = new Date().toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" });
+    const { rows: sessRows } = await db.query(`
+      INSERT INTO workout_sessions (user_id, date, created_at)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (user_id, date) DO UPDATE SET date = EXCLUDED.date
+      RETURNING *
+    `, [req.userId, today, Date.now()]);
+    const session = sessRows[0];
+    const { rows: sets } = await db.query(
+      "SELECT * FROM session_sets WHERE session_id = $1 ORDER BY created_at ASC",
+      [session.id]
     );
-    const result = await Promise.all(users.map(async (u) => {
-      const { rows: logs } = await db.query(
-        "SELECT exercise, rep_cat, weight, ts FROM lift_logs WHERE user_id = $1 ORDER BY ts ASC",
-        [u.id]
-      );
-      const shaped = {};
-      for (const l of logs) {
-        if (!shaped[l.exercise]) shaped[l.exercise] = {};
-        const key = String(l.rep_cat);
-        if (!shaped[l.exercise][key]) shaped[l.exercise][key] = [];
-        shaped[l.exercise][key].push({ weight: Number(l.weight), ts: Number(l.ts) });
-      }
-      return { name: displayName(u), logs: shaped };
-    }));
-    return res.json(result);
+    res.json({ session, sets: sets.map(shapeSet) });
   } catch (err) {
-    console.error("communityUsers:", err);
-    return res.status(500).json({ error: "Server error." });
+    console.error("GET /api/workout/session/today:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
+
+// POST /api/workout/session/:sessionId/sets — add a set
+app.post("/api/workout/session/:sessionId/sets", requireAuth, async (req, res) => {
+  try {
+    const { exercise, setType, weight, reps, durationSeconds } = req.body;
+    if (!exercise || !setType) return res.status(400).json({ error: "exercise and setType required" });
+    const { rows } = await db.query(`
+      INSERT INTO session_sets (session_id, user_id, exercise, set_type, weight, reps, duration_seconds, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *
+    `, [
+      req.params.sessionId, req.userId, exercise, setType,
+      weight ?? null, reps ?? null, durationSeconds ?? null, Date.now(),
+    ]);
+    const set = shapeSet(rows[0]);
+    // Check if this is a new PR
+    const prValue = computePrValue(exercise, setType, weight, reps, durationSeconds);
+    const isNewPr = await updatePrIfBetter(req.userId, exercise, prValue);
+    res.json({ set, isNewPr, prValue });
+  } catch (err) {
+    console.error("POST /api/workout/session/:id/sets:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// DELETE /api/workout/sets/:setId — delete a set
+app.delete("/api/workout/sets/:setId", requireAuth, async (req, res) => {
+  try {
+    await db.query(
+      "DELETE FROM session_sets WHERE id = $1 AND user_id = $2",
+      [req.params.setId, req.userId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("DELETE /api/workout/sets/:setId:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /api/workout/history — past sessions with sets for progress charts
+app.get("/api/workout/history", requireAuth, async (req, res) => {
+  try {
+    const { rows: sessions } = await db.query(
+      "SELECT * FROM workout_sessions WHERE user_id = $1 ORDER BY created_at ASC",
+      [req.userId]
+    );
+    const { rows: sets } = await db.query(
+      "SELECT * FROM session_sets WHERE user_id = $1 ORDER BY created_at ASC",
+      [req.userId]
+    );
+    const setsBySession = {};
+    for (const s of sets) {
+      if (!setsBySession[s.session_id]) setsBySession[s.session_id] = [];
+      setsBySession[s.session_id].push(shapeSet(s));
+    }
+    res.json(sessions.map(s => ({ ...s, sets: setsBySession[s.id] || [] })));
+  } catch (err) {
+    console.error("GET /api/workout/history:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /api/workout/prs — current user's personal records
+app.get("/api/workout/prs", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      "SELECT exercise, value, updated_at FROM personal_records WHERE user_id = $1",
+      [req.userId]
+    );
+    res.json(rows.map(r => ({ exercise: r.exercise, value: Number(r.value), updatedAt: Number(r.updated_at) })));
+  } catch (err) {
+    console.error("GET /api/workout/prs:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /api/community/prs — all users' PRs for top charts
+app.get("/api/community/prs", requireAuth, async (req, res) => {
+  try {
+    const { rows: users } = await db.query("SELECT * FROM users WHERE id != $1", [req.userId]);
+    const result = await Promise.all(users.map(async (u) => {
+      const { rows: prs } = await db.query(
+        "SELECT exercise, value FROM personal_records WHERE user_id = $1",
+        [u.id]
+      );
+      const prMap = {};
+      for (const pr of prs) prMap[pr.exercise] = Number(pr.value);
+      return { name: displayName(u), prs: prMap };
+    }));
+    res.json(result);
+  } catch (err) {
+    console.error("GET /api/community/prs:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+function shapeSet(row) {
+  return {
+    id:              Number(row.id),
+    sessionId:       Number(row.session_id),
+    exercise:        row.exercise,
+    setType:         row.set_type,
+    weight:          row.weight != null ? Number(row.weight) : null,
+    reps:            row.reps != null ? Number(row.reps) : null,
+    durationSeconds: row.duration_seconds != null ? Number(row.duration_seconds) : null,
+    createdAt:       Number(row.created_at),
+  };
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // UPLOAD ROUTE — proxies file to Cloudinary, tracks public_id in pending_uploads
@@ -1588,18 +1803,13 @@ app.get("/api/chapters/:id/community-users", requireAuth, async (req, res) => {
       WHERE cm.chapter_id = $1 AND cm.status = 'approved' AND u.id != $2
     `, [chapterId, req.userId]);
     const result = await Promise.all(users.map(async (u) => {
-      const { rows: logs } = await db.query(
-        "SELECT exercise, rep_cat, weight, ts FROM lift_logs WHERE user_id = $1 ORDER BY ts ASC",
+      const { rows: prs } = await db.query(
+        "SELECT exercise, value FROM personal_records WHERE user_id = $1",
         [u.id]
       );
-      const shaped = {};
-      for (const l of logs) {
-        if (!shaped[l.exercise]) shaped[l.exercise] = {};
-        const key = String(l.rep_cat);
-        if (!shaped[l.exercise][key]) shaped[l.exercise][key] = [];
-        shaped[l.exercise][key].push({ weight: Number(l.weight), ts: Number(l.ts) });
-      }
-      return { name: displayName(u), logs: shaped };
+      const prMap = {};
+      for (const pr of prs) prMap[pr.exercise] = Number(pr.value);
+      return { name: displayName(u), prs: prMap };
     }));
     return res.json(result);
   } catch (err) {
