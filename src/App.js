@@ -5002,11 +5002,11 @@ function WorkoutPage({ username }) {
   // ── Chart data ────────────────────────────────────────────────────────────
   const buildVolumeData = (ex) => {
     return history.map(sess => {
-      // Only count real (non-migrated) sets for volume
-      const sessSets = sess.sets.filter(s => s.exercise === ex && !s.migrated);
+      const sessSets = sess.sets.filter(s => s.exercise === ex);
       if (sessSets.length === 0) return null;
       let vol = 0;
       for (const s of sessSets) {
+        // Migrated legacy sets represent one logged entry — treat as a single set
         if (s.setType === "weighted")   vol += (s.weight || 0) * (s.reps || 0);
         if (s.setType === "bodyweight") vol += s.reps || 0;
         if (s.setType === "duration")   vol += s.durationSeconds || 0;
