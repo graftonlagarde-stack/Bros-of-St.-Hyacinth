@@ -7244,7 +7244,7 @@ function AdminSection({ currentUser, cardStyle, sectionTitle }) {
   );
 }
 // ─── MEET PAGE ─────────────────────────────────────────────────────────────────
-function MeetPage({ currentUser }) {
+function MeetPage({ currentUser, onCallActive }) {
   const isMobile = useIsMobile();
   const [meetings,    setMeetings]    = useState([]);
   const [loading,     setLoading]     = useState(true);
@@ -7289,7 +7289,7 @@ function MeetPage({ currentUser }) {
         return;
       }
       setCallToken(data.token); setCallRoom(data.roomName); setCallRoomUrl(data.roomUrl);
-      setActiveMeeting(meeting); setView("call");
+      setActiveMeeting(meeting); setView("call"); onCallActive?.(true);
     } catch (err) {
       setJoinError(err.message || "Could not join call. Please try again.");
       console.warn("joinMeeting:", err);
@@ -7326,7 +7326,7 @@ function MeetPage({ currentUser }) {
   const fmtTime = (ts) => new Date(ts).toLocaleString("en-US", { weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });
 
   if (view === "call" && activeMeeting && callToken && callRoom)
-    return <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} currentUser={currentUser} onLeave={() => { setView("list"); setCallToken(null); setCallRoom(null); setCallRoomUrl(null); setActiveMeeting(null); }} />;
+    return <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} currentUser={currentUser} onLeave={() => { setView("list"); setCallToken(null); setCallRoom(null); setCallRoomUrl(null); setActiveMeeting(null); onCallActive?.(false); }} />;
 
   if (view === "create") return (
     <div className="page">
@@ -7434,7 +7434,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, currentUser, onLea
         if (existing) {
           try { await existing.destroy(); } catch(e) {}
         }
-        const call = DailyIframe.createCallObject({ audioSource:true, videoSource:false });
+        const call = DailyIframe.createCallObject({ audioSource: true, videoSource: true });
         callRef.current = call;
         const update = () => {
           if (destroyed) return;
@@ -7444,14 +7444,14 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, currentUser, onLea
           if (local?.tracks?.video?.persistentTrack)
             setLocalStream(new MediaStream([local.tracks.video.persistentTrack]));
         };
-        call.on("joined-meeting",       () => { setJoined(true); update(); });
+        call.on("joined-meeting", () => { setJoined(true); update(); const p2=call.participants(); if(p2.local){setMicOn(!p2.local.tracks?.audio?.off);setCamOn(!p2.local.tracks?.video?.off);} });
         call.on("participant-joined",   update);
         call.on("participant-left",     update);
         call.on("participant-updated",  update);
         call.on("active-speaker-change",e => { if (!destroyed) setActiveSpeaker(e?.activeSpeaker?.peerId || null); });
         call.on("left-meeting",         () => { if (!destroyed) { destroyed = true; callRef.current = null; call.destroy(); onLeave(); } });
         call.on("error",                e => { if (!destroyed) setError(e.errorMsg || "Call error"); });
-        await call.join({ url: roomUrl, token });
+        await call.join({ url: roomUrl, token, startVideoOff: true, startAudioOff: false });
       } catch(err) {
         if (!destroyed) setError(err.message || "Could not connect.");
         console.error("Daily setup:", err);
@@ -7501,7 +7501,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, currentUser, onLea
   }, [remotes.length]);
 
   if (error) return (
-    <div style={{position:"fixed",inset:0,background:"var(--bg)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,zIndex:1000}}>
+    <div style={{position:"fixed",inset:0,background:"var(--bg)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,zIndex:10000}}>
       <div style={{color:"rgba(255,68,85,0.8)",fontSize:14,textAlign:"center",padding:"0 32px"}}>{error}</div>
       <button className="btn" onClick={onLeave}>Leave</button>
     </div>
@@ -7513,7 +7513,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, currentUser, onLea
   </>;
 
   return (
-    <div style={{position:"fixed",inset:0,background:"var(--bg)",display:"flex",flexDirection:"column",zIndex:1000,overflow:"hidden"}}>
+    <div style={{position:"fixed",inset:0,background:"var(--bg)",display:"flex",flexDirection:"column",zIndex:10000,overflow:"hidden"}}>
       {/* Header */}
       <div style={{padding:"12px 16px",borderBottom:"1px solid rgba(136,255,0,0.1)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
         <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:12,letterSpacing:2,color:"var(--accent)"}}>{meeting.title}</div>
@@ -7620,6 +7620,7 @@ export default function App() {
 
   const [currentTrack, setCurrentTrack] = useState(PERMANENT_TRACKS[0] ?? null);
   const [isPlaying, setIsPlaying]       = useState(false);
+  const [inCall, setInCall]             = useState(false);
 
   // Push notifications — mobile only, only when logged in
   usePushNotifications(isMobile ? api.getToken() : null);
@@ -8028,7 +8029,7 @@ export default function App() {
           {page === "workout" && <div><WorkoutPage username={username} /></div>}
           {page === "topcharts" && <div><TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
           {page === "boards" && <div><BoardPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
-          {page === "meet" && <MeetPage currentUser={user} />}
+          {page === "meet" && <MeetPage currentUser={user} onCallActive={setInCall} />}
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
           {page === "rule" && <RulePage user={user} />}
           {page === "profile" && <ProfilePage user={user} onDeleted={() => { api.clearToken(); setUser(null); }} onLogout={() => { handleLogout(); setPage("workout"); }} onAvatarUpdate={(url) => setUser(u => ({ ...u, avatarUrl: url }))} />}
@@ -8039,7 +8040,7 @@ export default function App() {
         <RuleBackdrop visible={page === "rule"} isMobile={isMobile} />
         <WorkoutFigureBackdrop             visible={page === "workout"}   isMobile={isMobile} />
       </div>
-      {currentTrack && page !== "meet" && <PlayerBar track={currentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} tracks={PERMANENT_TRACKS} setTrack={setCurrentTrack} navExpanded={navExpanded} />}
+      {currentTrack && !inCall && <PlayerBar track={currentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} tracks={PERMANENT_TRACKS} setTrack={setCurrentTrack} navExpanded={navExpanded} />}
     </>
   );
 }
