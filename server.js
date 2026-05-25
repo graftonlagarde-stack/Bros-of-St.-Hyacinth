@@ -1049,8 +1049,9 @@ async function sendPushToUser(userId, payload) {
           JSON.stringify(fullPayload)
         );
       } catch (err) {
-        // 410 Gone = subscription expired/revoked — remove it
-        if (err.statusCode === 410 || err.statusCode === 404) {
+        // Remove any subscription that the push server rejects — not just 410/404
+        // Apple and Chrome can return 400, 403, 404, 410 for expired/invalid subs
+        if (err.statusCode >= 400) {
           await db.query("DELETE FROM push_subscriptions WHERE endpoint = $1", [sub.endpoint]);
         } else {
           console.warn(`Push failed for user ${userId}:`, err.message);
@@ -1175,62 +1176,6 @@ app.get("/api/link-preview", requireAuth, async (req, res) => {
 // ═════════════════════════════════════════════════════════════════════════════
 // PUSH SUBSCRIPTION ROUTES
 // ═════════════════════════════════════════════════════════════════════════════
-
-// DEBUG — remove after diagnosis
-app.get("/api/push/debug-subs", requireAuth, async (req, res) => {
-  const { rows: userRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
-  if (userRows[0]?.role !== "arch_admin") return res.status(403).json({ error: "Forbidden" });
-  const { rows } = await db.query(`
-    SELECT ps.id, ps.user_id, u.email, ps.endpoint, ps.created_at
-    FROM push_subscriptions ps
-    JOIN users u ON u.id = ps.user_id
-    ORDER BY ps.user_id
-  `);
-  res.json({ count: rows.length, subs: rows });
-});
-
-// DEBUG — delete all but the most recent subscription per user
-app.post("/api/push/debug-cleanup", requireAuth, async (req, res) => {
-  const { rows: userRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
-  if (userRows[0]?.role !== "arch_admin") return res.status(403).json({ error: "Forbidden" });
-  const { rowCount } = await db.query(`
-    DELETE FROM push_subscriptions
-    WHERE id NOT IN (
-      SELECT DISTINCT ON (user_id) id
-      FROM push_subscriptions
-      ORDER BY user_id, created_at DESC
-    )
-  `);
-  res.json({ deleted: rowCount });
-});
-
-// DEBUG — send a test push to yourself and return full result
-app.post("/api/push/debug-test", requireAuth, async (req, res) => {
-  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
-    return res.json({ error: "VAPID keys not configured" });
-  }
-  const { rows } = await db.query(
-    "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1",
-    [req.userId]
-  );
-  if (rows.length === 0) return res.json({ error: "No subscriptions found for this user" });
-  const results = [];
-  for (const sub of rows) {
-    try {
-      await webpush.sendNotification(
-        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-        JSON.stringify({ title: "Test", body: "Push working", tag: "bsh-test", url: "/" })
-      );
-      results.push({ endpoint: sub.endpoint.slice(0, 50), status: "sent" });
-    } catch (err) {
-      results.push({ endpoint: sub.endpoint.slice(0, 50), status: "failed", statusCode: err.statusCode, message: err.message, body: err.body });
-      if (err.statusCode === 410 || err.statusCode === 404) {
-        await db.query("DELETE FROM push_subscriptions WHERE endpoint = $1", [sub.endpoint]);
-      }
-    }
-  }
-  res.json({ results });
-});
 
 // GET /api/push/vapid-public-key — returns the public VAPID key for the client
 app.get("/api/push/vapid-public-key", (req, res) => {
