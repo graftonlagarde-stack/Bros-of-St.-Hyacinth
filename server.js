@@ -342,24 +342,18 @@ async function initDb() {
   `);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';`);
   await db.query(`ALTER TABLE session_sets ADD COLUMN IF NOT EXISTS migrated BOOLEAN NOT NULL DEFAULT FALSE;`);
-  // One-time cleanup: any session_sets rows that were inserted before the migrated
-  // column existed will have migrated=FALSE but are actually legacy data. Mark them
-  // as migrated by matching them against lift_logs entries.
+  // Cleanup: mark ALL existing session_sets as migrated=TRUE.
+  // The new session-based workout system launched on 2026-05-25.
+  // Any sets in the DB before this date are legacy data from lift_logs migration
+  // and should not count toward volume charts.
+  // Real user-logged sets will always have migrated=FALSE by default going forward.
   await db.query(`
-    UPDATE session_sets ss
+    UPDATE session_sets
     SET migrated = TRUE
     WHERE migrated = FALSE
-      AND EXISTS (
-        SELECT 1 FROM lift_logs ll
-        WHERE ll.user_id = ss.user_id
-          AND ll.exercise = ss.exercise
-          AND (
-            (ss.set_type = 'weighted'   AND ll.weight = ss.weight AND ll.rep_cat = ss.reps)
-            OR
-            (ss.set_type = 'bodyweight' AND ll.weight = ss.reps   AND ss.weight IS NULL)
-          )
-      )
+      AND created_at < 1748131200000
   `);
+  // 1748131200000 = 2026-05-25 00:00:00 UTC in milliseconds
   // Seeds personal_records and backfills session_sets from lift_logs.
   // Guard: skip entirely if migrated rows already exist (true idempotency).
   const BODYWEIGHT_EXERCISES = ["Pull-up", "Push-up", "Dips"];
@@ -928,7 +922,7 @@ app.get("/api/workout/history", requireAuth, async (req, res) => {
       [req.userId]
     );
     const { rows: sets } = await db.query(
-      "SELECT * FROM session_sets WHERE user_id = $1 AND migrated = FALSE ORDER BY created_at ASC",
+      "SELECT * FROM session_sets WHERE user_id = $1 ORDER BY created_at ASC",
       [req.userId]
     );
     const setsBySession = {};
@@ -986,6 +980,7 @@ function shapeSet(row) {
     weight:          row.weight != null ? Number(row.weight) : null,
     reps:            row.reps != null ? Number(row.reps) : null,
     durationSeconds: row.duration_seconds != null ? Number(row.duration_seconds) : null,
+    migrated:        row.migrated === true || row.migrated === 'true',
     createdAt:       Number(row.created_at),
   };
 }

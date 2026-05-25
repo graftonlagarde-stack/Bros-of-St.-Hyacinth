@@ -5002,7 +5002,8 @@ function WorkoutPage({ username }) {
   // ── Chart data ────────────────────────────────────────────────────────────
   const buildVolumeData = (ex) => {
     return history.map(sess => {
-      const sessSets = sess.sets.filter(s => s.exercise === ex);
+      // Only count real (non-migrated) sets for volume
+      const sessSets = sess.sets.filter(s => s.exercise === ex && !s.migrated);
       if (sessSets.length === 0) return null;
       let vol = 0;
       for (const s of sessSets) {
@@ -5017,6 +5018,7 @@ function WorkoutPage({ username }) {
   const buildPrData = (ex, def) => {
     let best = null;
     return history.map(sess => {
+      // Include all sets (including migrated) for PR trend — legacy data is valid for PRs
       const sessSets = sess.sets.filter(s => s.exercise === ex);
       if (sessSets.length === 0) return null;
       let sessionBest = null;
@@ -7287,11 +7289,14 @@ export default function App() {
       <div className="app"
           onTouchStart={isMobile ? (e) => {
             const t = e.touches[0];
-            // Walk up the DOM to check if the touch started inside a horizontal scroll container
+            // Only block swipe if touch starts inside an element explicitly set to scroll horizontally
             let el = e.target;
             let insideHScroll = false;
             while (el && el !== e.currentTarget) {
-              if (el.scrollWidth > el.clientWidth + 2) { insideHScroll = true; break; }
+              const ox = window.getComputedStyle(el).overflowX;
+              if ((ox === "auto" || ox === "scroll") && el.scrollWidth > el.clientWidth + 2) {
+                insideHScroll = true; break;
+              }
               el = el.parentElement;
             }
             swipeTouchRef.current = insideHScroll ? null : { x: t.clientX, y: t.clientY };
