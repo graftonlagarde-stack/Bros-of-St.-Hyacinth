@@ -1176,6 +1176,19 @@ app.get("/api/link-preview", requireAuth, async (req, res) => {
 // PUSH SUBSCRIPTION ROUTES
 // ═════════════════════════════════════════════════════════════════════════════
 
+// DEBUG — remove after diagnosis
+app.get("/api/push/debug-subs", requireAuth, async (req, res) => {
+  const { rows: userRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+  if (userRows[0]?.role !== "arch_admin") return res.status(403).json({ error: "Forbidden" });
+  const { rows } = await db.query(`
+    SELECT ps.id, ps.user_id, u.email, ps.endpoint, ps.created_at
+    FROM push_subscriptions ps
+    JOIN users u ON u.id = ps.user_id
+    ORDER BY ps.user_id
+  `);
+  res.json({ count: rows.length, subs: rows });
+});
+
 // GET /api/push/vapid-public-key — returns the public VAPID key for the client
 app.get("/api/push/vapid-public-key", (req, res) => {
   if (!process.env.VAPID_PUBLIC_KEY)
