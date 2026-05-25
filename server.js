@@ -272,6 +272,8 @@ async function initDb() {
       notified_reminder BOOLEAN NOT NULL DEFAULT FALSE,
       UNIQUE(meeting_id, user_id)
     );
+
+    CREATE TABLE IF NOT EXISTS workout_sessions (
       id         SERIAL PRIMARY KEY,
       user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       date       TEXT NOT NULL,
