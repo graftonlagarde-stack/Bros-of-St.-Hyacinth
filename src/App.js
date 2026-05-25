@@ -2354,7 +2354,7 @@ const css = `
   .xbox-orb-wrap {
     position: absolute;
     left: -60px;
-    top: 50%;
+    top: calc(50% - 22px);
     transform: translateY(-50%);
     width: 220px; height: 220px;
     pointer-events: all;
@@ -2402,7 +2402,7 @@ const css = `
   .nav-wrap {
     position: absolute;
     left: 150px;
-    top: 50%;
+    top: calc(50% - 22px);
     transform: translateY(-50%);
     display: flex;
     flex-direction: column;
