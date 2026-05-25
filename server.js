@@ -2293,7 +2293,6 @@ app.post("/api/meetings/:id/token", requireAuth, async (req, res) => {
         room_name:  roomName,
         user_name:  displayName(user),
         user_id:    String(req.userId),
-        avatar_url: user.avatar_url || null,
         exp:        Math.floor((Number(meeting.scheduled_at) + 3600000) / 1000),
         is_owner:   meeting.created_by === req.userId,
       },
