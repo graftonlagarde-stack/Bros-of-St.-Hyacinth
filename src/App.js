@@ -2034,6 +2034,9 @@ const EXERCISES = [
   // Arms
   { name:"Curl",              group:"Arms",      type:"weighted"   },
   { name:"Dips",              group:"Arms",      type:"bodyweight" },
+  { name:"Weighted Dips",     group:"Arms",      type:"weighted"   },
+  { name:"Chin-up",           group:"Arms",      type:"bodyweight" },
+  { name:"Chin-up",           group:"Back",      type:"bodyweight" },
   // Legs
   { name:"Squat",             group:"Legs",      type:"weighted"   },
   { name:"Deadlift",          group:"Legs",      type:"weighted"   },
