@@ -1204,16 +1204,32 @@ app.post("/api/push/debug-cleanup", requireAuth, async (req, res) => {
   res.json({ deleted: rowCount });
 });
 
-// DEBUG — send a test push to yourself
+// DEBUG — send a test push to yourself and return full result
 app.post("/api/push/debug-test", requireAuth, async (req, res) => {
-  await sendPushToUser(req.userId, {
-    title: "Test notification",
-    body:  "If you see this, push is working.",
-    tag:   "bsh-test",
-    url:   "/",
-    notifType: "global-chat",
-  });
-  res.json({ ok: true });
+  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+    return res.json({ error: "VAPID keys not configured" });
+  }
+  const { rows } = await db.query(
+    "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1",
+    [req.userId]
+  );
+  if (rows.length === 0) return res.json({ error: "No subscriptions found for this user" });
+  const results = [];
+  for (const sub of rows) {
+    try {
+      await webpush.sendNotification(
+        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+        JSON.stringify({ title: "Test", body: "Push working", tag: "bsh-test", url: "/" })
+      );
+      results.push({ endpoint: sub.endpoint.slice(0, 50), status: "sent" });
+    } catch (err) {
+      results.push({ endpoint: sub.endpoint.slice(0, 50), status: "failed", statusCode: err.statusCode, message: err.message, body: err.body });
+      if (err.statusCode === 410 || err.statusCode === 404) {
+        await db.query("DELETE FROM push_subscriptions WHERE endpoint = $1", [sub.endpoint]);
+      }
+    }
+  }
+  res.json({ results });
 });
 
 // GET /api/push/vapid-public-key — returns the public VAPID key for the client
