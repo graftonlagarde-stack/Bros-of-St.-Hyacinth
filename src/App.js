@@ -5000,36 +5000,76 @@ function WorkoutPage({ username }) {
   };
 
   // ── Chart data ────────────────────────────────────────────────────────────
+  // Normalize date strings — old system used "Mar 8", new uses "Mar 8, 2026"
+  // Strip the year portion so both map to the same key e.g. "Mar 8"
+  const normDate = (d) => d ? d.replace(/,\s*\d{4}$/, "").trim() : d;
+
   const buildVolumeData = (ex) => {
-    return history.map(sess => {
-      const sessSets = sess.sets.filter(s => s.exercise === ex);
-      if (sessSets.length === 0) return null;
+    const byDate = {};
+    for (const sess of history) {
+      const dateKey = normDate(sess.date);
+      if (!byDate[dateKey]) byDate[dateKey] = { date: dateKey, realSets: [], migratedSets: [] };
+      for (const s of sess.sets) {
+        if (s.exercise !== ex) continue;
+        if (s.migrated) byDate[dateKey].migratedSets.push(s);
+        else            byDate[dateKey].realSets.push(s);
+      }
+    }
+    return Object.values(byDate).map(({ date, realSets, migratedSets }) => {
       let vol = 0;
-      for (const s of sessSets) {
-        // Migrated legacy sets represent one logged entry — treat as a single set
+      // Real sets: sum all (true volume)
+      for (const s of realSets) {
         if (s.setType === "weighted")   vol += (s.weight || 0) * (s.reps || 0);
         if (s.setType === "bodyweight") vol += s.reps || 0;
         if (s.setType === "duration")   vol += s.durationSeconds || 0;
       }
-      return { date: sess.date, value: vol };
-    }).filter(Boolean);
+      // Migrated sets: take the single highest-value set per exercise per day
+      // (old system logged best efforts, not additive volume)
+      if (realSets.length === 0 && migratedSets.length > 0) {
+        let best = 0;
+        for (const s of migratedSets) {
+          const v = s.setType === "weighted"   ? (s.weight || 0) * (s.reps || 0)
+                  : s.setType === "bodyweight" ? (s.reps || 0)
+                  : (s.durationSeconds || 0);
+          if (v > best) best = v;
+        }
+        vol = best;
+      }
+      if (vol === 0) return null;
+      return { date, value: vol };
+    }).filter(Boolean).sort((a, b) => {
+      const ia = history.findIndex(s => normDate(s.date) === a.date);
+      const ib = history.findIndex(s => normDate(s.date) === b.date);
+      return ia - ib;
+    });
   };
 
   const buildPrData = (ex, def) => {
+    const byDate = {};
+    for (const sess of history) {
+      const dateKey = normDate(sess.date);
+      if (!byDate[dateKey]) byDate[dateKey] = [];
+      for (const s of sess.sets) {
+        if (s.exercise !== ex) continue;
+        byDate[dateKey].push(s);
+      }
+    }
+    const dates = history
+      .map(s => normDate(s.date))
+      .filter((d, i, a) => a.indexOf(d) === i); // unique, in order
     let best = null;
-    return history.map(sess => {
-      // Include all sets (including migrated) for PR trend — legacy data is valid for PRs
-      const sessSets = sess.sets.filter(s => s.exercise === ex);
-      if (sessSets.length === 0) return null;
-      let sessionBest = null;
-      for (const s of sessSets) {
-        let v = def.type === "weighted"
+    return dates.map(date => {
+      const daySets = byDate[date] || [];
+      if (daySets.length === 0) return null;
+      let dayBest = null;
+      for (const s of daySets) {
+        const v = def.type === "weighted"
           ? (s.reps === 1 ? s.weight : Math.round(s.weight * (1 + s.reps / 30)))
           : def.type === "duration" ? s.durationSeconds : s.reps;
-        if (sessionBest === null || v > sessionBest) sessionBest = v;
+        if (dayBest === null || v > dayBest) dayBest = v;
       }
-      if (best === null || sessionBest > best) best = sessionBest;
-      return { date: sess.date, value: best };
+      if (best === null || dayBest > best) best = dayBest;
+      return { date, value: best };
     }).filter(Boolean);
   };
 

@@ -834,7 +834,7 @@ async function updatePrIfBetter(userId, exercise, prValue) {
 // GET /api/workout/session/today — get or create today's session with all sets
 app.get("/api/workout/session/today", requireAuth, async (req, res) => {
   try {
-    const today = new Date().toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" });
+    const today = new Date().toLocaleDateString("en-US", { month:"short", day:"numeric" });
     const { rows: sessRows } = await db.query(`
       INSERT INTO workout_sessions (user_id, date, created_at)
       VALUES ($1, $2, $3)
