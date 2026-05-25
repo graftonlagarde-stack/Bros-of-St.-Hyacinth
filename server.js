@@ -2260,17 +2260,23 @@ app.post("/api/meetings/:id/token", requireAuth, async (req, res) => {
     const meeting = rows[0];
     const { rows: userRows } = await db.query("SELECT * FROM users WHERE id = $1", [req.userId]);
     const user = userRows[0];
-    const token = await dailyRequest("POST", "/meeting-tokens", {
-      properties: {
-        room_name:   meeting.daily_room_name,
-        user_name:   displayName(user),
-        user_id:     String(req.userId),
-        avatar_url:  user.avatar_url || null,
-        exp:         Math.floor((meeting.scheduled_at + 3600000) / 1000),
-        is_owner:    meeting.created_by === req.userId,
-      },
-    });
-    res.json({ token: token.token, roomUrl: meeting.daily_room_url, roomName: meeting.daily_room_name });
+
+    let token = null;
+    if (process.env.DAILY_API_KEY) {
+      const result = await dailyRequest("POST", "/meeting-tokens", {
+        properties: {
+          room_name:   meeting.daily_room_name,
+          user_name:   displayName(user),
+          user_id:     String(req.userId),
+          avatar_url:  user.avatar_url || null,
+          exp:         Math.floor((Number(meeting.scheduled_at) + 3600000) / 1000),
+          is_owner:    meeting.created_by === req.userId,
+        },
+      });
+      token = result.token;
+    }
+    // token may be null if Daily not configured — client handles this
+    res.json({ token, roomUrl: meeting.daily_room_url, roomName: meeting.daily_room_name });
   } catch (err) {
     console.error("POST /api/meetings/:id/token:", err);
     res.status(500).json({ error: "Server error" });

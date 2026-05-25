@@ -7276,12 +7276,23 @@ function MeetPage({ currentUser }) {
     api.getMeetings().then(setMeetings).catch(() => {});
   }, 30000);
 
+  const [joinError, setJoinError] = useState("");
+
   const joinMeeting = async (meeting) => {
+    setJoinError("");
     try {
       const data = await api.getMeetingToken(meeting.id);
+      if (data.error) { setJoinError(data.error); return; }
+      if (!data.token) {
+        setJoinError("Daily.co is not configured yet. Add DAILY_API_KEY to Railway to enable calls.");
+        return;
+      }
       setCallToken(data.token); setCallRoom(data.roomName);
       setActiveMeeting(meeting); setView("call");
-    } catch (err) { console.warn("joinMeeting:", err); }
+    } catch (err) {
+      setJoinError("Could not join call. Please try again.");
+      console.warn("joinMeeting:", err);
+    }
   };
 
   const createMeeting = async () => {
@@ -7310,7 +7321,7 @@ function MeetPage({ currentUser }) {
   };
 
   const now = Date.now();
-  const canJoin = (m) => m.scheduledAt - now < 10 * 60 * 1000;
+  const canJoin = (m) => true; // joinable any time once scheduled
   const fmtTime = (ts) => new Date(ts).toLocaleString("en-US", { weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });
 
   if (view === "call" && activeMeeting && callToken && callRoom)
@@ -7355,6 +7366,7 @@ function MeetPage({ currentUser }) {
       <div className="page-title">MEET</div>
       <div className="page-sub">&ldquo;Where two or three are gathered in my name, there am I among them.&rdquo; &mdash; Matthew 18:20</div>
       <button className="btn btn-primary" onClick={() => setView("create")} style={{marginBottom:20,width:"100%",fontSize:13,padding:"10px 0"}}>+ Schedule a Call</button>
+      {joinError && <div style={{color:"rgba(255,68,85,0.8)",fontSize:13,marginBottom:12,padding:"8px 12px",border:"1px solid rgba(255,68,85,0.2)",borderRadius:4}}>{joinError}</div>}
       {loading && <div style={{color:"var(--muted)",textAlign:"center",padding:32,fontFamily:"'Orbitron',sans-serif",letterSpacing:2,fontSize:12}}>LOADING…</div>}
       {!loading && meetings.length === 0 && <div style={{color:"var(--muted)",textAlign:"center",padding:32,fontSize:13}}>No upcoming calls scheduled.</div>}
       {meetings.map(m => {
