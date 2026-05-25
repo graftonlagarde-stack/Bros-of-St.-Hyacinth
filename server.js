@@ -269,6 +269,7 @@ async function initDb() {
       weight           NUMERIC,
       reps             INTEGER,
       duration_seconds INTEGER,
+      migrated         BOOLEAN NOT NULL DEFAULT FALSE,
       created_at       BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
     );
 
@@ -340,6 +341,7 @@ async function initDb() {
     );
   `);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';`);
+  await db.query(`ALTER TABLE session_sets ADD COLUMN IF NOT EXISTS migrated BOOLEAN NOT NULL DEFAULT FALSE;`);
   // Seeds personal_records from best estimated 1RM (or max reps for bodyweight)
   // and backfills workout_sessions/session_sets so history is preserved.
   const BODYWEIGHT_EXERCISES = ["Pull-up", "Push-up", "Dips"];
@@ -381,8 +383,8 @@ async function initDb() {
     );
     if (existing.length === 0) {
       await db.query(`
-        INSERT INTO session_sets (session_id, user_id, exercise, set_type, weight, reps, duration_seconds, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO session_sets (session_id, user_id, exercise, set_type, weight, reps, duration_seconds, migrated, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8)
       `, [
         sessionId, log.user_id, log.exercise,
         isBodyweight ? "bodyweight" : "weighted",
@@ -825,7 +827,7 @@ app.get("/api/workout/session/today", requireAuth, async (req, res) => {
     `, [req.userId, today, Date.now()]);
     const session = sessRows[0];
     const { rows: sets } = await db.query(
-      "SELECT * FROM session_sets WHERE session_id = $1 ORDER BY created_at ASC",
+      "SELECT * FROM session_sets WHERE session_id = $1 AND migrated = FALSE ORDER BY created_at ASC",
       [session.id]
     );
     res.json({ session, sets: sets.map(shapeSet) });
@@ -858,14 +860,49 @@ app.post("/api/workout/session/:sessionId/sets", requireAuth, async (req, res) =
   }
 });
 
-// DELETE /api/workout/sets/:setId — delete a set
+// DELETE /api/workout/sets/:setId — delete a set and recompute PR
 app.delete("/api/workout/sets/:setId", requireAuth, async (req, res) => {
   try {
+    // Get the set before deleting so we know the exercise
+    const { rows: setRows } = await db.query(
+      "SELECT * FROM session_sets WHERE id = $1 AND user_id = $2",
+      [req.params.setId, req.userId]
+    );
+    if (setRows.length === 0) return res.status(404).json({ error: "Set not found" });
+    const deletedSet = setRows[0];
+
     await db.query(
       "DELETE FROM session_sets WHERE id = $1 AND user_id = $2",
       [req.params.setId, req.userId]
     );
-    res.json({ ok: true });
+
+    // Recompute PR for this exercise from all remaining non-migrated sets
+    const { rows: remaining } = await db.query(
+      "SELECT set_type, weight, reps, duration_seconds FROM session_sets WHERE user_id = $1 AND exercise = $2 AND migrated = FALSE",
+      [req.userId, deletedSet.exercise]
+    );
+
+    if (remaining.length === 0) {
+      // Also check personal_records seeded from lift_logs (legacy PRs still valid)
+      // Just delete the PR entry if no real sets remain
+      await db.query(
+        "DELETE FROM personal_records WHERE user_id = $1 AND exercise = $2",
+        [req.userId, deletedSet.exercise]
+      );
+    } else {
+      // Find the best PR value among remaining sets
+      let bestPr = 0;
+      for (const s of remaining) {
+        const v = computePrValue(deletedSet.exercise, s.set_type, Number(s.weight), Number(s.reps), Number(s.duration_seconds));
+        if (v > bestPr) bestPr = v;
+      }
+      await db.query(
+        "UPDATE personal_records SET value = $1, updated_at = $2 WHERE user_id = $3 AND exercise = $4",
+        [bestPr, Date.now(), req.userId, deletedSet.exercise]
+      );
+    }
+
+    res.json({ ok: true, exercise: deletedSet.exercise });
   } catch (err) {
     console.error("DELETE /api/workout/sets/:setId:", err);
     res.status(500).json({ error: "Server error" });
@@ -880,7 +917,7 @@ app.get("/api/workout/history", requireAuth, async (req, res) => {
       [req.userId]
     );
     const { rows: sets } = await db.query(
-      "SELECT * FROM session_sets WHERE user_id = $1 ORDER BY created_at ASC",
+      "SELECT * FROM session_sets WHERE user_id = $1 AND migrated = FALSE ORDER BY created_at ASC",
       [req.userId]
     );
     const setsBySession = {};

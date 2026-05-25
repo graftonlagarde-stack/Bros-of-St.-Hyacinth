@@ -4909,6 +4909,7 @@ function WorkoutPage({ username }) {
   const [weight, setWeight]       = useState("");
   const [reps, setReps]           = useState("");
   const [duration, setDuration]   = useState(""); // seconds
+  const [setCount, setSetCount]   = useState("1");
   const [adding, setAdding]       = useState(false);
 
   // ── History + chart state ──────────────────────────────────────────────────
@@ -4949,6 +4950,7 @@ function WorkoutPage({ username }) {
     if (exDef.type === "weighted"   && (!weight || !reps)) return;
     if (exDef.type === "bodyweight" && !reps) return;
     if (exDef.type === "duration"   && !duration) return;
+    const n = Math.max(1, Math.min(50, parseInt(setCount) || 1));
     setAdding(true);
     try {
       const body = {
@@ -4958,18 +4960,24 @@ function WorkoutPage({ username }) {
         reps:            exDef.type !== "duration"   ? Number(reps)     : null,
         durationSeconds: exDef.type === "duration"   ? Number(duration) : null,
       };
-      const { set, isNewPr } = await api.addSet(session.id, body);
-      setSets(prev => [...prev, set]);
-      if (isNewPr) {
-        setPrs(prev => ({ ...prev, [exercise]: set.setType === "weighted"
-          ? (Number(reps) === 1 ? Number(weight) : Math.round(Number(weight) * (1 + Number(reps) / 30)))
-          : set.setType === "duration" ? Number(duration) : Number(reps) }));
+      let latestIsNewPr = false;
+      const newSets = [];
+      for (let i = 0; i < n; i++) {
+        const { set, isNewPr } = await api.addSet(session.id, body);
+        newSets.push(set);
+        if (isNewPr) latestIsNewPr = true;
+      }
+      setSets(prev => [...prev, ...newSets]);
+      if (latestIsNewPr) {
+        const prData = await api.getMyPrs();
+        const prMap = {};
+        for (const p of prData) prMap[p.exercise] = p.value;
+        setPrs(prMap);
         setNewPrEx(exercise);
         setTimeout(() => setNewPrEx(null), 3000);
       }
-      // Refresh history for charts
       api.getWorkoutHistory().then(setHistory).catch(() => {});
-      setWeight(""); setReps(""); setDuration("");
+      setWeight(""); setReps(""); setDuration(""); setSetCount("1");
     } catch (err) { console.warn("addSet:", err); }
     finally { setAdding(false); }
   };
@@ -4979,7 +4987,15 @@ function WorkoutPage({ username }) {
     try {
       await api.deleteSet(setId);
       setSets(prev => prev.filter(s => s.id !== setId));
-      api.getWorkoutHistory().then(setHistory).catch(() => {});
+      // Refresh both history and PRs since deleting a best set lowers the PR
+      const [histData, prData] = await Promise.all([
+        api.getWorkoutHistory(),
+        api.getMyPrs(),
+      ]);
+      setHistory(histData);
+      const prMap = {};
+      for (const p of prData) prMap[p.exercise] = p.value;
+      setPrs(prMap);
     } catch (err) { console.warn("deleteSet:", err); }
   };
 
@@ -5061,27 +5077,31 @@ function WorkoutPage({ username }) {
 
         {/* Exercise group selector */}
         <div className="form-label" style={{marginBottom:6}}>Muscle Group</div>
-        <div className="tab-row" style={{flexWrap:"wrap",marginBottom:14}}>
-          {EXERCISE_GROUPS.map(g => (
-            <div key={g} className={`tab ${group===g?"active":""}`}
-              onClick={() => {
-                setGroup(g);
-                const first = EXERCISES.find(e => e.group === g);
-                if (first) setExercise(first.name);
-                setWeight(""); setReps(""); setDuration("");
-              }}>{g}</div>
-          ))}
+        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:14,paddingBottom:4}}>
+          <div className="tab-row" style={{flexWrap:"nowrap",minWidth:"max-content"}}>
+            {EXERCISE_GROUPS.map(g => (
+              <div key={g} className={`tab ${group===g?"active":""}`}
+                onClick={() => {
+                  setGroup(g);
+                  const first = EXERCISES.find(e => e.group === g);
+                  if (first) setExercise(first.name);
+                  setWeight(""); setReps(""); setDuration(""); setSetCount("1");
+                }}>{g}</div>
+            ))}
+          </div>
         </div>
 
         {/* Exercise selector */}
         <div className="form-label" style={{marginBottom:6}}>Exercise</div>
-        <div className="tab-row" style={{flexWrap:"wrap",marginBottom:14}}>
-          {EXERCISES.filter(e => e.group === group).map(e => (
-            <div key={e.name} className={`tab ${exercise===e.name?"active":""}`}
-              onClick={() => { setExercise(e.name); setWeight(""); setReps(""); setDuration(""); }}>
-              {e.name}
-            </div>
-          ))}
+        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:14,paddingBottom:4}}>
+          <div className="tab-row" style={{flexWrap:"nowrap",minWidth:"max-content"}}>
+            {EXERCISES.filter(e => e.group === group).map(e => (
+              <div key={e.name} className={`tab ${exercise===e.name?"active":""}`}
+                onClick={() => { setExercise(e.name); setWeight(""); setReps(""); setDuration(""); setSetCount("1"); }}>
+                {e.name}
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Current PR hint */}
@@ -5100,46 +5120,46 @@ function WorkoutPage({ username }) {
           </div>
         )}
 
-        {/* Input fields */}
-        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+        {/* Input fields — grid layout keeps everything on the same baseline */}
+        <div style={{
+          display:"grid",
+          gridTemplateColumns: exDef.type === "weighted" ? "1fr 1fr 1fr auto" : "1fr 1fr auto",
+          gap:8, alignItems:"end", marginBottom:12,
+        }}>
           {exDef.type === "weighted" && (
-            <>
-              <div style={{flex:1,minWidth:100}}>
-                <div className="form-label" style={{marginBottom:4}}>Weight (lbs)</div>
-                <input type="number" value={weight} onChange={e => setWeight(e.target.value)}
-                  placeholder="e.g. 225" style={{width:"100%",boxSizing:"border-box"}}
-                  onKeyDown={e => e.key==="Enter" && addSet()} />
-              </div>
-              <div style={{flex:1,minWidth:80}}>
-                <div className="form-label" style={{marginBottom:4}}>Reps</div>
-                <input type="number" value={reps} onChange={e => setReps(e.target.value)}
-                  placeholder="e.g. 5" style={{width:"100%",boxSizing:"border-box"}}
-                  onKeyDown={e => e.key==="Enter" && addSet()} />
-              </div>
-            </>
+            <div>
+              <div className="form-label" style={{marginBottom:4}}>Weight (lbs)</div>
+              <input type="number" value={weight} onChange={e => setWeight(e.target.value)}
+                placeholder="225" style={{width:"100%",boxSizing:"border-box"}}
+                onKeyDown={e => e.key==="Enter" && addSet()} />
+            </div>
           )}
-          {exDef.type === "bodyweight" && (
-            <div style={{flex:1,minWidth:80}}>
+          {exDef.type !== "duration" && (
+            <div>
               <div className="form-label" style={{marginBottom:4}}>Reps</div>
               <input type="number" value={reps} onChange={e => setReps(e.target.value)}
-                placeholder="e.g. 10" style={{width:"100%",boxSizing:"border-box"}}
+                placeholder={exDef.type === "weighted" ? "5" : "10"} style={{width:"100%",boxSizing:"border-box"}}
                 onKeyDown={e => e.key==="Enter" && addSet()} />
             </div>
           )}
           {exDef.type === "duration" && (
-            <div style={{flex:1,minWidth:100}}>
-              <div className="form-label" style={{marginBottom:4}}>Duration (seconds)</div>
+            <div>
+              <div className="form-label" style={{marginBottom:4}}>Duration (sec)</div>
               <input type="number" value={duration} onChange={e => setDuration(e.target.value)}
-                placeholder="e.g. 60" style={{width:"100%",boxSizing:"border-box"}}
+                placeholder="60" style={{width:"100%",boxSizing:"border-box"}}
                 onKeyDown={e => e.key==="Enter" && addSet()} />
             </div>
           )}
-          <div style={{display:"flex",alignItems:"flex-end"}}>
-            <button className="btn btn-primary" onClick={addSet} disabled={adding}
-              style={{height:40,padding:"0 20px",fontSize:13}}>
-              {adding ? "…" : "Log Set"}
-            </button>
+          <div>
+            <div className="form-label" style={{marginBottom:4}}>Sets</div>
+            <input type="number" value={setCount} onChange={e => setSetCount(e.target.value)}
+              min="1" max="50" placeholder="1" style={{width:"100%",boxSizing:"border-box"}}
+              onKeyDown={e => e.key==="Enter" && addSet()} />
           </div>
+          <button className="btn btn-primary" onClick={addSet} disabled={adding}
+            style={{height:40,padding:"0 16px",fontSize:13,whiteSpace:"nowrap"}}>
+            {adding ? "…" : "Log"}
+          </button>
         </div>
 
         {/* Today's logged sets */}
@@ -5164,7 +5184,8 @@ function WorkoutPage({ username }) {
                     </span>
                     <button onClick={() => deleteSet(s.id)}
                       style={{background:"none",border:"none",color:"rgba(255,68,85,0.6)",
-                        cursor:"pointer",fontSize:14,padding:"0 4px"}}>✕</button>
+                        cursor:"pointer",fontSize:16,padding:"4px 10px",
+                        minWidth:36,minHeight:36,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
                   </div>
                 ))}
               </div>
@@ -5201,21 +5222,25 @@ function WorkoutPage({ username }) {
         </div>
 
         {/* Chart exercise group */}
-        <div className="tab-row" style={{flexWrap:"wrap",marginBottom:8}}>
-          {EXERCISE_GROUPS.map(g => (
-            <div key={g} className={`tab ${chartGroup===g?"active":""}`}
-              onClick={() => {
-                setChartGroup(g);
-                const first = EXERCISES.find(e => e.group === g);
-                if (first) setChartEx(first.name);
-              }}>{g}</div>
-          ))}
+        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:8,paddingBottom:4}}>
+          <div className="tab-row" style={{flexWrap:"nowrap",minWidth:"max-content"}}>
+            {EXERCISE_GROUPS.map(g => (
+              <div key={g} className={`tab ${chartGroup===g?"active":""}`}
+                onClick={() => {
+                  setChartGroup(g);
+                  const first = EXERCISES.find(e => e.group === g);
+                  if (first) setChartEx(first.name);
+                }}>{g}</div>
+            ))}
+          </div>
         </div>
-        <div className="tab-row" style={{flexWrap:"wrap",marginBottom:16}}>
-          {EXERCISES.filter(e => e.group === chartGroup).map(e => (
-            <div key={e.name} className={`tab ${chartEx===e.name?"active":""}`}
-              onClick={() => setChartEx(e.name)}>{e.name}</div>
-          ))}
+        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:16,paddingBottom:4}}>
+          <div className="tab-row" style={{flexWrap:"nowrap",minWidth:"max-content"}}>
+            {EXERCISES.filter(e => e.group === chartGroup).map(e => (
+              <div key={e.name} className={`tab ${chartEx===e.name?"active":""}`}
+                onClick={() => setChartEx(e.name)}>{e.name}</div>
+            ))}
+          </div>
         </div>
 
         {chartData.length > 1 ? (
@@ -5679,6 +5704,7 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack, navExpand
 // ─── TOP CHARTS PAGE ──────────────────────────────────────────────────────────
 function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
   const [chartEx, setChartEx]           = useState("Bench Press");
+  const [chartGroup, setChartGroup]     = useState("Chest");
   const [chartsTabInternal, setChartsTabInternal] = useState("global");
   const isMobileTC = useIsMobile();
   const chartsTab = (isMobileTC && mobileScreen !== null)
@@ -5791,15 +5817,22 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
             width: isMobileTC && membership ? "50%" : "100%", flexShrink: 0,
             display: !isMobileTC && membership && chartsTab === "chapter" ? "none" : "block",
           }}>
-        <div style={{display:"flex",gap:20,marginBottom:24,flexWrap:"wrap"}}>
-        <div style={{flex:1,minWidth:220}}>
-          <div className="form-label" style={{marginBottom:8}}>Exercise</div>
-          <div className="tab-row" style={{flexWrap:"wrap"}}>
-            {EXERCISE_LIST.map(ex => (
-              <div key={ex} className={`tab ${chartEx===ex?"active":""}`} onClick={()=>setChartEx(ex)}>{ex}</div>
+        <div style={{marginBottom:20}}>
+          <div className="form-label" style={{marginBottom:6}}>Muscle Group</div>
+          <div className="tab-row" style={{flexWrap:"wrap",marginBottom:10}}>
+            {EXERCISE_GROUPS.map(g => (
+              <div key={g} className={`tab ${chartGroup===g?"active":""}`} onClick={() => {
+                setChartGroup(g);
+                const first = EXERCISES.find(e => e.group === g);
+                if (first) setChartEx(first.name);
+              }}>{g}</div>
             ))}
           </div>
-        </div>
+          <div className="tab-row" style={{flexWrap:"wrap"}}>
+            {EXERCISES.filter(e => e.group === chartGroup).map(e => (
+              <div key={e.name} className={`tab ${chartEx===e.name?"active":""}`} onClick={() => setChartEx(e.name)}>{e.name}</div>
+            ))}
+          </div>
         </div>
 
       <RankCard username={username} exercise={chartEx} myPr={myPrs[chartEx]} communityPrs={communityPrs} />
@@ -5898,15 +5931,22 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
             fontFamily:"'Orbitron',sans-serif",letterSpacing:2}}>LOADING…</div>
         ) : (
         <>
-        <div style={{display:"flex",gap:20,marginBottom:24,flexWrap:"wrap"}}>
-        <div style={{flex:1,minWidth:220}}>
-          <div className="form-label" style={{marginBottom:8}}>Exercise</div>
-          <div className="tab-row" style={{flexWrap:"wrap"}}>
-            {EXERCISE_LIST.map(ex => (
-              <div key={ex} className={`tab ${chartEx===ex?"active":""}`} onClick={()=>setChartEx(ex)}>{ex}</div>
+        <div style={{marginBottom:20}}>
+          <div className="form-label" style={{marginBottom:6}}>Muscle Group</div>
+          <div className="tab-row" style={{flexWrap:"wrap",marginBottom:10}}>
+            {EXERCISE_GROUPS.map(g => (
+              <div key={g} className={`tab ${chartGroup===g?"active":""}`} onClick={() => {
+                setChartGroup(g);
+                const first = EXERCISES.find(e => e.group === g);
+                if (first) setChartEx(first.name);
+              }}>{g}</div>
             ))}
           </div>
-        </div>
+          <div className="tab-row" style={{flexWrap:"wrap"}}>
+            {EXERCISES.filter(e => e.group === chartGroup).map(e => (
+              <div key={e.name} className={`tab ${chartEx===e.name?"active":""}`} onClick={() => setChartEx(e.name)}>{e.name}</div>
+            ))}
+          </div>
         </div>
 
         <RankCard username={username} exercise={chartEx} myPr={myPrs[chartEx]} communityPrs={chapterCommunityPrs} />
