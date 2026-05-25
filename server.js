@@ -332,6 +332,23 @@ async function initDb() {
   await db.query(`
     ALTER TABLE unread_counts ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'global-chat';
   `);
+  // Fix primary key — old table had PK on (user_id) only, needs (user_id, type)
+  // Drop the old PK and add the composite one if it doesn't already exist
+  await db.query(`
+    DO $$
+    BEGIN
+      -- Drop old single-column primary key if it exists
+      IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'unread_counts_pkey'
+          AND contype = 'p'
+          AND array_length(conkey, 1) = 1
+      ) THEN
+        ALTER TABLE unread_counts DROP CONSTRAINT unread_counts_pkey;
+        ALTER TABLE unread_counts ADD PRIMARY KEY (user_id, type);
+      END IF;
+    END$$;
+  `);
   await db.query(`
     CREATE TABLE IF NOT EXISTS password_resets (
       id         SERIAL PRIMARY KEY,
@@ -1042,19 +1059,17 @@ async function sendPushToUser(userId, payload) {
       "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1",
       [userId]
     );
-    console.log(`[push] user ${userId} has ${rows.length} subscription(s)`);
     for (const sub of rows) {
       try {
         await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
           JSON.stringify(fullPayload)
         );
-        console.log(`[push] sent OK to user ${userId} endpoint ${sub.endpoint.slice(0, 50)}`);
       } catch (err) {
-        console.warn(`[push] failed for user ${userId}: status=${err.statusCode} msg=${err.message} body=${err.body}`);
         if (err.statusCode >= 400) {
           await db.query("DELETE FROM push_subscriptions WHERE endpoint = $1", [sub.endpoint]);
-          console.warn(`[push] deleted stale subscription for user ${userId}`);
+        } else {
+          console.warn(`Push failed for user ${userId}:`, err.message);
         }
       }
     }
@@ -1298,13 +1313,11 @@ app.post("/api/board/messages", requireAuth, async (req, res) => {
       "SELECT DISTINCT user_id FROM push_subscriptions WHERE user_id != $1",
       [req.userId]
     );
-    console.log(`[push] message from user ${req.userId}, notifying ${allUsers.length} user(s):`, allUsers.map(u => u.user_id));
     const senderName = displayName(user);
     const pushBody = text?.trim()
       ? `${senderName}: ${text.trim().slice(0, 80)}`
       : `${senderName} sent a file`;
     for (const u of allUsers) {
-      console.log(`[push] sending to user ${u.user_id}`);
       sendPushToUser(u.user_id, {
         title: "Bros of St. Hyacinth",
         body:  pushBody,
