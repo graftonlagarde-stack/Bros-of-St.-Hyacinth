@@ -190,6 +190,13 @@ const api = {
     return fetch(`${API_BASE}/api/profile/avatar`, { method:"POST", headers:{ Authorization:`Bearer ${api.getToken()}` }, body:fd }).then(r=>r.json());
   },
   deleteAvatar:       ()              => api.delete("/api/profile/avatar"),
+  // Meetings
+  getMeetings:        ()              => api.get("/api/meetings"),
+  createMeeting:      (body)          => api.post("/api/meetings", body),
+  rsvpMeeting:        (id, status)    => api.request("PATCH", `/api/meetings/${id}/rsvp`, { status }),
+  cancelMeeting:      (id)            => api.delete(`/api/meetings/${id}`),
+  getMeetingToken:    (id)            => api.post(`/api/meetings/${id}/token`, {}),
+
   getMessages:   (since) => api.get(since ? `/api/board/messages?since=${since}` : "/api/board/messages"),
   postMessage:   (body) => api.post("/api/board/messages", body),
   postReaction:  (body) => api.post("/api/board/reactions", body),
@@ -2234,6 +2241,13 @@ const css = `
     font-family: 'Orbitron', sans-serif;
     letter-spacing: 1px;
     color: rgba(136,255,0,0.7);
+  }
+
+  /* ── Portrait lock — block landscape on mobile ── */
+  @media (orientation: landscape) and (max-width: 900px) {
+    .landscape-block {
+      display: flex !important;
+    }
   }
 
   /* ── BASE ── */
@@ -7227,6 +7241,338 @@ function AdminSection({ currentUser, cardStyle, sectionTitle }) {
     </div>
   );
 }
+// ─── MEET PAGE ─────────────────────────────────────────────────────────────────
+function MeetPage({ currentUser }) {
+  const isMobile = useIsMobile();
+  const [meetings,    setMeetings]    = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [view,        setView]        = useState("list"); // "list" | "create" | "call"
+  const [activeMeeting, setActiveMeeting] = useState(null);
+  const [callToken,   setCallToken]   = useState(null);
+  const [callRoom,    setCallRoom]    = useState(null);
+
+  // Create form state
+  const [title,       setTitle]       = useState("");
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [inviteMode,  setInviteMode]  = useState("all");
+  const [allUsers,    setAllUsers]    = useState([]);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [chapterUsers,setChapterUsers]= useState([]);
+  const [creating,    setCreating]    = useState(false);
+
+  useEffect(() => {
+    api.getMeetings().then(setMeetings).catch(() => {}).finally(() => setLoading(false));
+    api.get("/api/admin/users").then(u => setAllUsers(u || [])).catch(() => {});
+    api.getMyMembership().then(m => {
+      if (m?.status === "approved")
+        api.getChapterCommunityUsers(m.chapter_id).then(u => setChapterUsers(u || [])).catch(() => {});
+    }).catch(() => {});
+  }, []);
+
+  usePolling(() => {
+    if (view === "call") return;
+    api.getMeetings().then(setMeetings).catch(() => {});
+  }, 30000);
+
+  const joinMeeting = async (meeting) => {
+    try {
+      const data = await api.getMeetingToken(meeting.id);
+      setCallToken(data.token); setCallRoom(data.roomName);
+      setActiveMeeting(meeting); setView("call");
+    } catch (err) { console.warn("joinMeeting:", err); }
+  };
+
+  const createMeeting = async () => {
+    if (!title.trim() || !scheduledAt) return;
+    setCreating(true);
+    try {
+      let inviteeIds = [];
+      if (inviteMode === "all")          inviteeIds = allUsers.map(u => u.id).filter(id => id !== currentUser.id);
+      else if (inviteMode === "chapter") inviteeIds = chapterUsers.map(u => u.userId || u.id).filter(id => id !== currentUser.id);
+      else                               inviteeIds = [...selectedIds];
+      const data = await api.createMeeting({ title: title.trim(), scheduledAt: new Date(scheduledAt).getTime(), inviteeIds });
+      setMeetings(prev => [...prev, data.meeting].sort((a,b) => a.scheduledAt - b.scheduledAt));
+      setTitle(""); setScheduledAt(""); setSelectedIds(new Set()); setView("list");
+    } catch (err) { console.warn("createMeeting:", err); }
+    finally { setCreating(false); }
+  };
+
+  const cancelMeeting = async (id) => {
+    await api.cancelMeeting(id).catch(() => {});
+    setMeetings(prev => prev.filter(m => m.id !== id));
+  };
+
+  const rsvp = async (id, status) => {
+    await api.rsvpMeeting(id, status).catch(() => {});
+    setMeetings(prev => prev.map(m => m.id === id ? { ...m, myStatus: status } : m));
+  };
+
+  const now = Date.now();
+  const canJoin = (m) => m.scheduledAt - now < 10 * 60 * 1000;
+  const fmtTime = (ts) => new Date(ts).toLocaleString("en-US", { weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });
+
+  if (view === "call" && activeMeeting && callToken && callRoom)
+    return <DailyCallScreen roomName={callRoom} token={callToken} meeting={activeMeeting} currentUser={currentUser} onLeave={() => { setView("list"); setCallToken(null); setCallRoom(null); setActiveMeeting(null); }} />;
+
+  if (view === "create") return (
+    <div className="page">
+      <div className="page-title">SCHEDULE <span className="accentText">CALL</span></div>
+      <div className="card">
+        <div className="form-label" style={{marginBottom:6}}>Title</div>
+        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Weekly Check-In" style={{width:"100%",boxSizing:"border-box",marginBottom:16}} />
+        <div className="form-label" style={{marginBottom:6}}>Date & Time</div>
+        <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} style={{width:"100%",boxSizing:"border-box",marginBottom:16,background:"var(--surface2)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:4,padding:"8px 10px",fontSize:14}} />
+        <div className="form-label" style={{marginBottom:8}}>Invite</div>
+        <div className="tab-row" style={{marginBottom:14}}>
+          {[["all","All Brothers"],["chapter","My Chapter"],["specific","Specific"]].map(([v,l]) => (
+            <div key={v} className={`tab ${inviteMode===v?"active":""}`} onClick={() => { setInviteMode(v); setSelectedIds(new Set()); }}>{l}</div>
+          ))}
+        </div>
+        {inviteMode === "specific" && (
+          <div style={{maxHeight:200,overflowY:"auto",border:"1px solid var(--border)",borderRadius:6,padding:8,marginBottom:16}}>
+            {allUsers.filter(u => u.id !== currentUser.id).map(u => (
+              <div key={u.id} onClick={() => setSelectedIds(prev => { const n = new Set(prev); n.has(u.id) ? n.delete(u.id) : n.add(u.id); return n; })}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"8px 4px",cursor:"pointer",borderBottom:"1px solid rgba(136,255,0,0.05)"}}>
+                <div style={{width:18,height:18,borderRadius:3,border:"1px solid var(--border)",background:selectedIds.has(u.id)?"var(--accent)":"transparent",flexShrink:0}} />
+                <div className="avatar sm" style={{width:28,height:28,fontSize:9}}>{initials(u.displayName||`${u.firstName} ${u.lastName}`)}</div>
+                <span style={{fontSize:14}}>{u.displayName||`${u.firstName} ${u.lastName}`}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{display:"flex",gap:8}}>
+          <button className="btn btn-primary" onClick={createMeeting} disabled={creating||!title.trim()||!scheduledAt} style={{flex:1}}>{creating?"Scheduling…":"Schedule Call"}</button>
+          <button className="btn" onClick={() => setView("list")} style={{padding:"0 16px"}}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="page">
+      <div className="page-title">MEET</div>
+      <div className="page-sub">&ldquo;Where two or three are gathered in my name, there am I among them.&rdquo; &mdash; Matthew 18:20</div>
+      <button className="btn btn-primary" onClick={() => setView("create")} style={{marginBottom:20,width:"100%",fontSize:13,padding:"10px 0"}}>+ Schedule a Call</button>
+      {loading && <div style={{color:"var(--muted)",textAlign:"center",padding:32,fontFamily:"'Orbitron',sans-serif",letterSpacing:2,fontSize:12}}>LOADING…</div>}
+      {!loading && meetings.length === 0 && <div style={{color:"var(--muted)",textAlign:"center",padding:32,fontSize:13}}>No upcoming calls scheduled.</div>}
+      {meetings.map(m => {
+        const isCreator = m.createdBy === currentUser.id;
+        const joinable  = canJoin(m) && m.myStatus !== "declined";
+        const started   = now >= m.scheduledAt;
+        return (
+          <div key={m.id} className="card" style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:16,marginBottom:2}}>{m.title}</div>
+                <div style={{fontSize:12,color:"var(--muted)"}}>{fmtTime(m.scheduledAt)}</div>
+                <div style={{fontSize:12,color:"var(--muted)",marginTop:2}}>{isCreator?"You scheduled this":`Scheduled by ${m.creatorName}`}</div>
+              </div>
+              {isCreator && <button onClick={() => cancelMeeting(m.id)} style={{background:"none",border:"none",color:"rgba(255,68,85,0.6)",cursor:"pointer",fontSize:18,padding:"0 4px"}}>✕</button>}
+            </div>
+            {m.invitees?.length > 0 && (
+              <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:10}}>
+                {m.invitees.map(inv => (
+                  <div key={inv.userId} style={{padding:"2px 8px",borderRadius:999,fontSize:11,
+                    background:inv.status==="accepted"?"rgba(136,255,0,0.1)":inv.status==="declined"?"rgba(255,68,85,0.08)":"var(--surface2)",
+                    border:`1px solid ${inv.status==="accepted"?"rgba(136,255,0,0.3)":inv.status==="declined"?"rgba(255,68,85,0.2)":"var(--border)"}`,
+                    color:inv.status==="accepted"?"var(--accent)":inv.status==="declined"?"rgba(255,68,85,0.7)":"var(--muted)"}}>
+                    {inv.name.split(" ")[0]}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {joinable && <button className="btn btn-primary" onClick={() => joinMeeting(m)} style={{fontSize:12,padding:"6px 16px"}}>{started?"Join Call":"Join Early"}</button>}
+              {!isCreator && m.myStatus==="invited" && <>
+                <button className="btn" onClick={() => rsvp(m.id,"accepted")} style={{fontSize:12,padding:"6px 14px",borderColor:"rgba(136,255,0,0.3)",color:"var(--accent)"}}>Accept</button>
+                <button className="btn" onClick={() => rsvp(m.id,"declined")} style={{fontSize:12,padding:"6px 14px",color:"rgba(255,68,85,0.7)",borderColor:"rgba(255,68,85,0.2)"}}>Decline</button>
+              </>}
+              {m.myStatus==="accepted"&&!joinable&&<div style={{fontSize:12,color:"var(--accent)",padding:"6px 0"}}>✓ Accepted</div>}
+              {m.myStatus==="declined"&&<div style={{fontSize:12,color:"rgba(255,68,85,0.6)",padding:"6px 0"}}>Declined</div>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── DAILY CALL SCREEN ─────────────────────────────────────────────────────────
+function DailyCallScreen({ roomName, token, meeting, currentUser, onLeave }) {
+  const [participants,  setParticipants]  = useState({});
+  const [localStream,   setLocalStream]   = useState(null);
+  const [micOn,         setMicOn]         = useState(true);
+  const [camOn,         setCamOn]         = useState(false);
+  const [activeSpeaker, setActiveSpeaker] = useState(null);
+  const [joined,        setJoined]        = useState(false);
+  const [error,         setError]         = useState("");
+  const callRef       = useRef(null);
+  const localVideoRef = useRef(null);
+
+  useEffect(() => {
+    let call;
+    const setup = async () => {
+      try {
+        const DailyIframe = (await import("@daily-co/daily-js")).default;
+        call = DailyIframe.createCallObject({ audioSource:true, videoSource:false });
+        callRef.current = call;
+        const update = () => {
+          const p = call.participants();
+          setParticipants({...p});
+          const local = p.local;
+          if (local?.tracks?.video?.persistentTrack)
+            setLocalStream(new MediaStream([local.tracks.video.persistentTrack]));
+        };
+        call.on("joined-meeting",      () => { setJoined(true); update(); });
+        call.on("participant-joined",  update);
+        call.on("participant-left",    update);
+        call.on("participant-updated", update);
+        call.on("active-speaker-change", e => setActiveSpeaker(e?.activeSpeaker?.peerId || null));
+        call.on("left-meeting",        () => { call.destroy(); onLeave(); });
+        call.on("error",               e => setError(e.errorMsg || "Call error"));
+        const domain = process.env.REACT_APP_DAILY_DOMAIN || "bshm";
+        await call.join({ url:`https://${domain}.daily.co/${roomName}`, token });
+      } catch(err) { setError("Could not connect. Ensure @daily-co/daily-js is installed."); console.error(err); }
+    };
+    setup();
+    return () => { if (callRef.current) { callRef.current.destroy(); callRef.current = null; } };
+  }, [roomName, token]);
+
+  useEffect(() => { if (localVideoRef.current && localStream) localVideoRef.current.srcObject = localStream; }, [localStream]);
+
+  const toggleMic = async () => { if (!callRef.current) return; await callRef.current.setLocalAudio(!micOn); setMicOn(!micOn); };
+  const toggleCam = async () => {
+    if (!callRef.current) return;
+    await callRef.current.setLocalVideo(!camOn);
+    setCamOn(!camOn);
+    if (!camOn) { const p = callRef.current.participants(); if (p.local?.tracks?.video?.persistentTrack) setLocalStream(new MediaStream([p.local.tracks.video.persistentTrack])); }
+    else setLocalStream(null);
+  };
+  const leave = async () => { if (callRef.current) await callRef.current.leave(); else onLeave(); };
+
+  const remotes = Object.values(participants).filter(p => !p.local);
+
+  const gridLayout = useMemo(() => {
+    const n = remotes.length;
+    if (n === 0) return { rows:[], circleSize:180, offset:0 };
+    const vw = window.innerWidth;
+    const vh = window.innerHeight - 160;
+    const cols = Math.ceil(Math.sqrt(n));
+    const rows = Math.ceil(n / cols);
+    const circleSize = Math.max(80, Math.min(200, Math.floor(Math.min((vw-32)/cols, (vh-32)/rows) * 0.85)));
+    const offset = Math.floor(circleSize * 0.35);
+    const result = [];
+    let idx = 0;
+    for (let r = 0; r < rows && idx < n; r++) {
+      const rowCount = Math.min(cols, n - idx);
+      result.push({ items: remotes.slice(idx, idx + rowCount), rowIndex: r });
+      idx += rowCount;
+    }
+    return { rows: result, circleSize, offset };
+  }, [remotes.length]);
+
+  if (error) return (
+    <div style={{position:"fixed",inset:0,background:"var(--bg)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,zIndex:1000}}>
+      <div style={{color:"rgba(255,68,85,0.8)",fontSize:14,textAlign:"center",padding:"0 32px"}}>{error}</div>
+      <button className="btn" onClick={onLeave}>Leave</button>
+    </div>
+  );
+
+  const SPHERE_OVERLAY = <>
+    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(circle at 50% 50%,transparent 70%,rgba(0,0,0,0.15) 82%,rgba(0,0,0,0.55) 100%)",pointerEvents:"none"}} />
+    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 14% 10% at 34% 22%,rgba(255,255,255,1) 0%,transparent 100%),radial-gradient(ellipse 30% 22% at 33% 26%,rgba(220,240,255,0.42) 0%,transparent 70%),radial-gradient(ellipse 60% 18% at 50% 100%,rgba(0,0,0,0.38) 0%,transparent 65%)",pointerEvents:"none"}} />
+  </>;
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"var(--bg)",display:"flex",flexDirection:"column",zIndex:1000,overflow:"hidden"}}>
+      {/* Header */}
+      <div style={{padding:"12px 16px",borderBottom:"1px solid rgba(136,255,0,0.1)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+        <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:12,letterSpacing:2,color:"var(--accent)"}}>{meeting.title}</div>
+        {!joined && <div style={{fontSize:11,color:"var(--muted)"}}>Connecting…</div>}
+      </div>
+      {/* Remote grid */}
+      <div style={{flex:1,position:"relative",overflow:"hidden"}}>
+        {remotes.length === 0 && joined && (
+          <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",color:"var(--muted)",fontSize:13}}>Waiting for others to join…</div>
+        )}
+        <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)"}}>
+          {gridLayout.rows.map((row, ri) => (
+            <div key={ri} style={{display:"flex",gap:gridLayout.circleSize*0.15,marginLeft:ri%2===1?gridLayout.offset:0,marginBottom:gridLayout.circleSize*0.1}}>
+              {row.items.map(p => <ParticipantBubble key={p.session_id} participant={p} size={gridLayout.circleSize} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} />)}
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Local self-view pip */}
+      <div style={{position:"absolute",bottom:90,right:16,width:72,height:72,borderRadius:"50%",overflow:"hidden",
+        border:"1px solid rgba(136,255,0,0.35)",boxShadow:"0 0 0 1px rgba(0,0,0,0.5),0 4px 12px rgba(0,0,0,0.7),0 0 10px rgba(136,255,0,0.2)",
+        background:"var(--surface2)",zIndex:10}}>
+        {camOn && localStream
+          ? <video ref={localVideoRef} autoPlay muted playsInline style={{width:"100%",height:"100%",objectFit:"cover",transform:"scaleX(-1)"}} />
+          : <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              {currentUser.avatarUrl
+                ? <img src={currentUser.avatarUrl} style={{width:"100%",height:"100%",objectFit:"cover"}} alt="" />
+                : <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:14,color:"var(--accent)",fontWeight:900}}>{initials(currentUser.displayName)}</span>}
+            </div>}
+        {SPHERE_OVERLAY}
+      </div>
+      {/* Controls */}
+      <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"12px 24px 20px",background:"linear-gradient(to top,rgba(0,8,4,0.95),transparent)",display:"flex",alignItems:"center",justifyContent:"center",gap:16}}>
+        <CallButton active={micOn} onClick={toggleMic} label={micOn?"Mute":"Unmute"} icon={micOn?"🎙":"🔇"} />
+        <CallButton active={camOn} onClick={toggleCam} label={camOn?"Cam Off":"Cam On"} icon="📷" />
+        <CallButton danger onClick={leave} label="Leave" icon="✕" />
+      </div>
+    </div>
+  );
+}
+
+function CallButton({ active, danger, onClick, label, icon }) {
+  return (
+    <button onClick={onClick} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,
+      background:danger?"rgba(255,68,85,0.15)":active?"rgba(136,255,0,0.1)":"rgba(255,255,255,0.05)",
+      border:`1px solid ${danger?"rgba(255,68,85,0.4)":active?"rgba(136,255,0,0.3)":"rgba(255,255,255,0.1)"}`,
+      borderRadius:12,padding:"10px 18px",cursor:"pointer",minWidth:64,
+      color:danger?"rgba(255,68,85,0.9)":active?"var(--accent)":"var(--muted)",
+      fontSize:20,transition:"all 0.15s"}}>
+      <span>{icon}</span>
+      <span style={{fontSize:9,fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>{label.toUpperCase()}</span>
+    </button>
+  );
+}
+
+function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay }) {
+  const videoRef = useRef(null);
+  const hasVideo = participant.tracks?.video?.state === "playable";
+  const track    = participant.tracks?.video?.persistentTrack;
+  useEffect(() => { if (videoRef.current && track) videoRef.current.srcObject = new MediaStream([track]); }, [track]);
+  const avatarUrl  = participant.userData?.avatarUrl || null;
+  const name       = participant.user_name || "Brother";
+  const bubbleSize = hasVideo ? size : Math.round(size / 3);
+  const glow       = isSpeaking ? "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 24px rgba(136,255,0,0.7),0 0 48px rgba(136,255,0,0.25)"
+                                : "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 10px rgba(136,255,0,0.2)";
+  return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
+      <div style={{width:bubbleSize,height:bubbleSize,borderRadius:"50%",overflow:"hidden",position:"relative",
+        border:"1px solid rgba(136,255,0,0.35)",boxShadow:glow,transition:"box-shadow 0.3s ease",background:"var(--surface2)"}}>
+        {hasVideo
+          ? <video ref={videoRef} autoPlay playsInline style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}} />
+          : avatarUrl
+            ? <img src={avatarUrl} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={name} />
+            : <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",
+                fontFamily:"'Orbitron',sans-serif",fontWeight:900,color:"var(--accent)",fontSize:bubbleSize*0.28}}>
+                {initials(name)}
+              </div>}
+        {sphereOverlay}
+      </div>
+      <div style={{fontSize:10,fontFamily:"'Orbitron',sans-serif",letterSpacing:1,
+        color:isSpeaking?"var(--accent)":"var(--muted)",transition:"color 0.3s ease",
+        textAlign:"center",maxWidth:size,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+        {name.split(" ")[0].toUpperCase()}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const isMobile = useIsMobile();
   const [user, setUser]                         = useState(null);   // { id, firstName, lastName, email, displayName }
@@ -7542,6 +7888,7 @@ export default function App() {
     { id: "workout",   label: "Workout" },
     { id: "topcharts", label: "Top Charts" },
     { id: "boards",    label: "Chat" },
+    { id: "meet",      label: "Meet" },
     { id: "audio",     label: "Bible" },
     { id: "rule",      label: "Rule" },
   ];
@@ -7551,6 +7898,17 @@ export default function App() {
       <style>{css}</style>
       <div className="app-bg" />
       <div className="grid-stars" />
+      {/* Landscape mode blocker */}
+      <div className="landscape-block" style={{
+        display:"none", position:"fixed", inset:0, zIndex:99999,
+        background:"rgba(0,8,4,0.97)", flexDirection:"column",
+        alignItems:"center", justifyContent:"center", gap:16,
+      }}>
+        <div style={{fontSize:36}}>↩</div>
+        <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:13,letterSpacing:2,color:"var(--accent)",textAlign:"center"}}>
+          PLEASE ROTATE<br/>YOUR DEVICE
+        </div>
+      </div>
       <div className="app"
           onTouchStart={isMobile ? (e) => {
             const t = e.touches[0];
@@ -7641,6 +7999,7 @@ export default function App() {
           {page === "workout" && <div><WorkoutPage username={username} /></div>}
           {page === "topcharts" && <div><TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
           {page === "boards" && <div><BoardPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
+          {page === "meet" && <MeetPage currentUser={user} />}
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
           {page === "rule" && <RulePage user={user} />}
           {page === "profile" && <ProfilePage user={user} onDeleted={() => { api.clearToken(); setUser(null); }} onLogout={() => { handleLogout(); setPage("workout"); }} onAvatarUpdate={(url) => setUser(u => ({ ...u, avatarUrl: url }))} />}

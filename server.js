@@ -254,7 +254,24 @@ async function initDb() {
       created_at  BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
     );
 
-    CREATE TABLE IF NOT EXISTS workout_sessions (
+    CREATE TABLE IF NOT EXISTS meetings (
+      id              SERIAL PRIMARY KEY,
+      title           TEXT NOT NULL,
+      created_by      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      scheduled_at    BIGINT NOT NULL,
+      daily_room_name TEXT NOT NULL,
+      daily_room_url  TEXT NOT NULL,
+      created_at      BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
+    );
+
+    CREATE TABLE IF NOT EXISTS meeting_invitees (
+      id                SERIAL PRIMARY KEY,
+      meeting_id        INTEGER NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+      user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      status            TEXT NOT NULL DEFAULT 'invited',
+      notified_reminder BOOLEAN NOT NULL DEFAULT FALSE,
+      UNIQUE(meeting_id, user_id)
+    );
       id         SERIAL PRIMARY KEY,
       user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       date       TEXT NOT NULL,
@@ -2050,6 +2067,233 @@ app.post("/api/chapters/:id/messages", requireAuth, async (req, res) => {
   }
 });
 
+// ═════════════════════════════════════════════════════════════════════════════
+// MEET ROUTES
+// ═════════════════════════════════════════════════════════════════════════════
+
+const DAILY_API = "https://api.daily.co/v1";
+
+async function dailyRequest(method, path, body) {
+  const res = await fetch(`${DAILY_API}${path}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${process.env.DAILY_API_KEY}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`Daily API error: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+// POST /api/meetings — create a meeting
+app.post("/api/meetings", requireAuth, async (req, res) => {
+  try {
+    const { title, scheduledAt, inviteeIds } = req.body;
+    if (!title || !scheduledAt || !Array.isArray(inviteeIds)) {
+      return res.status(400).json({ error: "title, scheduledAt, and inviteeIds required" });
+    }
+    // Create Daily room — expires 1 hour after scheduled time
+    const expiry = Math.floor((scheduledAt + 3600000) / 1000);
+    const room = await dailyRequest("POST", "/rooms", {
+      properties: {
+        exp:               expiry,
+        enable_prejoin_ui: false,
+        start_video_off:   true,
+        start_audio_off:   false,
+        enable_chat:       false,
+      },
+    });
+    // Insert meeting
+    const { rows } = await db.query(`
+      INSERT INTO meetings (title, created_by, scheduled_at, daily_room_name, daily_room_url)
+      VALUES ($1, $2, $3, $4, $5) RETURNING *
+    `, [title, req.userId, scheduledAt, room.name, room.url]);
+    const meeting = rows[0];
+    // Insert invitees (deduplicated, exclude creator)
+    const ids = [...new Set(inviteeIds.filter(id => id !== req.userId))];
+    for (const uid of ids) {
+      await db.query(
+        "INSERT INTO meeting_invitees (meeting_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        [meeting.id, uid]
+      );
+    }
+    // Also add creator as participant (status = accepted)
+    await db.query(
+      "INSERT INTO meeting_invitees (meeting_id, user_id, status) VALUES ($1, $2, 'accepted') ON CONFLICT DO NOTHING",
+      [meeting.id, req.userId]
+    );
+    // Send push notifications to invitees
+    const { rows: creator } = await db.query("SELECT * FROM users WHERE id = $1", [req.userId]);
+    const creatorName = displayName(creator[0]);
+    const dateStr = new Date(scheduledAt).toLocaleString("en-US", {
+      month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+    });
+    for (const uid of ids) {
+      sendPushToUser(uid, {
+        title: "Meeting Invitation",
+        body:  `${creatorName} invited you to "${title}" on ${dateStr}`,
+        tag:   `meeting-invite-${meeting.id}`,
+        url:   "/",
+        notifType: "meeting",
+      });
+    }
+    res.json({ meeting: shapeMeeting(meeting) });
+  } catch (err) {
+    console.error("POST /api/meetings:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /api/meetings — all meetings user is involved in
+app.get("/api/meetings", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await db.query(`
+      SELECT m.*, u.first_name, u.last_name,
+        (SELECT json_agg(json_build_object(
+          'userId', mi2.user_id, 'status', mi2.status,
+          'name', u2.first_name || ' ' || u2.last_name,
+          'avatarUrl', u2.avatar_url
+        ))
+        FROM meeting_invitees mi2
+        JOIN users u2 ON u2.id = mi2.user_id
+        WHERE mi2.meeting_id = m.id
+        ) AS invitees,
+        mi.status AS my_status
+      FROM meetings m
+      JOIN users u ON u.id = m.created_by
+      JOIN meeting_invitees mi ON mi.meeting_id = m.id AND mi.user_id = $1
+      WHERE m.scheduled_at > $2
+      ORDER BY m.scheduled_at ASC
+    `, [req.userId, Date.now() - 3600000]); // include meetings up to 1hr past
+    res.json(rows.map(r => shapeMeeting(r)));
+  } catch (err) {
+    console.error("GET /api/meetings:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// PATCH /api/meetings/:id/rsvp — accept or decline
+app.patch("/api/meetings/:id/rsvp", requireAuth, async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!["accepted", "declined"].includes(status)) return res.status(400).json({ error: "Invalid status" });
+    await db.query(
+      "UPDATE meeting_invitees SET status = $1 WHERE meeting_id = $2 AND user_id = $3",
+      [status, req.params.id, req.userId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("PATCH /api/meetings/:id/rsvp:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// DELETE /api/meetings/:id — cancel (creator only)
+app.delete("/api/meetings/:id", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await db.query("SELECT * FROM meetings WHERE id = $1 AND created_by = $2", [req.params.id, req.userId]);
+    if (!rows[0]) return res.status(403).json({ error: "Not found or not authorized" });
+    const meeting = rows[0];
+    // Delete Daily room
+    dailyRequest("DELETE", `/rooms/${meeting.daily_room_name}`).catch(() => {});
+    // Notify invitees
+    const { rows: invitees } = await db.query(
+      "SELECT user_id FROM meeting_invitees WHERE meeting_id = $1 AND user_id != $2",
+      [req.params.id, req.userId]
+    );
+    for (const inv of invitees) {
+      sendPushToUser(inv.user_id, {
+        title: "Meeting Cancelled",
+        body:  `"${meeting.title}" has been cancelled`,
+        tag:   `meeting-cancel-${meeting.id}`,
+        url:   "/",
+        notifType: "meeting",
+      });
+    }
+    await db.query("DELETE FROM meetings WHERE id = $1", [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("DELETE /api/meetings/:id:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// POST /api/meetings/:id/token — get a Daily meeting token for the current user
+app.post("/api/meetings/:id/token", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      "SELECT m.* FROM meetings m JOIN meeting_invitees mi ON mi.meeting_id = m.id WHERE m.id = $1 AND mi.user_id = $2",
+      [req.params.id, req.userId]
+    );
+    if (!rows[0]) return res.status(403).json({ error: "Not invited" });
+    const meeting = rows[0];
+    const { rows: userRows } = await db.query("SELECT * FROM users WHERE id = $1", [req.userId]);
+    const user = userRows[0];
+    const token = await dailyRequest("POST", "/meeting-tokens", {
+      properties: {
+        room_name:   meeting.daily_room_name,
+        user_name:   displayName(user),
+        user_id:     String(req.userId),
+        avatar_url:  user.avatar_url || null,
+        exp:         Math.floor((meeting.scheduled_at + 3600000) / 1000),
+        is_owner:    meeting.created_by === req.userId,
+      },
+    });
+    res.json({ token: token.token, roomUrl: meeting.daily_room_url, roomName: meeting.daily_room_name });
+  } catch (err) {
+    console.error("POST /api/meetings/:id/token:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+function shapeMeeting(row) {
+  return {
+    id:           Number(row.id),
+    title:        row.title,
+    createdBy:    Number(row.created_by),
+    creatorName:  row.first_name && row.last_name ? `${row.first_name} ${row.last_name}` : null,
+    scheduledAt:  Number(row.scheduled_at),
+    roomName:     row.daily_room_name,
+    roomUrl:      row.daily_room_url,
+    invitees:     row.invitees || [],
+    myStatus:     row.my_status || "invited",
+  };
+}
+
+// ─── Reminder job — runs every 60 seconds ────────────────────────────────────
+setInterval(async () => {
+  try {
+    const now = Date.now();
+    const windowStart = now + 14 * 60 * 1000; // 14 min from now
+    const windowEnd   = now + 16 * 60 * 1000; // 16 min from now
+    const { rows: upcoming } = await db.query(`
+      SELECT m.title, m.scheduled_at, mi.user_id, mi.meeting_id
+      FROM meetings m
+      JOIN meeting_invitees mi ON mi.meeting_id = m.id
+      WHERE m.scheduled_at BETWEEN $1 AND $2
+        AND mi.notified_reminder = FALSE
+        AND mi.status != 'declined'
+    `, [windowStart, windowEnd]);
+    for (const row of upcoming) {
+      sendPushToUser(row.user_id, {
+        title: "Meeting Starting Soon",
+        body:  `"${row.title}" starts in 15 minutes`,
+        tag:   `meeting-reminder-${row.meeting_id}`,
+        url:   "/",
+        notifType: "meeting",
+      });
+      await db.query(
+        "UPDATE meeting_invitees SET notified_reminder = TRUE WHERE meeting_id = $1 AND user_id = $2",
+        [row.meeting_id, row.user_id]
+      );
+    }
+  } catch (err) {
+    console.error("Reminder job error:", err.message);
+  }
+}, 60000);
+
+// ═════════════════════════════════════════════════════════════════════════════
 app.get("*", (req, res) => {
   const index = path.join(__dirname, "build", "index.html");
   if (fs.existsSync(index)) {
