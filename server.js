@@ -1042,19 +1042,19 @@ async function sendPushToUser(userId, payload) {
       "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1",
       [userId]
     );
+    console.log(`[push] user ${userId} has ${rows.length} subscription(s)`);
     for (const sub of rows) {
       try {
         await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
           JSON.stringify(fullPayload)
         );
+        console.log(`[push] sent OK to user ${userId} endpoint ${sub.endpoint.slice(0, 50)}`);
       } catch (err) {
-        // Remove any subscription that the push server rejects — not just 410/404
-        // Apple and Chrome can return 400, 403, 404, 410 for expired/invalid subs
+        console.warn(`[push] failed for user ${userId}: status=${err.statusCode} msg=${err.message} body=${err.body}`);
         if (err.statusCode >= 400) {
           await db.query("DELETE FROM push_subscriptions WHERE endpoint = $1", [sub.endpoint]);
-        } else {
-          console.warn(`Push failed for user ${userId}:`, err.message);
+          console.warn(`[push] deleted stale subscription for user ${userId}`);
         }
       }
     }
@@ -1298,11 +1298,13 @@ app.post("/api/board/messages", requireAuth, async (req, res) => {
       "SELECT DISTINCT user_id FROM push_subscriptions WHERE user_id != $1",
       [req.userId]
     );
+    console.log(`[push] message from user ${req.userId}, notifying ${allUsers.length} user(s):`, allUsers.map(u => u.user_id));
     const senderName = displayName(user);
     const pushBody = text?.trim()
       ? `${senderName}: ${text.trim().slice(0, 80)}`
       : `${senderName} sent a file`;
     for (const u of allUsers) {
+      console.log(`[push] sending to user ${u.user_id}`);
       sendPushToUser(u.user_id, {
         title: "Bros of St. Hyacinth",
         body:  pushBody,
