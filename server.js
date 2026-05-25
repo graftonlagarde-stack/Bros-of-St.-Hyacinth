@@ -1189,6 +1189,33 @@ app.get("/api/push/debug-subs", requireAuth, async (req, res) => {
   res.json({ count: rows.length, subs: rows });
 });
 
+// DEBUG — delete all but the most recent subscription per user
+app.post("/api/push/debug-cleanup", requireAuth, async (req, res) => {
+  const { rows: userRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+  if (userRows[0]?.role !== "arch_admin") return res.status(403).json({ error: "Forbidden" });
+  const { rowCount } = await db.query(`
+    DELETE FROM push_subscriptions
+    WHERE id NOT IN (
+      SELECT DISTINCT ON (user_id) id
+      FROM push_subscriptions
+      ORDER BY user_id, created_at DESC
+    )
+  `);
+  res.json({ deleted: rowCount });
+});
+
+// DEBUG — send a test push to yourself
+app.post("/api/push/debug-test", requireAuth, async (req, res) => {
+  await sendPushToUser(req.userId, {
+    title: "Test notification",
+    body:  "If you see this, push is working.",
+    tag:   "bsh-test",
+    url:   "/",
+    notifType: "global-chat",
+  });
+  res.json({ ok: true });
+});
+
 // GET /api/push/vapid-public-key — returns the public VAPID key for the client
 app.get("/api/push/vapid-public-key", (req, res) => {
   if (!process.env.VAPID_PUBLIC_KEY)
