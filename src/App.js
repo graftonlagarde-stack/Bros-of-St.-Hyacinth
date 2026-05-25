@@ -5008,32 +5008,19 @@ function WorkoutPage({ username }) {
     const byDate = {};
     for (const sess of history) {
       const dateKey = normDate(sess.date);
-      if (!byDate[dateKey]) byDate[dateKey] = { date: dateKey, realSets: [], migratedSets: [] };
+      if (!byDate[dateKey]) byDate[dateKey] = { date: dateKey, sets: [] };
       for (const s of sess.sets) {
         if (s.exercise !== ex) continue;
-        if (s.migrated) byDate[dateKey].migratedSets.push(s);
-        else            byDate[dateKey].realSets.push(s);
+        byDate[dateKey].sets.push(s);
       }
     }
-    return Object.values(byDate).map(({ date, realSets, migratedSets }) => {
+    return Object.values(byDate).map(({ date, sets }) => {
+      if (sets.length === 0) return null;
       let vol = 0;
-      // Real sets: sum all (true volume)
-      for (const s of realSets) {
+      for (const s of sets) {
         if (s.setType === "weighted")   vol += (s.weight || 0) * (s.reps || 0);
         if (s.setType === "bodyweight") vol += s.reps || 0;
         if (s.setType === "duration")   vol += s.durationSeconds || 0;
-      }
-      // Migrated sets: take the single highest-value set per exercise per day
-      // (old system logged best efforts, not additive volume)
-      if (realSets.length === 0 && migratedSets.length > 0) {
-        let best = 0;
-        for (const s of migratedSets) {
-          const v = s.setType === "weighted"   ? (s.weight || 0) * (s.reps || 0)
-                  : s.setType === "bodyweight" ? (s.reps || 0)
-                  : (s.durationSeconds || 0);
-          if (v > best) best = v;
-        }
-        vol = best;
       }
       if (vol === 0) return null;
       return { date, value: vol };
