@@ -5828,19 +5828,23 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
           }}>
         <div style={{marginBottom:20}}>
           <div className="form-label" style={{marginBottom:6}}>Muscle Group</div>
-          <div className="tab-row" style={{flexWrap:"wrap",marginBottom:10}}>
-            {EXERCISE_GROUPS.map(g => (
-              <div key={g} className={`tab ${chartGroup===g?"active":""}`} onClick={() => {
-                setChartGroup(g);
-                const first = EXERCISES.find(e => e.group === g);
-                if (first) setChartEx(first.name);
-              }}>{g}</div>
-            ))}
+          <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:10,paddingBottom:4}}>
+            <div className="tab-row" style={{flexWrap:"nowrap",minWidth:"max-content"}}>
+              {EXERCISE_GROUPS.map(g => (
+                <div key={g} className={`tab ${chartGroup===g?"active":""}`} onClick={() => {
+                  setChartGroup(g);
+                  const first = EXERCISES.find(e => e.group === g);
+                  if (first) setChartEx(first.name);
+                }}>{g}</div>
+              ))}
+            </div>
           </div>
-          <div className="tab-row" style={{flexWrap:"wrap"}}>
-            {EXERCISES.filter(e => e.group === chartGroup).map(e => (
-              <div key={e.name} className={`tab ${chartEx===e.name?"active":""}`} onClick={() => setChartEx(e.name)}>{e.name}</div>
-            ))}
+          <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:4}}>
+            <div className="tab-row" style={{flexWrap:"nowrap",minWidth:"max-content"}}>
+              {EXERCISES.filter(e => e.group === chartGroup).map(e => (
+                <div key={e.name} className={`tab ${chartEx===e.name?"active":""}`} onClick={() => setChartEx(e.name)}>{e.name}</div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -5942,19 +5946,23 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
         <>
         <div style={{marginBottom:20}}>
           <div className="form-label" style={{marginBottom:6}}>Muscle Group</div>
-          <div className="tab-row" style={{flexWrap:"wrap",marginBottom:10}}>
-            {EXERCISE_GROUPS.map(g => (
-              <div key={g} className={`tab ${chartGroup===g?"active":""}`} onClick={() => {
-                setChartGroup(g);
-                const first = EXERCISES.find(e => e.group === g);
-                if (first) setChartEx(first.name);
-              }}>{g}</div>
-            ))}
+          <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:10,paddingBottom:4}}>
+            <div className="tab-row" style={{flexWrap:"nowrap",minWidth:"max-content"}}>
+              {EXERCISE_GROUPS.map(g => (
+                <div key={g} className={`tab ${chartGroup===g?"active":""}`} onClick={() => {
+                  setChartGroup(g);
+                  const first = EXERCISES.find(e => e.group === g);
+                  if (first) setChartEx(first.name);
+                }}>{g}</div>
+              ))}
+            </div>
           </div>
-          <div className="tab-row" style={{flexWrap:"wrap"}}>
-            {EXERCISES.filter(e => e.group === chartGroup).map(e => (
-              <div key={e.name} className={`tab ${chartEx===e.name?"active":""}`} onClick={() => setChartEx(e.name)}>{e.name}</div>
-            ))}
+          <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:4}}>
+            <div className="tab-row" style={{flexWrap:"nowrap",minWidth:"max-content"}}>
+              {EXERCISES.filter(e => e.group === chartGroup).map(e => (
+                <div key={e.name} className={`tab ${chartEx===e.name?"active":""}`} onClick={() => setChartEx(e.name)}>{e.name}</div>
+              ))}
+            </div>
           </div>
         </div>
 

@@ -342,27 +342,38 @@ async function initDb() {
   `);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';`);
   await db.query(`ALTER TABLE session_sets ADD COLUMN IF NOT EXISTS migrated BOOLEAN NOT NULL DEFAULT FALSE;`);
-  // Cleanup: mark ALL existing session_sets as migrated=TRUE.
-  // The new session-based workout system launched on 2026-05-25.
-  // Any sets in the DB before this date are legacy data from lift_logs migration
-  // and should not count toward volume charts.
-  // Real user-logged sets will always have migrated=FALSE by default going forward.
+
+  // Step 1: Mark all pre-launch session_sets as migrated (catches any rows from broken migrations)
   await db.query(`
-    UPDATE session_sets
-    SET migrated = TRUE
-    WHERE migrated = FALSE
-      AND created_at < 1748131200000
+    UPDATE session_sets SET migrated = TRUE
+    WHERE migrated = FALSE AND created_at < 1748131200000
   `);
-  // 1748131200000 = 2026-05-25 00:00:00 UTC in milliseconds
-  // Seeds personal_records and backfills session_sets from lift_logs.
-  // Guard: skip entirely if migrated rows already exist (true idempotency).
+
+  // Step 2: Delete duplicate migrated rows — keep only the highest-value set per
+  // user/exercise/date combination (duplicates came from multiple server restarts)
+  await db.query(`
+    DELETE FROM session_sets
+    WHERE migrated = TRUE
+      AND id NOT IN (
+        SELECT DISTINCT ON (ss.user_id, ss.exercise, ws.date)
+          ss.id
+        FROM session_sets ss
+        JOIN workout_sessions ws ON ws.id = ss.session_id
+        WHERE ss.migrated = TRUE
+        ORDER BY ss.user_id, ss.exercise, ws.date,
+          COALESCE(ss.weight, 0) * COALESCE(ss.reps, 1) DESC, ss.id ASC
+      )
+  `);
+
+  // Step 3: Seed personal_records and session_sets from lift_logs.
+  // Guard: skip if personal_records already has rows (means migration already ran cleanly).
   const BODYWEIGHT_EXERCISES = ["Pull-up", "Push-up", "Dips"];
   const { rows: legacyLogs } = await db.query("SELECT * FROM lift_logs ORDER BY ts ASC");
   if (legacyLogs.length > 0) {
-    const { rows: alreadyMigrated } = await db.query(
-      "SELECT id FROM session_sets WHERE migrated = TRUE LIMIT 1"
+    const { rows: existingPrs } = await db.query(
+      "SELECT id FROM personal_records LIMIT 1"
     );
-    if (alreadyMigrated.length === 0) {
+    if (existingPrs.length === 0) {
       for (const log of legacyLogs) {
         const isBodyweight = BODYWEIGHT_EXERCISES.includes(log.exercise);
         let prValue;
