@@ -7252,6 +7252,7 @@ function MeetPage({ currentUser }) {
   const [activeMeeting, setActiveMeeting] = useState(null);
   const [callToken,   setCallToken]   = useState(null);
   const [callRoom,    setCallRoom]    = useState(null);
+  const [callRoomUrl, setCallRoomUrl] = useState(null);
 
   // Create form state
   const [title,       setTitle]       = useState("");
@@ -7287,7 +7288,7 @@ function MeetPage({ currentUser }) {
         setJoinError("Daily.co is not configured yet. Add DAILY_API_KEY to Railway to enable calls.");
         return;
       }
-      setCallToken(data.token); setCallRoom(data.roomName);
+      setCallToken(data.token); setCallRoom(data.roomName); setCallRoomUrl(data.roomUrl);
       setActiveMeeting(meeting); setView("call");
     } catch (err) {
       setJoinError(err.message || "Could not join call. Please try again.");
@@ -7325,7 +7326,7 @@ function MeetPage({ currentUser }) {
   const fmtTime = (ts) => new Date(ts).toLocaleString("en-US", { weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });
 
   if (view === "call" && activeMeeting && callToken && callRoom)
-    return <DailyCallScreen roomName={callRoom} token={callToken} meeting={activeMeeting} currentUser={currentUser} onLeave={() => { setView("list"); setCallToken(null); setCallRoom(null); setActiveMeeting(null); }} />;
+    return <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} currentUser={currentUser} onLeave={() => { setView("list"); setCallToken(null); setCallRoom(null); setCallRoomUrl(null); setActiveMeeting(null); }} />;
 
   if (view === "create") return (
     <div className="page">
@@ -7412,7 +7413,7 @@ function MeetPage({ currentUser }) {
 }
 
 // ─── DAILY CALL SCREEN ─────────────────────────────────────────────────────────
-function DailyCallScreen({ roomName, token, meeting, currentUser, onLeave }) {
+function DailyCallScreen({ roomName, roomUrl, token, meeting, currentUser, onLeave }) {
   const [participants,  setParticipants]  = useState({});
   const [localStream,   setLocalStream]   = useState(null);
   const [micOn,         setMicOn]         = useState(true);
@@ -7424,33 +7425,47 @@ function DailyCallScreen({ roomName, token, meeting, currentUser, onLeave }) {
   const localVideoRef = useRef(null);
 
   useEffect(() => {
-    let call;
+    let destroyed = false;
     const setup = async () => {
       try {
         const DailyIframe = (await import("@daily-co/daily-js")).default;
-        call = DailyIframe.createCallObject({ audioSource:true, videoSource:false });
+        // Destroy any existing call object before creating a new one
+        const existing = DailyIframe.getCallInstance();
+        if (existing) {
+          try { await existing.destroy(); } catch(e) {}
+        }
+        const call = DailyIframe.createCallObject({ audioSource:true, videoSource:false });
         callRef.current = call;
         const update = () => {
+          if (destroyed) return;
           const p = call.participants();
           setParticipants({...p});
           const local = p.local;
           if (local?.tracks?.video?.persistentTrack)
             setLocalStream(new MediaStream([local.tracks.video.persistentTrack]));
         };
-        call.on("joined-meeting",      () => { setJoined(true); update(); });
-        call.on("participant-joined",  update);
-        call.on("participant-left",    update);
-        call.on("participant-updated", update);
-        call.on("active-speaker-change", e => setActiveSpeaker(e?.activeSpeaker?.peerId || null));
-        call.on("left-meeting",        () => { call.destroy(); onLeave(); });
-        call.on("error",               e => setError(e.errorMsg || "Call error"));
-        const domain = process.env.REACT_APP_DAILY_DOMAIN || "bshm";
-        await call.join({ url:`https://${domain}.daily.co/${roomName}`, token });
-      } catch(err) { setError("Could not connect. Ensure @daily-co/daily-js is installed."); console.error(err); }
+        call.on("joined-meeting",       () => { setJoined(true); update(); });
+        call.on("participant-joined",   update);
+        call.on("participant-left",     update);
+        call.on("participant-updated",  update);
+        call.on("active-speaker-change",e => { if (!destroyed) setActiveSpeaker(e?.activeSpeaker?.peerId || null); });
+        call.on("left-meeting",         () => { if (!destroyed) { destroyed = true; callRef.current = null; call.destroy(); onLeave(); } });
+        call.on("error",                e => { if (!destroyed) setError(e.errorMsg || "Call error"); });
+        await call.join({ url: roomUrl, token });
+      } catch(err) {
+        if (!destroyed) setError(err.message || "Could not connect.");
+        console.error("Daily setup:", err);
+      }
     };
     setup();
-    return () => { if (callRef.current) { callRef.current.destroy(); callRef.current = null; } };
-  }, [roomName, token]);
+    return () => {
+      destroyed = true;
+      if (callRef.current) {
+        callRef.current.destroy();
+        callRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => { if (localVideoRef.current && localStream) localVideoRef.current.srcObject = localStream; }, [localStream]);
 
@@ -8024,9 +8039,7 @@ export default function App() {
         <RuleBackdrop visible={page === "rule"} isMobile={isMobile} />
         <WorkoutFigureBackdrop             visible={page === "workout"}   isMobile={isMobile} />
       </div>
-      {currentTrack && (
-        <PlayerBar track={currentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} tracks={PERMANENT_TRACKS} setTrack={setCurrentTrack} navExpanded={navExpanded} />
-      )}
+      {currentTrack && page !== "meet" && <PlayerBar track={currentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} tracks={PERMANENT_TRACKS} setTrack={setCurrentTrack} navExpanded={navExpanded} />}
     </>
   );
 }
