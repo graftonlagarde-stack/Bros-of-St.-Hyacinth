@@ -238,6 +238,8 @@ async function initDb() {
       email       TEXT NOT NULL UNIQUE,
       password    TEXT NOT NULL,
       role        TEXT NOT NULL DEFAULT 'user',
+      avatar_url        TEXT,
+      avatar_public_id  TEXT,
       created_at  BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
     );
 
@@ -358,6 +360,8 @@ async function initDb() {
     );
   `);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';`);
+  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;`);
+  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_public_id TEXT;`);
   await db.query(`ALTER TABLE session_sets ADD COLUMN IF NOT EXISTS migrated BOOLEAN NOT NULL DEFAULT FALSE;`);
 
   // Step 1: Mark all pre-launch session_sets as migrated (catches any rows from broken migrations)
@@ -516,6 +520,7 @@ const shapeUser = (u) => ({
   email:       u.email,
   displayName: displayName(u),
   role:        u.role,
+  avatarUrl:   u.avatar_url || null,
 });
 
 // Middleware: require arch_admin or admin role
@@ -553,6 +558,7 @@ async function loadReactions(messageIds) {
 const shapeMessage = (row, reactionsMap) => ({
   id:        Number(row.id),
   author:    row.author,
+  avatarUrl: row.avatar_url || null,
   ts:        Number(row.ts),
   text:      row.text,
   chapterId: row.chapter_id ? Number(row.chapter_id) : null,
@@ -1005,6 +1011,50 @@ function shapeSet(row) {
 
 // ═════════════════════════════════════════════════════════════════════════════
 // UPLOAD ROUTE — proxies file to Cloudinary, tracks public_id in pending_uploads
+// ─── AVATAR ROUTES ────────────────────────────────────────────────────────────
+// POST /api/profile/avatar — upload a profile picture
+app.post("/api/profile/avatar", requireAuth, upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file provided." });
+    // Delete old avatar from Cloudinary if exists
+    const { rows: userRows } = await db.query("SELECT avatar_public_id FROM users WHERE id = $1", [req.userId]);
+    if (userRows[0]?.avatar_public_id) {
+      await cloudinary.uploader.destroy(userRows[0].avatar_public_id).catch(() => {});
+    }
+    // Upload new avatar to Cloudinary
+    const result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: "avatars", resource_type: "image", transformation: [{ width: 200, height: 200, crop: "fill", gravity: "face" }] },
+        (err, res) => err ? reject(err) : resolve(res)
+      );
+      stream.end(req.file.buffer);
+    });
+    await db.query(
+      "UPDATE users SET avatar_url = $1, avatar_public_id = $2 WHERE id = $3",
+      [result.secure_url, result.public_id, req.userId]
+    );
+    res.json({ avatarUrl: result.secure_url });
+  } catch (err) {
+    console.error("POST /api/profile/avatar:", err);
+    res.status(500).json({ error: "Server error." });
+  }
+});
+
+// DELETE /api/profile/avatar — remove profile picture
+app.delete("/api/profile/avatar", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await db.query("SELECT avatar_public_id FROM users WHERE id = $1", [req.userId]);
+    if (rows[0]?.avatar_public_id) {
+      await cloudinary.uploader.destroy(rows[0].avatar_public_id).catch(() => {});
+    }
+    await db.query("UPDATE users SET avatar_url = NULL, avatar_public_id = NULL WHERE id = $1", [req.userId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("DELETE /api/profile/avatar:", err);
+    res.status(500).json({ error: "Server error." });
+  }
+});
+// ─────────────────────────────────────────────────────────────────────────────
 // ═════════════════════════════════════════════════════════════════════════════
 
 app.post("/api/upload", requireAuth, upload.single("file"), async (req, res) => {
@@ -1264,8 +1314,8 @@ app.get("/api/board/messages", requireAuth, async (req, res) => {
   try {
     const since = req.query.since ? Number(req.query.since) : null;
     const { rows } = since
-      ? await db.query("SELECT * FROM messages WHERE chapter_id IS NULL AND ts > $1 ORDER BY ts ASC", [since])
-      : await db.query("SELECT * FROM messages WHERE chapter_id IS NULL ORDER BY ts ASC");
+      ? await db.query(`SELECT m.*, u.avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL AND m.ts > $1 ORDER BY m.ts ASC`, [since])
+      : await db.query(`SELECT m.*, u.avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL ORDER BY m.ts ASC`);
     const ids = rows.map(r => Number(r.id));
     const reactionsMap = ids.length > 0 ? await loadReactions(ids) : {};
     return res.json(rows.map(r => shapeMessage(r, reactionsMap)));
@@ -1934,8 +1984,8 @@ app.get("/api/chapters/:id/messages", requireAuth, async (req, res) => {
     }
     const since = req.query.since ? Number(req.query.since) : null;
     const { rows } = since
-      ? await db.query("SELECT * FROM messages WHERE chapter_id = $1 AND ts > $2 ORDER BY ts DESC", [chapterId, since])
-      : await db.query("SELECT * FROM messages WHERE chapter_id = $1 ORDER BY ts DESC LIMIT 200", [chapterId]);
+      ? await db.query(`SELECT m.*, u.avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id = $1 AND m.ts > $2 ORDER BY m.ts DESC`, [chapterId, since])
+      : await db.query(`SELECT m.*, u.avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id = $1 ORDER BY m.ts DESC LIMIT 200`, [chapterId]);
     const reactionsMap = await loadReactions(rows.map(r => r.id));
     res.json(rows.map(r => shapeMessage(r, reactionsMap)));
   } catch (err) {

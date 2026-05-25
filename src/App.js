@@ -185,7 +185,11 @@ const api = {
   getWorkoutHistory:  ()              => api.get("/api/workout/history"),
   getMyPrs:           ()              => api.get("/api/workout/prs"),
   getCommunityPrs:    ()              => api.get("/api/community/prs"),
-  // Board
+  uploadAvatar:       (file)          => {
+    const fd = new FormData(); fd.append("file", file);
+    return fetch(`${API_BASE}/api/profile/avatar`, { method:"POST", headers:{ Authorization:`Bearer ${api.getToken()}` }, body:fd }).then(r=>r.json());
+  },
+  deleteAvatar:       ()              => api.delete("/api/profile/avatar"),
   getMessages:   (since) => api.get(since ? `/api/board/messages?since=${since}` : "/api/board/messages"),
   postMessage:   (body) => api.post("/api/board/messages", body),
   postReaction:  (body) => api.post("/api/board/reactions", body),
@@ -1399,8 +1403,10 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
         {!isMe && (
           <div style={{ width:32, flexShrink:0 }}>
             {isLastInGroup && (
-              <div className="avatar sm" style={{ background:"linear-gradient(135deg,#001a10,#002e1a)", color:"#88ff00" }}>
-                {initials(msg.author)}
+              <div className="avatar sm" style={{ background:"linear-gradient(135deg,#001a10,#002e1a)", color:"#88ff00", overflow:"hidden", padding:0 }}>
+                {msg.avatarUrl
+                  ? <img src={msg.avatarUrl} alt={msg.author} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:"50%"}} />
+                  : initials(msg.author)}
               </div>
             )}
           </div>
@@ -6349,7 +6355,58 @@ function AuthScreen({ onAuth }) {
 }
 
 // ─── PROFILE PAGE ─────────────────────────────────────────────────────────────
-function ProfilePage({ user, onDeleted, onLogout }) {
+// ─── AVATAR UPLOAD ─────────────────────────────────────────────────────────────
+function AvatarUpload({ user, onUpdate }) {
+  const [uploading, setUploading] = useState(false);
+  const [removing,  setRemoving]  = useState(false);
+  const [error,     setError]     = useState("");
+  const fileRef = useRef(null);
+
+  const handleFile = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setError("Please select an image file."); return; }
+    setUploading(true); setError("");
+    try {
+      const data = await api.uploadAvatar(file);
+      if (data.avatarUrl) onUpdate(data.avatarUrl);
+      else setError(data.error || "Upload failed.");
+    } catch { setError("Upload failed."); }
+    finally { setUploading(false); }
+  };
+
+  const handleRemove = async () => {
+    setRemoving(true); setError("");
+    try {
+      await api.deleteAvatar();
+      onUpdate(null);
+    } catch { setError("Remove failed."); }
+    finally { setRemoving(false); }
+  };
+
+  return (
+    <div style={{marginBottom:20}}>
+      <div className="form-label" style={{marginBottom:8}}>Profile Picture</div>
+      <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFile} />
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <button className="btn" onClick={() => fileRef.current?.click()} disabled={uploading}
+          style={{fontSize:12,padding:"6px 14px"}}>
+          {uploading ? "Uploading…" : user.avatarUrl ? "Change Photo" : "Upload Photo"}
+        </button>
+        {user.avatarUrl && (
+          <button className="btn" onClick={handleRemove} disabled={removing}
+            style={{fontSize:12,padding:"6px 14px",color:"rgba(255,68,85,0.8)",borderColor:"rgba(255,68,85,0.3)"}}>
+            {removing ? "Removing…" : "Remove Photo"}
+          </button>
+        )}
+      </div>
+      {error && <div style={{color:"rgba(255,68,85,0.8)",fontSize:12,marginTop:6}}>{error}</div>}
+    </div>
+  );
+}
+
+function ProfilePage({ user, onDeleted, onLogout, onAvatarUpdate }) {
   const isMobile = useIsMobile();
   const isArchAdmin = user.role === "arch_admin";
   const isAdmin = user.role === "arch_admin" || user.role === "admin";
@@ -6542,12 +6599,17 @@ function ProfilePage({ user, onDeleted, onLogout }) {
           opacity:0.5,animation:"sheen 2.5s ease-in-out infinite"}} />
         {sectionTitle("Account")}
         <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:20}}>
-          <div className="avatar" style={{width:52,height:52,fontSize:18}}>{initials(user.displayName)}</div>
+          <div className="avatar" style={{width:52,height:52,fontSize:18,overflow:"hidden",padding:0,position:"relative"}}>
+            {user.avatarUrl
+              ? <img src={user.avatarUrl} alt={user.displayName} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:"50%"}} />
+              : initials(user.displayName)}
+          </div>
           <div>
             <div style={{fontWeight:700,fontSize:16,marginBottom:2}}>{user.displayName}</div>
             <div style={{color:"var(--muted)",fontSize:12}}>{user.email}</div>
           </div>
         </div>
+        <AvatarUpload user={user} onUpdate={onAvatarUpdate} />
         {[
           ["First Name",   user.firstName],
           ["Last Name",    user.lastName],
@@ -7397,7 +7459,7 @@ export default function App() {
           {page === "boards" && <div><BoardPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
           {page === "rule" && <RulePage user={user} />}
-          {page === "profile" && <ProfilePage user={user} onDeleted={() => { api.clearToken(); setUser(null); }} onLogout={() => { handleLogout(); setPage("workout"); }} />}
+          {page === "profile" && <ProfilePage user={user} onDeleted={() => { api.clearToken(); setUser(null); }} onLogout={() => { handleLogout(); setPage("workout"); }} onAvatarUpdate={(url) => setUser(u => ({ ...u, avatarUrl: url }))} />}
         </div>
         <FigureBackdrop variant="boards"    visible={page === "boards"}    isMobile={isMobile} />
         <AudioFigureBackdrop               visible={page === "audio"}     isMobile={isMobile} />
