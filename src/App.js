@@ -6360,19 +6360,18 @@ function AvatarUpload({ user, onUpdate }) {
   const [uploading, setUploading] = useState(false);
   const [removing,  setRemoving]  = useState(false);
   const [error,     setError]     = useState("");
-  const [cropSrc,   setCropSrc]   = useState(null); // raw image data URL for crop UI
+  const [cropSrc,   setCropSrc]   = useState(null);
+  const [imgSize,   setImgSize]   = useState({ w: 0, h: 0 }); // natural dimensions once loaded
   const fileRef   = useRef(null);
   const canvasRef = useRef(null);
   const imgRef    = useRef(null);
 
-  // Crop state
-  const [scale,   setScale]   = useState(1);
-  const [offset,  setOffset]  = useState({ x: 0, y: 0 });
-  const dragRef   = useRef(null); // { startX, startY, ox, oy }
+  const [scale,  setScale]  = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const dragRef  = useRef(null);
 
-  const CROP_SIZE = 240; // px — the circular crop window
+  const CROP_SIZE = 240;
 
-  // When a new image is selected, show the crop UI
   const handleFile = (e) => {
     const file = e.target.files[0];
     e.target.value = "";
@@ -6384,40 +6383,38 @@ function AvatarUpload({ user, onUpdate }) {
       setCropSrc(ev.target.result);
       setScale(1);
       setOffset({ x: 0, y: 0 });
+      setImgSize({ w: 0, h: 0 });
     };
     reader.readAsDataURL(file);
   };
 
-  // Draw the crop preview onto the canvas
+  const onImgLoad = () => {
+    const img = imgRef.current;
+    if (!img) return;
+    setImgSize({ w: img.naturalWidth, h: img.naturalHeight });
+  };
+
   const drawCanvas = () => {
     const canvas = canvasRef.current;
     const img    = imgRef.current;
-    if (!canvas || !img) return;
+    if (!canvas || !img || !imgSize.w) return;
     const ctx = canvas.getContext("2d");
     canvas.width  = CROP_SIZE;
     canvas.height = CROP_SIZE;
-
-    // Clip to circle
     ctx.clearRect(0, 0, CROP_SIZE, CROP_SIZE);
     ctx.save();
     ctx.beginPath();
     ctx.arc(CROP_SIZE / 2, CROP_SIZE / 2, CROP_SIZE / 2, 0, Math.PI * 2);
     ctx.clip();
-
-    // Draw image centered with scale and offset
-    const iw = img.naturalWidth  * scale;
-    const ih = img.naturalHeight * scale;
-    const dx = (CROP_SIZE - iw) / 2 + offset.x;
-    const dy = (CROP_SIZE - ih) / 2 + offset.y;
-    ctx.drawImage(img, dx, dy, iw, ih);
+    const iw = imgSize.w * scale;
+    const ih = imgSize.h * scale;
+    ctx.drawImage(img, (CROP_SIZE - iw) / 2 + offset.x, (CROP_SIZE - ih) / 2 + offset.y, iw, ih);
     ctx.restore();
   };
 
-  // Confirm crop — export canvas to blob and upload
-  const confirmCrop = async () => {
+  const confirmCrop = () => {
     drawCanvas();
-    const canvas = canvasRef.current;
-    canvas.toBlob(async (blob) => {
+    canvasRef.current.toBlob(async (blob) => {
       const file = new File([blob], "avatar.png", { type: "image/png" });
       setUploading(true); setCropSrc(null);
       try {
@@ -6429,78 +6426,69 @@ function AvatarUpload({ user, onUpdate }) {
     }, "image/png");
   };
 
-  // Mouse/touch drag handlers
   const onPointerDown = (e) => {
     e.preventDefault();
-    const { clientX, clientY } = e.touches ? e.touches[0] : e;
-    dragRef.current = { startX: clientX, startY: clientY, ox: offset.x, oy: offset.y };
+    const p = e.touches ? e.touches[0] : e;
+    dragRef.current = { startX: p.clientX, startY: p.clientY, ox: offset.x, oy: offset.y };
   };
   const onPointerMove = (e) => {
     if (!dragRef.current) return;
-    const { clientX, clientY } = e.touches ? e.touches[0] : e;
-    const dx = clientX - dragRef.current.startX;
-    const dy = clientY - dragRef.current.startY;
-    setOffset({ x: dragRef.current.ox + dx, y: dragRef.current.oy + dy });
+    const p = e.touches ? e.touches[0] : e;
+    setOffset({ x: dragRef.current.ox + p.clientX - dragRef.current.startX, y: dragRef.current.oy + p.clientY - dragRef.current.startY });
   };
   const onPointerUp = () => { dragRef.current = null; };
 
   const handleRemove = async () => {
     setRemoving(true); setError("");
-    try {
-      await api.deleteAvatar();
-      onUpdate(null);
-    } catch { setError("Remove failed."); }
+    try { await api.deleteAvatar(); onUpdate(null); }
+    catch { setError("Remove failed."); }
     finally { setRemoving(false); }
   };
 
-  // ── Crop UI ───────────────────────────────────────────────────────────────
   if (cropSrc) {
+    const iw = imgSize.w * scale;
+    const ih = imgSize.h * scale;
     return (
       <div style={{marginBottom:20}}>
         <div className="form-label" style={{marginBottom:8}}>Position your photo</div>
         <div style={{
-          width:CROP_SIZE, height:CROP_SIZE, borderRadius:"50%",
-          overflow:"hidden", border:"2px solid rgba(136,255,0,0.4)",
-          boxShadow:"0 0 16px rgba(136,255,0,0.15)",
+          width:CROP_SIZE, height:CROP_SIZE, borderRadius:"50%", overflow:"hidden",
+          border:"2px solid rgba(136,255,0,0.4)", boxShadow:"0 0 16px rgba(136,255,0,0.15)",
           position:"relative", cursor:"grab", userSelect:"none", touchAction:"none",
           background:"var(--surface2)",
         }}
-          onMouseDown={onPointerDown} onMouseMove={onPointerMove} onMouseUp={onPointerUp} onMouseLeave={onPointerUp}
+          onMouseDown={onPointerDown} onMouseMove={onPointerMove}
+          onMouseUp={onPointerUp} onMouseLeave={onPointerUp}
           onTouchStart={onPointerDown} onTouchMove={onPointerMove} onTouchEnd={onPointerUp}
         >
-          {/* Hidden img used for drawCanvas — always loaded */}
-          <img ref={imgRef} src={cropSrc} onLoad={drawCanvas}
+          <img ref={imgRef} src={cropSrc} onLoad={onImgLoad}
             style={{
               position:"absolute",
-              width:  `${(imgRef.current?.naturalWidth  || 1) * scale}px`,
-              height: `${(imgRef.current?.naturalHeight || 1) * scale}px`,
-              left: `${(CROP_SIZE - (imgRef.current?.naturalWidth  || 1) * scale) / 2 + offset.x}px`,
-              top:  `${(CROP_SIZE - (imgRef.current?.naturalHeight || 1) * scale) / 2 + offset.y}px`,
+              width: iw || "auto", height: ih || "auto",
+              left: (CROP_SIZE - iw) / 2 + offset.x,
+              top:  (CROP_SIZE - ih) / 2 + offset.y,
               maxWidth:"none", pointerEvents:"none", userSelect:"none",
+              display: imgSize.w ? "block" : "none",
             }}
           />
+          {!imgSize.w && <div style={{color:"var(--muted)",fontSize:12,textAlign:"center",paddingTop:100}}>Loading…</div>}
         </div>
-        {/* Zoom slider */}
         <div style={{display:"flex",alignItems:"center",gap:10,marginTop:12,maxWidth:CROP_SIZE}}>
           <span style={{fontSize:11,color:"var(--muted)"}}>−</span>
-          <input type="range" min="0.5" max="3" step="0.01" value={scale}
+          <input type="range" min="0.3" max="3" step="0.01" value={scale}
             onChange={e => setScale(Number(e.target.value))}
             style={{flex:1,accentColor:"var(--accent)"}} />
           <span style={{fontSize:11,color:"var(--muted)"}}>+</span>
         </div>
         <div style={{display:"flex",gap:8,marginTop:12}}>
-          <button className="btn btn-primary" onClick={confirmCrop}
-            style={{fontSize:12,padding:"6px 18px"}}>Save Photo</button>
-          <button className="btn" onClick={() => setCropSrc(null)}
-            style={{fontSize:12,padding:"6px 14px"}}>Cancel</button>
+          <button className="btn btn-primary" onClick={confirmCrop} style={{fontSize:12,padding:"6px 18px"}}>Save Photo</button>
+          <button className="btn" onClick={() => setCropSrc(null)} style={{fontSize:12,padding:"6px 14px"}}>Cancel</button>
         </div>
-        {/* Hidden canvas for export */}
         <canvas ref={canvasRef} style={{display:"none"}} />
       </div>
     );
   }
 
-  // ── Normal state ──────────────────────────────────────────────────────────
   return (
     <div style={{marginBottom:20}}>
       <div className="form-label" style={{marginBottom:8}}>Profile Picture</div>
