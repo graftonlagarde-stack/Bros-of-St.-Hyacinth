@@ -2823,6 +2823,7 @@ const css = `
     gap: 6px;
     overflow: visible;
     box-shadow: none;
+    pointer-events: none;
     transition: transform 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.35s ease;
   }
   .player-bar.retracted {
@@ -2832,7 +2833,7 @@ const css = `
   }
   .player-bar::before { display: none; }
   .player-bar::after  { display: none; }
-  .track-info { min-width: 0; position: relative; z-index: 1; overflow: hidden; text-align: left; }
+  .track-info { min-width: 0; position: relative; z-index: 1; overflow: hidden; text-align: left; pointer-events: all; }
   .track-title {
     font-weight: 700; font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
     font-family: 'Orbitron', sans-serif;
@@ -2846,7 +2847,7 @@ const css = `
     color: rgba(0,255,140,0.6);
     filter: drop-shadow(0 0 5px rgba(0,255,140,0.7));
   }
-  .player-controls { display: flex; align-items: center; gap: 8px; position: relative; z-index: 1; }
+  .player-controls { display: flex; align-items: center; gap: 8px; position: relative; z-index: 1; pointer-events: all; }
   .ctrl-btn {
     background: none;
     border: 1px solid rgba(0,255,140,0.25);
@@ -2917,6 +2918,7 @@ const css = `
 
   /* ── TRACK LIST ── */
   .track-row {
+    pointer-events: all;
     display: flex; align-items: center; gap: 14px; padding: 11px 14px;
     border-radius: var(--radius); cursor: pointer; transition: all 0.2s;
     border: 1px solid transparent; position: relative; overflow: hidden;
@@ -7262,7 +7264,7 @@ function MeetPage({ currentUser }) {
 
   useEffect(() => {
     api.getMeetings().then(setMeetings).catch(() => {}).finally(() => setLoading(false));
-    api.get("/api/admin/users").then(u => setAllUsers(u || [])).catch(() => {});
+    api.get("/api/users").then(u => setAllUsers(u || [])).catch(() => {});
     api.getMyMembership().then(m => {
       if (m?.status === "approved")
         api.getChapterCommunityUsers(m.chapter_id).then(u => setChapterUsers(u || [])).catch(() => {});
@@ -7334,8 +7336,8 @@ function MeetPage({ currentUser }) {
               <div key={u.id} onClick={() => setSelectedIds(prev => { const n = new Set(prev); n.has(u.id) ? n.delete(u.id) : n.add(u.id); return n; })}
                 style={{display:"flex",alignItems:"center",gap:10,padding:"8px 4px",cursor:"pointer",borderBottom:"1px solid rgba(136,255,0,0.05)"}}>
                 <div style={{width:18,height:18,borderRadius:3,border:"1px solid var(--border)",background:selectedIds.has(u.id)?"var(--accent)":"transparent",flexShrink:0}} />
-                <div className="avatar sm" style={{width:28,height:28,fontSize:9}}>{initials(u.displayName||`${u.firstName} ${u.lastName}`)}</div>
-                <span style={{fontSize:14}}>{u.displayName||`${u.firstName} ${u.lastName}`}</span>
+                <div className="avatar sm" style={{width:28,height:28,fontSize:9}}>{initials(u.displayName)}</div>
+                <span style={{fontSize:14}}>{u.displayName}</span>
               </div>
             ))}
           </div>

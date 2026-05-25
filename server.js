@@ -1492,6 +1492,25 @@ app.post("/api/board/reactions", requireAuth, async (req, res) => {
 // ADMIN ROUTES
 // ═════════════════════════════════════════════════════════════════════════════
 
+// GET /api/users — all users (any authenticated user, for meeting invites etc.)
+app.get("/api/users", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      "SELECT id, first_name, last_name, email, avatar_url FROM users ORDER BY first_name ASC",
+      []
+    );
+    res.json(rows.map(u => ({
+      id:          Number(u.id),
+      displayName: `${u.first_name} ${u.last_name}`,
+      email:       u.email,
+      avatarUrl:   u.avatar_url || null,
+    })));
+  } catch (err) {
+    console.error("GET /api/users:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // GET /api/admin/users — list all users (arch_admin and admin only)
 app.get("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -2095,22 +2114,31 @@ app.post("/api/meetings", requireAuth, async (req, res) => {
     if (!title || !scheduledAt || !Array.isArray(inviteeIds)) {
       return res.status(400).json({ error: "title, scheduledAt, and inviteeIds required" });
     }
-    // Create Daily room — expires 1 hour after scheduled time
-    const expiry = Math.floor((scheduledAt + 3600000) / 1000);
-    const room = await dailyRequest("POST", "/rooms", {
-      properties: {
-        exp:               expiry,
-        enable_prejoin_ui: false,
-        start_video_off:   true,
-        start_audio_off:   false,
-        enable_chat:       false,
-      },
-    });
+    // Create Daily room — falls back to placeholder if key not configured
+    let roomName, roomUrl;
+    if (process.env.DAILY_API_KEY) {
+      const expiry = Math.floor((scheduledAt + 3600000) / 1000);
+      const room = await dailyRequest("POST", "/rooms", {
+        properties: {
+          exp:               expiry,
+          enable_prejoin_ui: false,
+          start_video_off:   true,
+          start_audio_off:   false,
+          enable_chat:       false,
+        },
+      });
+      roomName = room.name;
+      roomUrl  = room.url;
+    } else {
+      // Fallback: generate a unique room name without Daily
+      roomName = `bshm-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+      roomUrl  = `https://meet.daily.co/${roomName}`;
+    }
     // Insert meeting
     const { rows } = await db.query(`
       INSERT INTO meetings (title, created_by, scheduled_at, daily_room_name, daily_room_url)
       VALUES ($1, $2, $3, $4, $5) RETURNING *
-    `, [title, req.userId, scheduledAt, room.name, room.url]);
+    `, [title, req.userId, scheduledAt, roomName, roomUrl]);
     const meeting = rows[0];
     // Insert invitees (deduplicated, exclude creator)
     const ids = [...new Set(inviteeIds.filter(id => id !== req.userId))];
