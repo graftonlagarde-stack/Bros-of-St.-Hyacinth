@@ -1,5 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
+import DailyIframe from "@daily-co/daily-js";
 
 // ─── POLLING HOOK ─────────────────────────────────────────────────────────────
 // Runs a callback at a fixed interval, pausing when the tab is hidden.
@@ -7428,7 +7429,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, currentUser, onLea
     let destroyed = false;
     const setup = async () => {
       try {
-        const DailyIframe = (await import("@daily-co/daily-js")).default;
+        if (!DailyIframe) { setError("Daily.co SDK not loaded. Run: npm install @daily-co/daily-js"); return; }
         // Destroy any existing call object before creating a new one
         const existing = DailyIframe.getCallInstance();
         if (existing) {
