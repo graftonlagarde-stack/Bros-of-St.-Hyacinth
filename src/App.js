@@ -7327,7 +7327,10 @@ function MeetPage({ currentUser, onCallActive }) {
   const fmtTime = (ts) => new Date(ts).toLocaleString("en-US", { weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });
 
   if (view === "call" && activeMeeting && callToken && callRoom)
-    return <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} currentUser={currentUser} onLeave={() => { setView("list"); setCallToken(null); setCallRoom(null); setCallRoomUrl(null); setActiveMeeting(null); onCallActive?.(false); }} />;
+    return createPortal(
+      <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} currentUser={currentUser} onLeave={() => { setView("list"); setCallToken(null); setCallRoom(null); setCallRoomUrl(null); setActiveMeeting(null); onCallActive?.(false); }} />,
+      document.body
+    );
 
   if (view === "create") return (
     <div className="page">
@@ -7520,6 +7523,8 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, currentUser, onLea
         <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:12,letterSpacing:2,color:"var(--accent)"}}>{meeting.title}</div>
         {!joined && <div style={{fontSize:11,color:"var(--muted)"}}>Connecting…</div>}
       </div>
+      {/* Audio elements for remote participants */}
+      {remotes.map(p => <ParticipantAudio key={p.session_id} participant={p} />)}
       {/* Remote grid */}
       <div style={{flex:1,position:"relative",overflow:"hidden"}}>
         {remotes.length === 0 && joined && (
@@ -7568,6 +7573,18 @@ function CallButton({ active, danger, onClick, label, icon }) {
       <span style={{fontSize:9,fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>{label.toUpperCase()}</span>
     </button>
   );
+}
+
+function ParticipantAudio({ participant }) {
+  const audioRef = useRef(null);
+  const track = participant.tracks?.audio?.persistentTrack;
+  useEffect(() => {
+    if (audioRef.current && track) {
+      audioRef.current.srcObject = new MediaStream([track]);
+      audioRef.current.play().catch(() => {});
+    }
+  }, [track]);
+  return <audio ref={audioRef} autoPlay playsInline style={{display:"none"}} />;
 }
 
 function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay }) {
