@@ -342,57 +342,68 @@ async function initDb() {
   `);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';`);
   await db.query(`ALTER TABLE session_sets ADD COLUMN IF NOT EXISTS migrated BOOLEAN NOT NULL DEFAULT FALSE;`);
-  // Seeds personal_records from best estimated 1RM (or max reps for bodyweight)
-  // and backfills workout_sessions/session_sets so history is preserved.
+  // One-time cleanup: any session_sets rows that were inserted before the migrated
+  // column existed will have migrated=FALSE but are actually legacy data. Mark them
+  // as migrated by matching them against lift_logs entries.
+  await db.query(`
+    UPDATE session_sets ss
+    SET migrated = TRUE
+    WHERE migrated = FALSE
+      AND EXISTS (
+        SELECT 1 FROM lift_logs ll
+        WHERE ll.user_id = ss.user_id
+          AND ll.exercise = ss.exercise
+          AND (
+            (ss.set_type = 'weighted'   AND ll.weight = ss.weight AND ll.rep_cat = ss.reps)
+            OR
+            (ss.set_type = 'bodyweight' AND ll.weight = ss.reps   AND ss.weight IS NULL)
+          )
+      )
+  `);
+  // Seeds personal_records and backfills session_sets from lift_logs.
+  // Guard: skip entirely if migrated rows already exist (true idempotency).
   const BODYWEIGHT_EXERCISES = ["Pull-up", "Push-up", "Dips"];
-  const { rows: legacyLogs } = await db.query(
-    "SELECT * FROM lift_logs ORDER BY ts ASC"
-  );
-  for (const log of legacyLogs) {
-    const isBodyweight = BODYWEIGHT_EXERCISES.includes(log.exercise);
-    const isDuration   = false; // no duration exercises in legacy data
-    // Compute PR value
-    let prValue;
-    if (isBodyweight) {
-      prValue = Number(log.weight); // weight field stored reps for bodyweight
-    } else {
-      const reps = Number(log.rep_cat) || 1;
-      const w    = Number(log.weight);
-      prValue = reps === 1 ? w : Math.round(w * (1 + reps / 30));
-    }
-    // Upsert personal_record if this is a new best
-    await db.query(`
-      INSERT INTO personal_records (user_id, exercise, value, updated_at)
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT (user_id, exercise) DO UPDATE
-        SET value = GREATEST(personal_records.value, $3),
-            updated_at = CASE WHEN $3 > personal_records.value THEN $4 ELSE personal_records.updated_at END
-    `, [log.user_id, log.exercise, prValue, Number(log.ts)]);
-    // Backfill workout_sessions / session_sets
-    const { rows: sessRows } = await db.query(`
-      INSERT INTO workout_sessions (user_id, date, created_at)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (user_id, date) DO UPDATE SET date = EXCLUDED.date
-      RETURNING id
-    `, [log.user_id, log.date, Number(log.ts)]);
-    const sessionId = sessRows[0].id;
-    // Only insert if not already migrated (idempotent)
-    const { rows: existing } = await db.query(
-      "SELECT id FROM session_sets WHERE session_id = $1 AND exercise = $2 AND reps = $3 AND weight = $4",
-      [sessionId, log.exercise, isBodyweight ? Number(log.weight) : Number(log.rep_cat), isBodyweight ? null : Number(log.weight)]
+  const { rows: legacyLogs } = await db.query("SELECT * FROM lift_logs ORDER BY ts ASC");
+  if (legacyLogs.length > 0) {
+    const { rows: alreadyMigrated } = await db.query(
+      "SELECT id FROM session_sets WHERE migrated = TRUE LIMIT 1"
     );
-    if (existing.length === 0) {
-      await db.query(`
-        INSERT INTO session_sets (session_id, user_id, exercise, set_type, weight, reps, duration_seconds, migrated, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8)
-      `, [
-        sessionId, log.user_id, log.exercise,
-        isBodyweight ? "bodyweight" : "weighted",
-        isBodyweight ? null : Number(log.weight),
-        isBodyweight ? Number(log.weight) : Number(log.rep_cat),
-        null,
-        Number(log.ts),
-      ]);
+    if (alreadyMigrated.length === 0) {
+      for (const log of legacyLogs) {
+        const isBodyweight = BODYWEIGHT_EXERCISES.includes(log.exercise);
+        let prValue;
+        if (isBodyweight) {
+          prValue = Number(log.weight);
+        } else {
+          const reps = Number(log.rep_cat) || 1;
+          const w    = Number(log.weight);
+          prValue = reps === 1 ? w : Math.round(w * (1 + reps / 30));
+        }
+        await db.query(`
+          INSERT INTO personal_records (user_id, exercise, value, updated_at)
+          VALUES ($1, $2, $3, $4)
+          ON CONFLICT (user_id, exercise) DO UPDATE
+            SET value = GREATEST(personal_records.value, $3),
+                updated_at = CASE WHEN $3 > personal_records.value THEN $4 ELSE personal_records.updated_at END
+        `, [log.user_id, log.exercise, prValue, Number(log.ts)]);
+        const { rows: sessRows } = await db.query(`
+          INSERT INTO workout_sessions (user_id, date, created_at)
+          VALUES ($1, $2, $3)
+          ON CONFLICT (user_id, date) DO UPDATE SET date = EXCLUDED.date
+          RETURNING id
+        `, [log.user_id, log.date, Number(log.ts)]);
+        const sessionId = sessRows[0].id;
+        await db.query(`
+          INSERT INTO session_sets (session_id, user_id, exercise, set_type, weight, reps, duration_seconds, migrated, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6, NULL, TRUE, $7)
+        `, [
+          sessionId, log.user_id, log.exercise,
+          isBodyweight ? "bodyweight" : "weighted",
+          isBodyweight ? null : Number(log.weight),
+          isBodyweight ? Number(log.weight) : Number(log.rep_cat),
+          Number(log.ts),
+        ]);
+      }
     }
   }
   await db.query(`

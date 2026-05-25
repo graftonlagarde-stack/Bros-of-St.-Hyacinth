@@ -5115,8 +5115,15 @@ function WorkoutPage({ username }) {
         {newPrEx && (
           <div style={{background:"rgba(136,255,0,0.1)",border:"1px solid rgba(136,255,0,0.4)",borderRadius:4,
             padding:"8px 14px",marginBottom:12,fontSize:13,fontWeight:700,color:"#88ff00",
-            fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>
-            🏆 NEW PR — {newPrEx}
+            fontFamily:"'Orbitron',sans-serif",letterSpacing:1,display:"flex",alignItems:"center",gap:8}}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6 3H18V13C18 16.3137 15.3137 19 12 19C8.68629 19 6 16.3137 6 13V3Z" stroke="#88ff00" strokeWidth="1.8" strokeLinejoin="round"/>
+              <path d="M6 6H3C3 6 2 11 6 11" stroke="#88ff00" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M18 6H21C21 6 22 11 18 11" stroke="#88ff00" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M12 19V22" stroke="#88ff00" strokeWidth="1.8" strokeLinecap="round"/>
+              <path d="M8 22H16" stroke="#88ff00" strokeWidth="1.8" strokeLinecap="round"/>
+            </svg>
+            NEW PR — {newPrEx}
           </div>
         )}
 
@@ -7280,7 +7287,14 @@ export default function App() {
       <div className="app"
           onTouchStart={isMobile ? (e) => {
             const t = e.touches[0];
-            swipeTouchRef.current = { x: t.clientX, y: t.clientY };
+            // Walk up the DOM to check if the touch started inside a horizontal scroll container
+            let el = e.target;
+            let insideHScroll = false;
+            while (el && el !== e.currentTarget) {
+              if (el.scrollWidth > el.clientWidth + 2) { insideHScroll = true; break; }
+              el = el.parentElement;
+            }
+            swipeTouchRef.current = insideHScroll ? null : { x: t.clientX, y: t.clientY };
           } : undefined}
           onTouchEnd={isMobile ? (e) => {
             if (!swipeTouchRef.current) return;
