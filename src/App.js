@@ -7465,19 +7465,25 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           // Track whether anyone else has ever joined
           const others = Object.values(p).filter(x => !x.local);
           if (others.length > 0) othersEverJoinedRef.current = true;
-          // Auto-leave only if others previously joined and now all have left
-          if (othersEverJoinedRef.current && others.length === 0) {
+          // Auto-leave only if others previously joined, now all gone, and we've been in for >10s
+          if (othersEverJoinedRef.current && others.length === 0 && joinedAtRef.current && Date.now() - joinedAtRef.current > 10000) {
             setTimeout(() => {
               if (destroyed) return;
               const current = callRef.current?.participants();
               if (current && Object.values(current).filter(x => !x.local).length === 0) {
                 callRef.current?.leave();
               }
-            }, 8000);
+            }, 15000); // 15 second grace period
           }
         };
         const othersEverJoinedRef = { current: false };
-        call.on("joined-meeting", () => { setJoined(true); update(); const p2=call.participants(); if(p2.local){setMicOn(!p2.local.tracks?.audio?.off);setCamOn(!p2.local.tracks?.video?.off);} });
+        const joinedAtRef = { current: null };
+        call.on("joined-meeting", () => {
+          joinedAtRef.current = Date.now();
+          setJoined(true); update();
+          const p2=call.participants();
+          if(p2.local){setMicOn(!p2.local.tracks?.audio?.off);setCamOn(!p2.local.tracks?.video?.off);}
+        });
         call.on("participant-joined",   update);
         call.on("participant-left",     update);
         call.on("participant-updated",  update);
@@ -7644,19 +7650,29 @@ function ParticipantAudio({ participant }) {
 function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay }) {
   const videoRef = useRef(null);
   const track    = participant.tracks?.video?.persistentTrack;
-  const hasVideo = !!(track && participant.tracks?.video?.state !== "off" && participant.tracks?.video?.state !== "blocked");
+  const videoState = participant.tracks?.video?.state;
+  const hasVideo = !!(track && videoState !== "off" && videoState !== "blocked");
 
+  // Use a ref callback so we attach immediately when the element mounts
+  const videoCallbackRef = useCallback((el) => {
+    videoRef.current = el;
+    if (el && track) {
+      el.srcObject = new MediaStream([track]);
+      el.play().catch(() => {});
+    }
+  }, [track]);
+
+  // Also re-attach when track or state changes
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
     if (track) {
-      const stream = new MediaStream([track]);
-      el.srcObject = stream;
+      el.srcObject = new MediaStream([track]);
       el.play().catch(() => {});
     } else {
       el.srcObject = null;
     }
-  }, [track]);
+  }, [track, videoState]);
 
   const avatarUrl  = participant.userData?.avatarUrl || null;
   const name       = participant.user_name || "Brother";
@@ -7668,7 +7684,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay }) {
       <div style={{width:bubbleSize,height:bubbleSize,borderRadius:"50%",overflow:"hidden",position:"relative",
         border:"1px solid rgba(136,255,0,0.35)",boxShadow:glow,transition:"box-shadow 0.3s ease",background:"var(--surface2)"}}>
         {hasVideo
-          ? <video ref={videoRef} autoPlay playsInline style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}} />
+          ? <video ref={videoCallbackRef} autoPlay playsInline muted={false} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}} />
           : avatarUrl
             ? <img src={avatarUrl} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={name} />
             : <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",
