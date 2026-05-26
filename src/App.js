@@ -7333,7 +7333,12 @@ function MeetPage({ currentUser, onCallActive }) {
 
   if (view === "call" && activeMeeting && callToken && callRoom)
     return createPortal(
-      <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} onLeave={() => { setView("list"); setCallToken(null); setCallRoom(null); setCallRoomUrl(null); setActiveMeeting(null); onCallActive?.(false); }} />,
+      <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} onLeave={(hadOthers) => {
+        if (hadOthers) api.endMeeting(activeMeeting.id).catch(() => {});
+        setView("list"); setCallToken(null); setCallRoom(null); setCallRoomUrl(null);
+        setMeetings(prev => hadOthers ? prev.filter(m => m.id !== activeMeeting.id) : prev);
+        setActiveMeeting(null); onCallActive?.(false);
+      }} />,
       document.body
     );
 
@@ -7456,18 +7461,21 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           const local = p.local;
           if (local?.tracks?.video?.persistentTrack)
             setLocalStream(new MediaStream([local.tracks.video.persistentTrack]));
-          // Auto-terminate: if joined and all others have left, leave after grace period
+          // Track whether anyone else has ever joined
           const others = Object.values(p).filter(x => !x.local);
-          if (others.length === 0 && p.local) {
+          if (others.length > 0) othersEverJoinedRef.current = true;
+          // Auto-leave only if others previously joined and now all have left
+          if (othersEverJoinedRef.current && others.length === 0) {
             setTimeout(() => {
+              if (destroyed) return;
               const current = callRef.current?.participants();
               if (current && Object.values(current).filter(x => !x.local).length === 0) {
-                api.endMeeting(meetingId).catch(() => {});
                 callRef.current?.leave();
               }
-            }, 5000);
+            }, 8000);
           }
         };
+        const othersEverJoinedRef = { current: false };
         call.on("joined-meeting", () => { setJoined(true); update(); const p2=call.participants(); if(p2.local){setMicOn(!p2.local.tracks?.audio?.off);setCamOn(!p2.local.tracks?.video?.off);} });
         call.on("participant-joined",   update);
         call.on("participant-left",     update);
@@ -7475,7 +7483,15 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         call.on("track-started",        update);
         call.on("track-stopped",        update);
         call.on("active-speaker-change",e => { if (!destroyed) setActiveSpeaker(e?.activeSpeaker?.peerId || null); });
-        call.on("left-meeting",         () => { if (!destroyed) { destroyed = true; callRef.current = null; call.destroy(); onLeave(); } });
+        call.on("left-meeting", () => {
+          if (!destroyed) {
+            destroyed = true;
+            const hadOthers = othersEverJoinedRef.current;
+            callRef.current = null;
+            call.destroy();
+            onLeave(hadOthers);
+          }
+        });
         call.on("error",                e => { if (!destroyed) setError(e.errorMsg || "Call error"); });
         await call.join({ url: roomUrl, token, startVideoOff: true, startAudioOff: false });
       } catch(err) {
@@ -7507,7 +7523,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
       setLocalStream(vtrack ? new MediaStream([vtrack]) : null);
     }, 200);
   };
-  const leave = async () => { if (callRef.current) await callRef.current.leave(); else onLeave(); };
+  const leave = async () => { if (callRef.current) await callRef.current.leave(); else onLeave(false); };
 
   const remotes = Object.values(participants).filter(p => !p.local);
 
