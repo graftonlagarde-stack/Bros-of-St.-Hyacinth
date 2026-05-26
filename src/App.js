@@ -7438,7 +7438,11 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, currentUser, onLea
         if (existing) {
           try { await existing.destroy(); } catch(e) {}
         }
-        const call = DailyIframe.createCallObject({ audioSource: true, videoSource: true });
+        const call = DailyIframe.createCallObject({
+          audioSource: true,
+          videoSource: true,
+          subscribeToTracksAutomatically: true,
+        });
         callRef.current = call;
         const update = () => {
           if (destroyed) return;
@@ -7447,18 +7451,9 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, currentUser, onLea
           const local = p.local;
           if (local?.tracks?.video?.persistentTrack)
             setLocalStream(new MediaStream([local.tracks.video.persistentTrack]));
-          // Subscribe to all remote video+audio tracks
-          Object.values(p).forEach(participant => {
-            if (participant.local) return;
-            call.updateParticipant(participant.session_id, {
-              setSubscribedTracks: { audio: true, video: true },
-            });
-          });
-          // Auto-terminate: if we're the last one left, leave
+          // Auto-terminate: if joined and all others have left, leave after grace period
           const others = Object.values(p).filter(x => !x.local);
-          if (others.length === 0 && Object.keys(p).length > 0 && p.local) {
-            // Only auto-leave if we joined (not just on first update before others arrive)
-            // Use a small delay to avoid leaving before others have a chance to connect
+          if (others.length === 0 && p.local) {
             setTimeout(() => {
               const current = callRef.current?.participants();
               if (current && Object.values(current).filter(x => !x.local).length === 0) {
@@ -7471,6 +7466,8 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, currentUser, onLea
         call.on("participant-joined",   update);
         call.on("participant-left",     update);
         call.on("participant-updated",  update);
+        call.on("track-started",        update);
+        call.on("track-stopped",        update);
         call.on("active-speaker-change",e => { if (!destroyed) setActiveSpeaker(e?.activeSpeaker?.peerId || null); });
         call.on("left-meeting",         () => { if (!destroyed) { destroyed = true; callRef.current = null; call.destroy(); onLeave(); } });
         call.on("error",                e => { if (!destroyed) setError(e.errorMsg || "Call error"); });
