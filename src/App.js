@@ -7447,6 +7447,25 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, currentUser, onLea
           const local = p.local;
           if (local?.tracks?.video?.persistentTrack)
             setLocalStream(new MediaStream([local.tracks.video.persistentTrack]));
+          // Subscribe to all remote video+audio tracks
+          Object.values(p).forEach(participant => {
+            if (participant.local) return;
+            call.updateParticipant(participant.session_id, {
+              setSubscribedTracks: { audio: true, video: true },
+            });
+          });
+          // Auto-terminate: if we're the last one left, leave
+          const others = Object.values(p).filter(x => !x.local);
+          if (others.length === 0 && Object.keys(p).length > 0 && p.local) {
+            // Only auto-leave if we joined (not just on first update before others arrive)
+            // Use a small delay to avoid leaving before others have a chance to connect
+            setTimeout(() => {
+              const current = callRef.current?.participants();
+              if (current && Object.values(current).filter(x => !x.local).length === 0) {
+                callRef.current?.leave();
+              }
+            }, 5000);
+          }
         };
         call.on("joined-meeting", () => { setJoined(true); update(); const p2=call.participants(); if(p2.local){setMicOn(!p2.local.tracks?.audio?.off);setCamOn(!p2.local.tracks?.video?.off);} });
         call.on("participant-joined",   update);
@@ -7476,10 +7495,14 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, currentUser, onLea
   const toggleMic = async () => { if (!callRef.current) return; await callRef.current.setLocalAudio(!micOn); setMicOn(!micOn); };
   const toggleCam = async () => {
     if (!callRef.current) return;
-    await callRef.current.setLocalVideo(!camOn);
-    setCamOn(!camOn);
-    if (!camOn) { const p = callRef.current.participants(); if (p.local?.tracks?.video?.persistentTrack) setLocalStream(new MediaStream([p.local.tracks.video.persistentTrack])); }
-    else setLocalStream(null);
+    const next = !camOn;
+    await callRef.current.setLocalVideo(next);
+    setCamOn(next);
+    setTimeout(() => {
+      if (!callRef.current) return;
+      const vtrack = callRef.current.participants().local?.tracks?.video?.persistentTrack;
+      setLocalStream(vtrack ? new MediaStream([vtrack]) : null);
+    }, 200);
   };
   const leave = async () => { if (callRef.current) await callRef.current.leave(); else onLeave(); };
 
@@ -7589,9 +7612,21 @@ function ParticipantAudio({ participant }) {
 
 function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay }) {
   const videoRef = useRef(null);
-  const hasVideo = participant.tracks?.video?.state === "playable";
   const track    = participant.tracks?.video?.persistentTrack;
-  useEffect(() => { if (videoRef.current && track) videoRef.current.srcObject = new MediaStream([track]); }, [track]);
+  const hasVideo = !!(track && participant.tracks?.video?.state !== "off" && participant.tracks?.video?.state !== "blocked");
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (track) {
+      const stream = new MediaStream([track]);
+      el.srcObject = stream;
+      el.play().catch(() => {});
+    } else {
+      el.srcObject = null;
+    }
+  }, [track]);
+
   const avatarUrl  = participant.userData?.avatarUrl || null;
   const name       = participant.user_name || "Brother";
   const bubbleSize = hasVideo ? size : Math.round(size / 3);
