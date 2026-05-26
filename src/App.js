@@ -7455,26 +7455,37 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           subscribeToTracksAutomatically: true,
         });
         callRef.current = call;
+        const videoEls = {}; // session_id -> video element, for direct track attachment
+
         const update = () => {
           if (destroyed) return;
           const p = call.participants();
-          setParticipants({...p});
+          // Deep copy to force React re-render on any participant change
+          const copy = {};
+          for (const [k, v] of Object.entries(p)) {
+            copy[k] = { ...v,
+              tracks: {
+                audio: v.tracks?.audio ? { ...v.tracks.audio } : undefined,
+                video: v.tracks?.video ? { ...v.tracks.video } : undefined,
+              }
+            };
+          }
+          setParticipants(copy);
           const local = p.local;
           if (local?.tracks?.video?.persistentTrack)
             setLocalStream(new MediaStream([local.tracks.video.persistentTrack]));
-          // Track whether anyone else has ever joined
+          // Directly attach video tracks to any registered video elements
+          for (const [sid, el] of Object.entries(videoEls)) {
+            const participant = p[sid];
+            const vtrack = participant?.tracks?.video?.persistentTrack;
+            if (el && vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
+              el.srcObject = new MediaStream([vtrack]);
+              el.play().catch(() => {});
+            }
+          }
+          // Track whether anyone else has ever joined (for meeting cleanup on leave)
           const others = Object.values(p).filter(x => !x.local);
           if (others.length > 0) othersEverJoinedRef.current = true;
-          // Auto-leave only if others previously joined, now all gone, and we've been in for >10s
-          if (othersEverJoinedRef.current && others.length === 0 && joinedAtRef.current && Date.now() - joinedAtRef.current > 10000) {
-            setTimeout(() => {
-              if (destroyed) return;
-              const current = callRef.current?.participants();
-              if (current && Object.values(current).filter(x => !x.local).length === 0) {
-                callRef.current?.leave();
-              }
-            }, 15000); // 15 second grace period
-          }
         };
         const othersEverJoinedRef = { current: false };
         const joinedAtRef = { current: null };
@@ -7593,7 +7604,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)"}}>
           {gridLayout.rows.map((row, ri) => (
             <div key={ri} style={{display:"flex",gap:gridLayout.circleSize*0.15,marginLeft:ri%2===1?gridLayout.offset:0,marginBottom:gridLayout.circleSize*0.1}}>
-              {row.items.map(p => <ParticipantBubble key={p.session_id} participant={p} size={gridLayout.circleSize} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} />)}
+              {row.items.map(p => <ParticipantBubble key={p.session_id} participant={p} size={gridLayout.circleSize} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} videoEls={videoEls} />)}
             </div>
           ))}
         </div>
@@ -7647,24 +7658,25 @@ function ParticipantAudio({ participant }) {
   return <audio ref={audioRef} autoPlay playsInline style={{display:"none"}} />;
 }
 
-function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay }) {
-  const videoRef = useRef(null);
+function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls }) {
+  const sid      = participant.session_id;
   const track    = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
   const hasVideo = !!(track && videoState !== "off" && videoState !== "blocked");
 
-  // Use a ref callback so we attach immediately when the element mounts
   const videoCallbackRef = useCallback((el) => {
-    videoRef.current = el;
+    if (videoEls) {
+      if (el) videoEls[sid] = el;
+      else delete videoEls[sid];
+    }
     if (el && track) {
       el.srcObject = new MediaStream([track]);
       el.play().catch(() => {});
     }
-  }, [track]);
+  }, [sid, track]);
 
-  // Also re-attach when track or state changes
   useEffect(() => {
-    const el = videoRef.current;
+    const el = videoEls?.[sid];
     if (!el) return;
     if (track) {
       el.srcObject = new MediaStream([track]);
