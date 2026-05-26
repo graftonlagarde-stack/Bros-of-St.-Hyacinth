@@ -7272,10 +7272,6 @@ function MeetPage({ currentUser, onCallActive }) {
       if (m?.status === "approved")
         api.getChapterCommunityUsers(m.chapter_id).then(u => setChapterUsers(u || [])).catch(() => {});
     }).catch(() => {});
-    // Warm up camera/mic permissions so Daily doesn't prompt every call
-    navigator.mediaDevices?.getUserMedia({ audio: true, video: true })
-      .then(stream => stream.getTracks().forEach(t => t.stop()))
-      .catch(() => {}); // ignore if denied — Daily will handle it
   }, []);
 
   usePolling(() => {
@@ -7287,6 +7283,11 @@ function MeetPage({ currentUser, onCallActive }) {
 
   const joinMeeting = async (meeting) => {
     setJoinError("");
+    // Request permissions at join time so the prompt is contextually expected
+    try {
+      const stream = await navigator.mediaDevices?.getUserMedia({ audio: true, video: true });
+      stream?.getTracks().forEach(t => t.stop());
+    } catch(e) {} // proceed even if denied — Daily will handle gracefully
     try {
       const data = await api.getMeetingToken(meeting.id);
       if (data.error) { setJoinError(data.error); return; }
