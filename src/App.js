@@ -197,6 +197,7 @@ const api = {
   rsvpMeeting:        (id, status)    => api.request("PATCH", `/api/meetings/${id}/rsvp`, { status }),
   cancelMeeting:      (id)            => api.delete(`/api/meetings/${id}`),
   getMeetingToken:    (id)            => api.post(`/api/meetings/${id}/token`, {}),
+  endMeeting:         (id)            => api.delete(`/api/meetings/${id}/end`),
 
   getMessages:   (since) => api.get(since ? `/api/board/messages?since=${since}` : "/api/board/messages"),
   postMessage:   (body) => api.post("/api/board/messages", body),
@@ -7271,6 +7272,10 @@ function MeetPage({ currentUser, onCallActive }) {
       if (m?.status === "approved")
         api.getChapterCommunityUsers(m.chapter_id).then(u => setChapterUsers(u || [])).catch(() => {});
     }).catch(() => {});
+    // Warm up camera/mic permissions so Daily doesn't prompt every call
+    navigator.mediaDevices?.getUserMedia({ audio: true, video: true })
+      .then(stream => stream.getTracks().forEach(t => t.stop()))
+      .catch(() => {}); // ignore if denied — Daily will handle it
   }, []);
 
   usePolling(() => {
@@ -7328,7 +7333,7 @@ function MeetPage({ currentUser, onCallActive }) {
 
   if (view === "call" && activeMeeting && callToken && callRoom)
     return createPortal(
-      <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} currentUser={currentUser} onLeave={() => { setView("list"); setCallToken(null); setCallRoom(null); setCallRoomUrl(null); setActiveMeeting(null); onCallActive?.(false); }} />,
+      <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} onLeave={() => { setView("list"); setCallToken(null); setCallRoom(null); setCallRoomUrl(null); setActiveMeeting(null); onCallActive?.(false); }} />,
       document.body
     );
 
@@ -7417,7 +7422,7 @@ function MeetPage({ currentUser, onCallActive }) {
 }
 
 // ─── DAILY CALL SCREEN ─────────────────────────────────────────────────────────
-function DailyCallScreen({ roomName, roomUrl, token, meeting, currentUser, onLeave }) {
+function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, currentUser, onLeave }) {
   const [participants,  setParticipants]  = useState({});
   const [localStream,   setLocalStream]   = useState(null);
   const [micOn,         setMicOn]         = useState(true);
@@ -7457,6 +7462,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, currentUser, onLea
             setTimeout(() => {
               const current = callRef.current?.participants();
               if (current && Object.values(current).filter(x => !x.local).length === 0) {
+                api.endMeeting(meetingId).catch(() => {});
                 callRef.current?.leave();
               }
             }, 5000);
@@ -7543,7 +7549,18 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, currentUser, onLea
         <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:12,letterSpacing:2,color:"var(--accent)"}}>{meeting.title}</div>
         {!joined && <div style={{fontSize:11,color:"var(--muted)"}}>Connecting…</div>}
       </div>
-      {/* Audio elements for remote participants */}
+      {/* DEBUG — remove after diagnosis */}
+      <div style={{position:"absolute",top:60,left:8,right:8,zIndex:20,background:"rgba(0,0,0,0.8)",
+        fontSize:10,color:"#88ff00",padding:8,borderRadius:4,fontFamily:"monospace",maxHeight:200,overflowY:"auto"}}>
+        {Object.values(participants).map(p => (
+          <div key={p.session_id} style={{marginBottom:6}}>
+            <b>{p.user_name}</b> {p.local?"(you)":""}<br/>
+            audio: {p.tracks?.audio?.state} | video: {p.tracks?.video?.state}<br/>
+            audioTrack: {p.tracks?.audio?.persistentTrack?"YES":"NO"} | videoTrack: {p.tracks?.video?.persistentTrack?"YES":"NO"}
+          </div>
+        ))}
+        {Object.keys(participants).length === 0 && <div>No participants yet</div>}
+      </div>
       {remotes.map(p => <ParticipantAudio key={p.session_id} participant={p} />)}
       {/* Remote grid */}
       <div style={{flex:1,position:"relative",overflow:"hidden"}}>

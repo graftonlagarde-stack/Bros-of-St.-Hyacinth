@@ -2249,6 +2249,21 @@ app.delete("/api/meetings/:id", requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/meetings/:id/end — called when last participant leaves, deletes meeting silently
+app.delete("/api/meetings/:id/end", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await db.query("SELECT * FROM meetings WHERE id = $1", [req.params.id]);
+    if (!rows[0]) return res.json({ ok: true }); // already deleted
+    const meeting = rows[0];
+    dailyRequest("DELETE", `/rooms/${meeting.daily_room_name}`).catch(() => {});
+    await db.query("DELETE FROM meetings WHERE id = $1", [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("DELETE /api/meetings/:id/end:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // POST /api/meetings/:id/token — get a Daily meeting token for the current user
 app.post("/api/meetings/:id/token", requireAuth, async (req, res) => {
   try {
