@@ -7436,6 +7436,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
   const [activeSpeaker, setActiveSpeaker] = useState(null);
   const [joined,        setJoined]        = useState(false);
   const [error,         setError]         = useState("");
+  const videoEls    = useRef({}).current; // session_id -> video element registry
   const callRef       = useRef(null);
   const localVideoRef = useRef(null);
 
@@ -7455,8 +7456,6 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           subscribeToTracksAutomatically: true,
         });
         callRef.current = call;
-        const videoEls = {}; // session_id -> video element, for direct track attachment
-
         const update = () => {
           if (destroyed) return;
           const p = call.participants();
