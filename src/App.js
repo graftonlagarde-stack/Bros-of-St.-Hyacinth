@@ -3159,6 +3159,7 @@ const css = `
     }
     .main.nav-open  { transform: translateX(100vw) !important; }
     .main.nav-closed { transform: translateX(0)    !important; }
+    .main.in-call { transform: none !important; transition: none !important; }
 
     /* ── Page: compact padding, smaller title ── */
     .page { padding: 20px 14px !important; }
@@ -7333,14 +7334,13 @@ function MeetPage({ currentUser, onCallActive }) {
   const fmtTime = (ts) => new Date(ts).toLocaleString("en-US", { weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });
 
   if (view === "call" && activeMeeting && callToken && callRoom)
-    return createPortal(
+    return (
       <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} onLeave={(hadOthers) => {
         if (hadOthers) api.endMeeting(activeMeeting.id).catch(() => {});
         setView("list"); setCallToken(null); setCallRoom(null); setCallRoomUrl(null);
         setMeetings(prev => hadOthers ? prev.filter(m => m.id !== activeMeeting.id) : prev);
         setActiveMeeting(null); onCallActive?.(false);
-      }} />,
-      document.body
+      }} />
     );
 
   if (view === "create") return (
@@ -7577,7 +7577,12 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
   </>;
 
   return (
-    <div style={{position:"fixed",inset:0,background:"var(--bg)",display:"flex",flexDirection:"column",zIndex:10000,overflow:"hidden"}}>
+    <div style={{
+      position:"fixed", inset:0,
+      background:"var(--bg)",
+      display:"flex", flexDirection:"column",
+      zIndex:10000, overflow:"hidden",
+    }}>
       {/* Header */}
       <div style={{padding:"12px 16px",borderBottom:"1px solid rgba(136,255,0,0.1)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
         <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:12,letterSpacing:2,color:"var(--accent)"}}>{meeting.title}</div>
@@ -8137,7 +8142,7 @@ export default function App() {
             </div>
           </div>
         </div>
-        <div ref={mainRef} className={`main${isMobile ? (navExpanded ? " nav-open" : " nav-closed") : ""}${isMobile && page === "boards" ? " chat-active" : ""}`} style={{display:"flex", flexDirection:"column"}}>
+        <div ref={mainRef} className={`main${isMobile ? (navExpanded ? " nav-open" : " nav-closed") : ""}${isMobile && page === "boards" ? " chat-active" : ""}${inCall ? " in-call" : ""}`} style={{display:"flex", flexDirection:"column"}}>
           {page === "workout" && <div><WorkoutPage username={username} /></div>}
           {page === "topcharts" && <div><TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
           {page === "boards" && <div><BoardPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
