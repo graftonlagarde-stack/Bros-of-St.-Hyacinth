@@ -7686,7 +7686,6 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
   const hasVideo   = videoState === "playable" && !!track;
-  const bubbleSize = hasVideo ? size : Math.round(size / 3);
 
   // Also attach via effect for state changes
   useEffect(() => {
