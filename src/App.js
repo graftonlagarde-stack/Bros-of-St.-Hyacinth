@@ -7466,16 +7466,10 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           subscribeToTracksAutomatically: true,
         });
         window.__dailyCallInstance = call;
-        window._dailyCall = call;
+        callRef.current = call;
         const update = () => {
           if (destroyed) return;
           const p = call.participants();
-          // Log remote participant video state for debugging
-          Object.entries(p).forEach(([k, v]) => {
-            if (k !== "local" && !v.local) {
-              console.log(`[raw] ${v.user_name} tracks.video=`, v.tracks?.video, `persistentTrack=`, v.tracks?.video?.persistentTrack);
-            }
-          });
           // Deep copy to force React re-render on any participant change
           const copy = {};
           for (const [k, v] of Object.entries(p)) {
@@ -7575,12 +7569,6 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
   const remotes = Object.values(participants)
     .filter(p => !p.local)
     .filter((p, i, arr) => arr.findIndex(x => x.session_id === p.session_id) === i);
-
-  // DEBUG
-  if (Object.keys(participants).length > 0) {
-    console.log("[remotes] all participants:", Object.entries(participants).map(([k,v]) => `${k}: local=${v.local} sid=${v.session_id}`));
-    console.log("[remotes] remotes array:", remotes.map(p => `${p.user_name} sid=${p.session_id}`));
-  }
 
   const gridLayout = useMemo(() => {
     const n = remotes.length;
