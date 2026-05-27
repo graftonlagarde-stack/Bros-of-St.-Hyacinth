@@ -7496,7 +7496,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
             });
           }
           // Directly attach video tracks to any registered video elements
-          // Directly attach video tracks to registered video elements
+          // Directly attach video tracks to registered video elements, with retries
           const attachAll = () => {
             const current = call.participants();
             for (const [sid, el] of Object.entries(videoEls)) {
@@ -7687,15 +7687,27 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const videoState = participant.tracks?.video?.state;
   const hasVideo   = videoState === "playable" && !!track;
 
-  // Also attach via effect for state changes
+  // Register element and attempt immediate attachment
+  // Depends on [sid, track] so re-fires when track arrives
+  const registerRef = useCallback((el) => {
+    if (el) {
+      videoEls[sid] = el;
+      if (track) {
+        el.srcObject = new MediaStream([track]);
+        el.play().catch(() => {});
+      }
+    } else {
+      delete videoEls[sid];
+    }
+  }, [sid, track]);
+
+  // Attach track whenever it changes
   useEffect(() => {
     const el = videoEls[sid];
     if (!el) return;
     if (track) {
-      if (el.srcObject?.getTracks()[0] !== track) {
-        el.srcObject = new MediaStream([track]);
-        el.play().catch(() => {});
-      }
+      el.srcObject = new MediaStream([track]);
+      el.play().catch(() => {});
     } else {
       el.srcObject = null;
     }
