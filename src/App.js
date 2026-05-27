@@ -7473,9 +7473,9 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           // Deep copy to force React re-render on any participant change
           const copy = {};
           for (const [k, v] of Object.entries(p)) {
+            // Skip the "local" alias key — Daily stores local participant under both
+            // "local" and their session_id; we only want the session_id keyed version
             if (k === "local") continue;
-            // Skip the local participant's session_id entry too
-            if (localSidRef.current && v.session_id === localSidRef.current) continue;
             copy[k] = { ...v,
               tracks: {
                 audio: v.tracks?.audio ? { ...v.tracks.audio } : undefined,
@@ -7483,6 +7483,8 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
               }
             };
           }
+          // Also add local under "local" key for self-view updates
+          if (p.local) copy["local"] = { ...p.local };
           setParticipants(copy);
           const local = p.local;
           const localVideoTrack = local?.tracks?.video?.persistentTrack;
@@ -7509,41 +7511,13 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           if (others.length > 0) joinedAtRef.current = joinedAtRef.current || Date.now();
         };
         const joinedAtRef = { current: null };
-        const localSidRef = { current: null }; // session_id of local participant
         call.on("joined-meeting", () => {
           joinedAtRef.current = Date.now();
-          const p2 = call.participants();
-          localSidRef.current = p2.local?.session_id || null;
-          setJoined(true);
-          update();
-          if (p2.local) {
-            setMicOn(!p2.local.tracks?.audio?.off);
-            setCamOn(!p2.local.tracks?.video?.off);
-          }
-          // After a short delay, force resubscription to any already-present participants
-          // This handles the case where participants joined before us
-          setTimeout(() => {
-            if (!callRef.current) return;
-            const participants = callRef.current.participants();
-            Object.values(participants).forEach(participant => {
-              if (participant.local) return;
-              callRef.current.updateParticipant(participant.session_id, {
-                setSubscribedTracks: { audio: true, video: true },
-              });
-            });
-          }, 2000);
+          setJoined(true); update();
+          const p2=call.participants();
+          if(p2.local){setMicOn(!p2.local.tracks?.audio?.off);setCamOn(!p2.local.tracks?.video?.off);}
         });
-        call.on("participant-joined", (e) => {
-          update();
-          // Force subscription to the new participant's tracks
-          if (e?.participant && !e.participant.local) {
-            setTimeout(() => {
-              callRef.current?.updateParticipant(e.participant.session_id, {
-                setSubscribedTracks: { audio: true, video: true },
-              });
-            }, 500);
-          }
-        });
+        call.on("participant-joined",   update);
         call.on("participant-left",     update);
         call.on("participant-updated",  update);
         call.on("track-started",        update);
@@ -7592,8 +7566,8 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
   };
   const leave = async () => { if (callRef.current) await callRef.current.leave(); else onLeave(); };
 
-  // participants only contains remotes — local was excluded in update()
   const remotes = Object.values(participants)
+    .filter(p => !p.local)
     .filter((p, i, arr) => arr.findIndex(x => x.session_id === p.session_id) === i);
 
   const gridLayout = useMemo(() => {
@@ -7718,7 +7692,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const sid        = participant.session_id;
   const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
-  const hasVideo   = !!(track && videoState !== "off" && videoState !== "blocked");
+  const hasVideo   = videoState === "playable" || videoState === "loading" || videoState === "interrupted";
 
   // Registration only — don't depend on track so this never recreates
   const registerRef = useCallback((el) => {
@@ -7742,7 +7716,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
 
   const avatarUrl  = participant.userData?.avatarUrl || null;
   const name       = participant.user_name || "Brother";
-  const bubbleSize = hasVideo ? size : Math.round(size / 3);
+  const bubbleSize = (track && videoState === "playable") ? size : Math.round(size / 3);
   const glow       = isSpeaking ? "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 24px rgba(136,255,0,0.7),0 0 48px rgba(136,255,0,0.25)"
                                 : "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 10px rgba(136,255,0,0.2)";
   return (
