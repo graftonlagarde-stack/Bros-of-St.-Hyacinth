@@ -197,7 +197,6 @@ const api = {
   rsvpMeeting:        (id, status)    => api.request("PATCH", `/api/meetings/${id}/rsvp`, { status }),
   cancelMeeting:      (id)            => api.delete(`/api/meetings/${id}`),
   getMeetingToken:    (id)            => api.post(`/api/meetings/${id}/token`, {}),
-  endMeeting:         (id)            => api.delete(`/api/meetings/${id}/end`),
 
   getMessages:   (since) => api.get(since ? `/api/board/messages?since=${since}` : "/api/board/messages"),
   postMessage:   (body) => api.post("/api/board/messages", body),
@@ -7335,15 +7334,12 @@ function MeetPage({ currentUser, onCallActive }) {
 
   if (view === "call" && activeMeeting && callToken && callRoom)
     return (
-      <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} onLeave={async () => {
+      <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} onLeave={() => {
         onCallActive?.(false);
         setView("list"); setCallToken(null); setCallRoom(null); setCallRoomUrl(null);
         setActiveMeeting(null);
-        // Server decides whether to delete based on rules
-        try {
-          const result = await api.endMeeting(activeMeeting.id);
-          if (result?.deleted) setMeetings(prev => prev.filter(m => m.id !== activeMeeting.id));
-        } catch(e) {}
+        // Refresh meeting list — meeting persists until creator cancels or room expires
+        api.getMeetings().then(setMeetings).catch(() => {});
       }} />
     );
 
@@ -7672,24 +7668,20 @@ function ParticipantAudio({ participant }) {
 }
 
 function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls }) {
-  const sid      = participant.session_id;
-  const track    = participant.tracks?.video?.persistentTrack;
+  const sid        = participant.session_id;
+  const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
-  const hasVideo = !!(track && videoState !== "off" && videoState !== "blocked");
+  const hasVideo   = !!(track && videoState !== "off" && videoState !== "blocked");
 
-  const videoCallbackRef = useCallback((el) => {
-    if (videoEls) {
-      if (el) videoEls[sid] = el;
-      else delete videoEls[sid];
-    }
-    if (el && track) {
-      el.srcObject = new MediaStream([track]);
-      el.play().catch(() => {});
-    }
-  }, [sid, track]);
+  // Registration only — don't depend on track so this never recreates
+  const registerRef = useCallback((el) => {
+    if (el) videoEls[sid] = el;
+    else delete videoEls[sid];
+  }, [sid]);
 
+  // Attachment — runs whenever track or state changes
   useEffect(() => {
-    const el = videoEls?.[sid];
+    const el = videoEls[sid];
     if (!el) return;
     if (track) {
       el.srcObject = new MediaStream([track]);
@@ -7697,7 +7689,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
     } else {
       el.srcObject = null;
     }
-  }, [track, videoState]);
+  }, [track, videoState, sid]);
 
   const avatarUrl  = participant.userData?.avatarUrl || null;
   const name       = participant.user_name || "Brother";
@@ -7709,7 +7701,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
       <div style={{width:bubbleSize,height:bubbleSize,borderRadius:"50%",overflow:"hidden",position:"relative",
         border:"1px solid rgba(136,255,0,0.35)",boxShadow:glow,transition:"box-shadow 0.3s ease",background:"var(--surface2)"}}>
         {hasVideo
-          ? <video ref={videoCallbackRef} autoPlay playsInline muted={false} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}} />
+          ? <video ref={registerRef} autoPlay playsInline muted={false} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}} />
           : avatarUrl
             ? <img src={avatarUrl} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={name} />
             : <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",

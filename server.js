@@ -2251,29 +2251,6 @@ app.delete("/api/meetings/:id", requireAuth, async (req, res) => {
   }
 });
 
-// DELETE /api/meetings/:id/end — called when last participant leaves
-// Deletes meeting only if: (I) at or after scheduled time, (II) >1 user joined, (III) all left
-app.delete("/api/meetings/:id/end", requireAuth, async (req, res) => {
-  try {
-    const { rows } = await db.query("SELECT * FROM meetings WHERE id = $1", [req.params.id]);
-    if (!rows[0]) return res.json({ ok: true, deleted: false });
-    const meeting = rows[0];
-    const now = Date.now();
-    const pastScheduled  = now >= Number(meeting.scheduled_at);
-    const multipleJoined = Number(meeting.join_count) > 1;
-    if (pastScheduled && multipleJoined) {
-      dailyRequest("DELETE", `/rooms/${meeting.daily_room_name}`).catch(() => {});
-      await db.query("DELETE FROM meetings WHERE id = $1", [req.params.id]);
-      res.json({ ok: true, deleted: true });
-    } else {
-      res.json({ ok: true, deleted: false });
-    }
-  } catch (err) {
-    console.error("DELETE /api/meetings/:id/end:", err);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
 // POST /api/meetings/:id/token — get a Daily meeting token for the current user
 app.post("/api/meetings/:id/token", requireAuth, async (req, res) => {
   try {
@@ -2344,12 +2321,13 @@ function shapeMeeting(row) {
   };
 }
 
-// ─── Reminder job — runs every 60 seconds ────────────────────────────────────
+// ─── Reminder + cleanup job — runs every 60 seconds ─────────────────────────
 setInterval(async () => {
   try {
+    // Send 15-minute reminders
     const now = Date.now();
-    const windowStart = now + 14 * 60 * 1000; // 14 min from now
-    const windowEnd   = now + 16 * 60 * 1000; // 16 min from now
+    const windowStart = now + 14 * 60 * 1000;
+    const windowEnd   = now + 16 * 60 * 1000;
     const { rows: upcoming } = await db.query(`
       SELECT m.title, m.scheduled_at, mi.user_id, mi.meeting_id
       FROM meetings m
@@ -2370,6 +2348,16 @@ setInterval(async () => {
         "UPDATE meeting_invitees SET notified_reminder = TRUE WHERE meeting_id = $1 AND user_id = $2",
         [row.meeting_id, row.user_id]
       );
+    }
+    // Clean up expired meetings (Daily room expired = scheduled_at + 2 hours)
+    const expiryCutoff = now - 2 * 60 * 60 * 1000;
+    const { rows: expired } = await db.query(
+      "SELECT id, daily_room_name FROM meetings WHERE scheduled_at < $1 AND join_count > 1",
+      [expiryCutoff]
+    );
+    for (const m of expired) {
+      dailyRequest("DELETE", `/rooms/${m.daily_room_name}`).catch(() => {});
+      await db.query("DELETE FROM meetings WHERE id = $1", [m.id]);
     }
   } catch (err) {
     console.error("Reminder job error:", err.message);
