@@ -261,6 +261,7 @@ async function initDb() {
       scheduled_at    BIGINT NOT NULL,
       daily_room_name TEXT NOT NULL,
       daily_room_url  TEXT NOT NULL,
+      join_count      INTEGER NOT NULL DEFAULT 0,
       created_at      BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
     );
 
@@ -380,6 +381,7 @@ async function initDb() {
   `);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';`);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;`);
+  await db.query(`ALTER TABLE meetings ADD COLUMN IF NOT EXISTS join_count INTEGER NOT NULL DEFAULT 0;`);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_public_id TEXT;`);
   await db.query(`ALTER TABLE session_sets ADD COLUMN IF NOT EXISTS migrated BOOLEAN NOT NULL DEFAULT FALSE;`);
 
@@ -2249,15 +2251,23 @@ app.delete("/api/meetings/:id", requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/meetings/:id/end — called when last participant leaves, deletes meeting silently
+// DELETE /api/meetings/:id/end — called when last participant leaves
+// Deletes meeting only if: (I) at or after scheduled time, (II) >1 user joined, (III) all left
 app.delete("/api/meetings/:id/end", requireAuth, async (req, res) => {
   try {
     const { rows } = await db.query("SELECT * FROM meetings WHERE id = $1", [req.params.id]);
-    if (!rows[0]) return res.json({ ok: true }); // already deleted
+    if (!rows[0]) return res.json({ ok: true, deleted: false });
     const meeting = rows[0];
-    dailyRequest("DELETE", `/rooms/${meeting.daily_room_name}`).catch(() => {});
-    await db.query("DELETE FROM meetings WHERE id = $1", [req.params.id]);
-    res.json({ ok: true });
+    const now = Date.now();
+    const pastScheduled  = now >= Number(meeting.scheduled_at);
+    const multipleJoined = Number(meeting.join_count) > 1;
+    if (pastScheduled && multipleJoined) {
+      dailyRequest("DELETE", `/rooms/${meeting.daily_room_name}`).catch(() => {});
+      await db.query("DELETE FROM meetings WHERE id = $1", [req.params.id]);
+      res.json({ ok: true, deleted: true });
+    } else {
+      res.json({ ok: true, deleted: false });
+    }
   } catch (err) {
     console.error("DELETE /api/meetings/:id/end:", err);
     res.status(500).json({ error: "Server error" });
@@ -2312,6 +2322,8 @@ app.post("/api/meetings/:id/token", requireAuth, async (req, res) => {
       },
     });
     res.json({ token: result.token, roomUrl: meeting.daily_room_url, roomName });
+    // Increment join count (track how many users have ever joined this call)
+    await db.query("UPDATE meetings SET join_count = join_count + 1 WHERE id = $1", [req.params.id]);
   } catch (err) {
     console.error("POST /api/meetings/:id/token:", err.message, err.stack);
     res.status(500).json({ error: err.message || "Server error" });

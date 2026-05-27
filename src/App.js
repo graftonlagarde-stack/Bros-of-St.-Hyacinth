@@ -7335,11 +7335,15 @@ function MeetPage({ currentUser, onCallActive }) {
 
   if (view === "call" && activeMeeting && callToken && callRoom)
     return (
-      <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} onLeave={(hadOthers) => {
-        if (hadOthers) api.endMeeting(activeMeeting.id).catch(() => {});
+      <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} onLeave={async () => {
+        onCallActive?.(false);
         setView("list"); setCallToken(null); setCallRoom(null); setCallRoomUrl(null);
-        setMeetings(prev => hadOthers ? prev.filter(m => m.id !== activeMeeting.id) : prev);
-        setActiveMeeting(null); onCallActive?.(false);
+        setActiveMeeting(null);
+        // Server decides whether to delete based on rules
+        try {
+          const result = await api.endMeeting(activeMeeting.id);
+          if (result?.deleted) setMeetings(prev => prev.filter(m => m.id !== activeMeeting.id));
+        } catch(e) {}
       }} />
     );
 
@@ -7462,6 +7466,9 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           // Deep copy to force React re-render on any participant change
           const copy = {};
           for (const [k, v] of Object.entries(p)) {
+            // Skip the "local" alias key — Daily stores local participant under both
+            // "local" and their session_id; we only want the session_id keyed version
+            if (k === "local") continue;
             copy[k] = { ...v,
               tracks: {
                 audio: v.tracks?.audio ? { ...v.tracks.audio } : undefined,
@@ -7469,6 +7476,8 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
               }
             };
           }
+          // Also add local under "local" key for self-view updates
+          if (p.local) copy["local"] = { ...p.local };
           setParticipants(copy);
           const local = p.local;
           if (local?.tracks?.video?.persistentTrack)
@@ -7482,11 +7491,10 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
               el.play().catch(() => {});
             }
           }
-          // Track whether anyone else has ever joined (for meeting cleanup on leave)
+          // Track join count for debug overlay
           const others = Object.values(p).filter(x => !x.local);
-          if (others.length > 0) othersEverJoinedRef.current = true;
+          if (others.length > 0) joinedAtRef.current = joinedAtRef.current || Date.now();
         };
-        const othersEverJoinedRef = { current: false };
         const joinedAtRef = { current: null };
         call.on("joined-meeting", () => {
           joinedAtRef.current = Date.now();
@@ -7503,10 +7511,9 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         call.on("left-meeting", () => {
           if (!destroyed) {
             destroyed = true;
-            const hadOthers = othersEverJoinedRef.current;
             callRef.current = null;
             call.destroy();
-            onLeave(hadOthers);
+            onLeave();
           }
         });
         call.on("error",                e => { if (!destroyed) setError(e.errorMsg || "Call error"); });
@@ -7540,9 +7547,11 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
       setLocalStream(vtrack ? new MediaStream([vtrack]) : null);
     }, 200);
   };
-  const leave = async () => { if (callRef.current) await callRef.current.leave(); else onLeave(false); };
+  const leave = async () => { if (callRef.current) await callRef.current.leave(); else onLeave(); };
 
-  const remotes = Object.values(participants).filter(p => !p.local);
+  const remotes = Object.values(participants)
+    .filter(p => !p.local)
+    .filter((p, i, arr) => arr.findIndex(x => x.session_id === p.session_id) === i);
 
   const gridLayout = useMemo(() => {
     const n = remotes.length;
