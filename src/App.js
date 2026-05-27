@@ -7496,14 +7496,21 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
             });
           }
           // Directly attach video tracks to any registered video elements
-          for (const [sid, el] of Object.entries(videoEls)) {
-            const participant = p[sid];
-            const vtrack = participant?.tracks?.video?.persistentTrack;
-            if (el && vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
-              el.srcObject = new MediaStream([vtrack]);
-              el.play().catch(() => {});
+          // Directly attach video tracks to registered video elements
+          const attachAll = () => {
+            const current = call.participants();
+            for (const [sid, el] of Object.entries(videoEls)) {
+              const par = current[sid];
+              const vtrack = par?.tracks?.video?.persistentTrack;
+              if (el && vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
+                el.srcObject = new MediaStream([vtrack]);
+                el.play().catch(() => {});
+              }
             }
-          }
+          };
+          attachAll();
+          setTimeout(() => { if (!destroyed) attachAll(); }, 500);
+          setTimeout(() => { if (!destroyed) attachAll(); }, 2000);
           // Track join count for debug overlay
           const others = Object.values(p).filter(x => !x.local);
           if (others.length > 0) joinedAtRef.current = joinedAtRef.current || Date.now();
@@ -7681,19 +7688,15 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const hasVideo   = videoState === "playable" && !!track;
   const bubbleSize = hasVideo ? size : Math.round(size / 3);
 
-  // Always register — never depends on track so callback never recreates
-  const registerRef = useCallback((el) => {
-    if (el) videoEls[sid] = el;
-    else delete videoEls[sid];
-  }, [sid]);
-
-  // Attach track whenever it changes
+  // Also attach via effect for state changes
   useEffect(() => {
     const el = videoEls[sid];
     if (!el) return;
     if (track) {
-      el.srcObject = new MediaStream([track]);
-      el.play().catch(() => {});
+      if (el.srcObject?.getTracks()[0] !== track) {
+        el.srcObject = new MediaStream([track]);
+        el.play().catch(() => {});
+      }
     } else {
       el.srcObject = null;
     }
@@ -7701,7 +7704,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
 
   const avatarUrl  = participant.userData?.avatarUrl || null;
   const name       = participant.user_name || "Brother";
-  const bubbleSize = (track && videoState === "playable") ? size : Math.round(size / 3);
+  const bubbleSize = hasVideo ? size : Math.round(size / 3);
   const glow       = isSpeaking ? "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 24px rgba(136,255,0,0.7),0 0 48px rgba(136,255,0,0.25)"
                                 : "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 10px rgba(136,255,0,0.2)";
   return (
