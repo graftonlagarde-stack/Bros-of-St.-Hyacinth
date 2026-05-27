@@ -7466,9 +7466,16 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           subscribeToTracksAutomatically: true,
         });
         callRef.current = call;
+        window._dailyCall = call; // DEBUG
         const update = () => {
           if (destroyed) return;
           const p = call.participants();
+          // Log remote participant video state for debugging
+          Object.entries(p).forEach(([k, v]) => {
+            if (k !== "local" && !v.local) {
+              console.log(`[raw] ${v.user_name} tracks.video=`, v.tracks?.video, `persistentTrack=`, v.tracks?.video?.persistentTrack);
+            }
+          });
           // Deep copy to force React re-render on any participant change
           const copy = {};
           for (const [k, v] of Object.entries(p)) {
