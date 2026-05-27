@@ -7496,21 +7496,14 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
             });
           }
           // Directly attach video tracks to any registered video elements
-          // Directly attach video tracks to registered video elements, with retries
-          const attachAll = () => {
-            const current = call.participants();
-            for (const [sid, el] of Object.entries(videoEls)) {
-              const par = current[sid];
-              const vtrack = par?.tracks?.video?.persistentTrack;
-              if (el && vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
-                el.srcObject = new MediaStream([vtrack]);
-                el.play().catch(() => {});
-              }
+          for (const [sid, el] of Object.entries(videoEls)) {
+            const participant = p[sid];
+            const vtrack = participant?.tracks?.video?.persistentTrack;
+            if (el && vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
+              el.srcObject = new MediaStream([vtrack]);
+              el.play().catch(() => {});
             }
-          };
-          attachAll();
-          setTimeout(() => { if (!destroyed) attachAll(); }, 500);
-          setTimeout(() => { if (!destroyed) attachAll(); }, 2000);
+          }
           // Track join count for debug overlay
           const others = Object.values(p).filter(x => !x.local);
           if (others.length > 0) joinedAtRef.current = joinedAtRef.current || Date.now();
@@ -7525,7 +7518,28 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         call.on("participant-joined",   update);
         call.on("participant-left",     update);
         call.on("participant-updated",  update);
-        call.on("track-started",        update);
+        call.on("track-started", (e) => {
+          update();
+          // Use the event's track directly — persistentTrack on participant object
+          // may not be set yet when this event fires
+          if (e?.track && e?.participant && !e.participant.local) {
+            const sid = e.participant.session_id;
+            if (e.track.kind === "video") {
+              // Try immediately, and retry after React has rendered
+              const attachFromEvent = () => {
+                const el = videoEls[sid];
+                if (el && el.srcObject?.getTracks()[0] !== e.track) {
+                  el.srcObject = new MediaStream([e.track]);
+                  el.play().catch(() => {});
+                }
+              };
+              attachFromEvent();
+              setTimeout(attachFromEvent, 100);
+              setTimeout(attachFromEvent, 500);
+              setTimeout(attachFromEvent, 1500);
+            }
+          }
+        });
         call.on("track-stopped",        update);
         call.on("active-speaker-change",e => { if (!destroyed) setActiveSpeaker(e?.activeSpeaker?.peerId || null); });
         call.on("left-meeting", () => {
@@ -7687,21 +7701,11 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const videoState = participant.tracks?.video?.state;
   const hasVideo   = videoState === "playable" && !!track;
 
-  // Register element and attempt immediate attachment
-  // Depends on [sid, track] so re-fires when track arrives
   const registerRef = useCallback((el) => {
-    if (el) {
-      videoEls[sid] = el;
-      if (track) {
-        el.srcObject = new MediaStream([track]);
-        el.play().catch(() => {});
-      }
-    } else {
-      delete videoEls[sid];
-    }
-  }, [sid, track]);
+    if (el) videoEls[sid] = el;
+    else delete videoEls[sid];
+  }, [sid]);
 
-  // Attach track whenever it changes
   useEffect(() => {
     const el = videoEls[sid];
     if (!el) return;
@@ -7713,22 +7717,23 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
     }
   }, [track, videoState, sid]);
 
-  const avatarUrl  = participant.userData?.avatarUrl || null;
-  const name       = participant.user_name || "Brother";
-  const bubbleSize = hasVideo ? size : Math.round(size / 3);
-  const glow       = isSpeaking ? "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 24px rgba(136,255,0,0.7),0 0 48px rgba(136,255,0,0.25)"
-                                : "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 10px rgba(136,255,0,0.2)";
+  const avatarUrl = participant.userData?.avatarUrl || null;
+  const name      = participant.user_name || "Brother";
+  const glow      = isSpeaking
+    ? "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 24px rgba(136,255,0,0.7),0 0 48px rgba(136,255,0,0.25)"
+    : "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 10px rgba(136,255,0,0.2)";
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
-      <div style={{width:bubbleSize,height:bubbleSize,borderRadius:"50%",overflow:"hidden",position:"relative",
+      <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",position:"relative",
         border:"1px solid rgba(136,255,0,0.35)",boxShadow:glow,transition:"box-shadow 0.3s ease",background:"var(--surface2)"}}>
-        {/* Video always mounted so videoEls registration persists through camera toggles */}
+        {/* Video always mounted, shown/hidden via CSS */}
         <video ref={registerRef} autoPlay playsInline muted={false}
-          style={{width:"100%",height:"100%",objectFit:"cover",display: hasVideo ? "block" : "none"}} />
+          style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",display:hasVideo?"block":"none"}} />
+        {/* Avatar shown when no video */}
         {!hasVideo && (avatarUrl
-          ? <img src={avatarUrl} style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}} alt={name} />
+          ? <img src={avatarUrl} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} alt={name} />
           : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
-              fontFamily:"'Orbitron',sans-serif",fontWeight:900,color:"var(--accent)",fontSize:bubbleSize*0.28}}>
+              fontFamily:"'Orbitron',sans-serif",fontWeight:900,color:"var(--accent)",fontSize:size*0.28}}>
               {initials(name)}
             </div>)}
         {sphereOverlay}
