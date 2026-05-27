@@ -197,6 +197,7 @@ const api = {
   rsvpMeeting:        (id, status)    => api.request("PATCH", `/api/meetings/${id}/rsvp`, { status }),
   cancelMeeting:      (id)            => api.delete(`/api/meetings/${id}`),
   getMeetingToken:    (id)            => api.post(`/api/meetings/${id}/token`, {}),
+  leaveMeeting:       (id)            => api.post(`/api/meetings/${id}/leave`, {}),
 
   getMessages:   (since) => api.get(since ? `/api/board/messages?since=${since}` : "/api/board/messages"),
   postMessage:   (body) => api.post("/api/board/messages", body),
@@ -7334,12 +7335,21 @@ function MeetPage({ currentUser, onCallActive }) {
 
   if (view === "call" && activeMeeting && callToken && callRoom)
     return (
-      <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} onLeave={() => {
+      <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} onLeave={async () => {
         onCallActive?.(false);
+        const mid = activeMeeting.id;
         setView("list"); setCallToken(null); setCallRoom(null); setCallRoomUrl(null);
         setActiveMeeting(null);
-        // Refresh meeting list — meeting persists until creator cancels or room expires
-        api.getMeetings().then(setMeetings).catch(() => {});
+        try {
+          const result = await api.leaveMeeting(mid);
+          if (result?.deleted) {
+            setMeetings(prev => prev.filter(m => m.id !== mid));
+          } else {
+            api.getMeetings().then(setMeetings).catch(() => {});
+          }
+        } catch(e) {
+          api.getMeetings().then(setMeetings).catch(() => {});
+        }
       }} />
     );
 
@@ -7476,15 +7486,23 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           if (p.local) copy["local"] = { ...p.local };
           setParticipants(copy);
           const local = p.local;
-          if (local?.tracks?.video?.persistentTrack)
-            setLocalStream(new MediaStream([local.tracks.video.persistentTrack]));
+          const localVideoTrack = local?.tracks?.video?.persistentTrack;
+          if (localVideoTrack) {
+            setLocalStream(prev => {
+              // Only create new stream if the track actually changed
+              if (prev?.getTracks()[0] === localVideoTrack) return prev;
+              return new MediaStream([localVideoTrack]);
+            });
+          }
           // Directly attach video tracks to any registered video elements
           for (const [sid, el] of Object.entries(videoEls)) {
             const participant = p[sid];
             const vtrack = participant?.tracks?.video?.persistentTrack;
+            console.log(`[update] sid=${sid} vtrack=${!!vtrack} el=${!!el} state=${participant?.tracks?.video?.state}`);
             if (el && vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
               el.srcObject = new MediaStream([vtrack]);
               el.play().catch(() => {});
+              console.log(`[update] directly attached track for ${sid}`);
             }
           }
           // Track join count for debug overlay
@@ -7682,10 +7700,12 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   // Attachment — runs whenever track or state changes
   useEffect(() => {
     const el = videoEls[sid];
+    console.log(`[video] ${sid} state=${videoState} track=${!!track} el=${!!el}`);
     if (!el) return;
     if (track) {
       el.srcObject = new MediaStream([track]);
-      el.play().catch(() => {});
+      el.play().catch(e => console.warn(`[video] play failed:`, e));
+      console.log(`[video] attached track to element for ${sid}`);
     } else {
       el.srcObject = null;
     }

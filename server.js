@@ -261,6 +261,7 @@ async function initDb() {
       scheduled_at    BIGINT NOT NULL,
       daily_room_name TEXT NOT NULL,
       daily_room_url  TEXT NOT NULL,
+      active_participants INTEGER NOT NULL DEFAULT 0,
       join_count      INTEGER NOT NULL DEFAULT 0,
       created_at      BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
     );
@@ -382,6 +383,7 @@ async function initDb() {
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';`);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;`);
   await db.query(`ALTER TABLE meetings ADD COLUMN IF NOT EXISTS join_count INTEGER NOT NULL DEFAULT 0;`);
+  await db.query(`ALTER TABLE meetings ADD COLUMN IF NOT EXISTS active_participants INTEGER NOT NULL DEFAULT 0;`);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_public_id TEXT;`);
   await db.query(`ALTER TABLE session_sets ADD COLUMN IF NOT EXISTS migrated BOOLEAN NOT NULL DEFAULT FALSE;`);
 
@@ -2251,6 +2253,31 @@ app.delete("/api/meetings/:id", requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/meetings/:id/leave — called when a user leaves the call
+// Decrements active_participants and deletes meeting if conditions 3a-3c are met
+app.post("/api/meetings/:id/leave", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      "UPDATE meetings SET active_participants = GREATEST(0, active_participants - 1) WHERE id = $1 RETURNING *",
+      [req.params.id]
+    );
+    if (!rows[0]) return res.json({ ok: true, deleted: false });
+    const m = rows[0];
+    const pastScheduled  = Date.now() >= Number(m.scheduled_at);
+    const multipleJoined = Number(m.join_count) > 1;
+    const allLeft        = Number(m.active_participants) === 0;
+    if (pastScheduled && multipleJoined && allLeft) {
+      dailyRequest("DELETE", `/rooms/${m.daily_room_name}`).catch(() => {});
+      await db.query("DELETE FROM meetings WHERE id = $1", [m.id]);
+      return res.json({ ok: true, deleted: true });
+    }
+    res.json({ ok: true, deleted: false });
+  } catch (err) {
+    console.error("POST /api/meetings/:id/leave:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // POST /api/meetings/:id/token — get a Daily meeting token for the current user
 app.post("/api/meetings/:id/token", requireAuth, async (req, res) => {
   try {
@@ -2299,8 +2326,11 @@ app.post("/api/meetings/:id/token", requireAuth, async (req, res) => {
       },
     });
     res.json({ token: result.token, roomUrl: meeting.daily_room_url, roomName });
-    // Increment join count (track how many users have ever joined this call)
-    await db.query("UPDATE meetings SET join_count = join_count + 1 WHERE id = $1", [req.params.id]);
+    // Track join stats
+    await db.query(
+      "UPDATE meetings SET join_count = join_count + 1, active_participants = active_participants + 1 WHERE id = $1",
+      [req.params.id]
+    );
   } catch (err) {
     console.error("POST /api/meetings/:id/token:", err.message, err.stack);
     res.status(500).json({ error: err.message || "Server error" });
