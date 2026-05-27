@@ -7499,11 +7499,9 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           for (const [sid, el] of Object.entries(videoEls)) {
             const participant = p[sid];
             const vtrack = participant?.tracks?.video?.persistentTrack;
-            console.log(`[update] sid=${sid} vtrack=${!!vtrack} el=${!!el} state=${participant?.tracks?.video?.state}`);
             if (el && vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
               el.srcObject = new MediaStream([vtrack]);
               el.play().catch(() => {});
-              console.log(`[update] directly attached track for ${sid}`);
             }
           }
           // Track join count for debug overlay
@@ -7613,18 +7611,6 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:12,letterSpacing:2,color:"var(--accent)"}}>{meeting.title}</div>
         {!joined && <div style={{fontSize:11,color:"var(--muted)"}}>Connecting…</div>}
       </div>
-      {/* DEBUG — remove after diagnosis */}
-      <div style={{position:"absolute",top:60,left:8,right:8,zIndex:20,background:"rgba(0,0,0,0.8)",
-        fontSize:10,color:"#88ff00",padding:8,borderRadius:4,fontFamily:"monospace",maxHeight:200,overflowY:"auto"}}>
-        {Object.values(participants).map(p => (
-          <div key={p.session_id} style={{marginBottom:6}}>
-            <b>{p.user_name}</b> {p.local?"(you)":""}<br/>
-            audio: {p.tracks?.audio?.state} | video: {p.tracks?.video?.state}<br/>
-            audioTrack: {p.tracks?.audio?.persistentTrack?"YES":"NO"} | videoTrack: {p.tracks?.video?.persistentTrack?"YES":"NO"}
-          </div>
-        ))}
-        {Object.keys(participants).length === 0 && <div>No participants yet</div>}
-      </div>
       {remotes.map(p => <ParticipantAudio key={p.session_id} participant={p} />)}
       {/* Remote grid */}
       <div style={{flex:1,position:"relative",overflow:"hidden"}}>
@@ -7692,23 +7678,22 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const sid        = participant.session_id;
   const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
-  const hasVideo   = videoState === "playable" || videoState === "loading" || videoState === "interrupted";
+  const hasVideo   = videoState === "playable" && !!track;
+  const bubbleSize = hasVideo ? size : Math.round(size / 3);
 
-  // Registration only — don't depend on track so this never recreates
+  // Always register — never depends on track so callback never recreates
   const registerRef = useCallback((el) => {
     if (el) videoEls[sid] = el;
     else delete videoEls[sid];
   }, [sid]);
 
-  // Attachment — runs whenever track or state changes
+  // Attach track whenever it changes
   useEffect(() => {
     const el = videoEls[sid];
-    console.log(`[video] ${sid} state=${videoState} track=${!!track} el=${!!el}`);
     if (!el) return;
     if (track) {
       el.srcObject = new MediaStream([track]);
-      el.play().catch(e => console.warn(`[video] play failed:`, e));
-      console.log(`[video] attached track to element for ${sid}`);
+      el.play().catch(() => {});
     } else {
       el.srcObject = null;
     }
@@ -7723,14 +7708,15 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
       <div style={{width:bubbleSize,height:bubbleSize,borderRadius:"50%",overflow:"hidden",position:"relative",
         border:"1px solid rgba(136,255,0,0.35)",boxShadow:glow,transition:"box-shadow 0.3s ease",background:"var(--surface2)"}}>
-        {hasVideo
-          ? <video ref={registerRef} autoPlay playsInline muted={false} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}} />
-          : avatarUrl
-            ? <img src={avatarUrl} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={name} />
-            : <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",
-                fontFamily:"'Orbitron',sans-serif",fontWeight:900,color:"var(--accent)",fontSize:bubbleSize*0.28}}>
-                {initials(name)}
-              </div>}
+        {/* Video always mounted so videoEls registration persists through camera toggles */}
+        <video ref={registerRef} autoPlay playsInline muted={false}
+          style={{width:"100%",height:"100%",objectFit:"cover",display: hasVideo ? "block" : "none"}} />
+        {!hasVideo && (avatarUrl
+          ? <img src={avatarUrl} style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}} alt={name} />
+          : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
+              fontFamily:"'Orbitron',sans-serif",fontWeight:900,color:"var(--accent)",fontSize:bubbleSize*0.28}}>
+              {initials(name)}
+            </div>)}
         {sphereOverlay}
       </div>
       <div style={{fontSize:10,fontFamily:"'Orbitron',sans-serif",letterSpacing:1,
