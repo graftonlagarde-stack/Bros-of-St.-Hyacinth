@@ -7454,19 +7454,19 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
     let destroyed = false;
     const setup = async () => {
       try {
-        if (!DailyIframe) { setError("Daily.co SDK not loaded. Run: npm install @daily-co/daily-js"); return; }
-        // Destroy any existing call object before creating a new one
-        const existing = DailyIframe.getCallInstance();
-        if (existing) {
-          try { await existing.destroy(); } catch(e) {}
+        if (!DailyIframe) { setError("Daily.co SDK not loaded."); return; }
+        // Use module-level singleton to prevent duplicate instances
+        if (window.__dailyCallInstance) {
+          try { await window.__dailyCallInstance.destroy(); } catch(e) {}
+          window.__dailyCallInstance = null;
         }
         const call = DailyIframe.createCallObject({
           audioSource: true,
           videoSource: true,
           subscribeToTracksAutomatically: true,
         });
-        callRef.current = call;
-        window._dailyCall = call; // DEBUG
+        window.__dailyCallInstance = call;
+        window._dailyCall = call;
         const update = () => {
           if (destroyed) return;
           const p = call.participants();
@@ -7533,6 +7533,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           if (!destroyed) {
             destroyed = true;
             callRef.current = null;
+            window.__dailyCallInstance = null;
             call.destroy();
             onLeave();
           }
@@ -7550,6 +7551,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
       if (callRef.current) {
         callRef.current.destroy();
         callRef.current = null;
+        window.__dailyCallInstance = null;
       }
     };
   }, []);
