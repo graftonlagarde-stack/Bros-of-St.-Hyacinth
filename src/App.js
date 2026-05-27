@@ -7567,6 +7567,12 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
     .filter(p => !p.local)
     .filter((p, i, arr) => arr.findIndex(x => x.session_id === p.session_id) === i);
 
+  // DEBUG
+  if (Object.keys(participants).length > 0) {
+    console.log("[remotes] all participants:", Object.entries(participants).map(([k,v]) => `${k}: local=${v.local} sid=${v.session_id}`));
+    console.log("[remotes] remotes array:", remotes.map(p => `${p.user_name} sid=${p.session_id}`));
+  }
+
   const gridLayout = useMemo(() => {
     const n = remotes.length;
     if (n === 0) return { rows:[], circleSize:180, offset:0 };
