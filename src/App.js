@@ -7696,9 +7696,9 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const sid        = participant.session_id;
   const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
-  const hasVideo   = !!(track && videoState === "playable");
+  const showVideo  = videoState === "playable" || videoState === "loading" || videoState === "interrupted";
 
-  // Always register — fires on mount regardless of video state
+  // Always register on mount — never depends on track
   const registerRef = useCallback((el) => {
     if (el) videoEls[sid] = el;
     else delete videoEls[sid];
@@ -7716,9 +7716,8 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
     }
   }, [track, videoState, sid]);
 
-  // Look up avatar from our user list by matching display name
-  const userName  = participant.user_name || "Brother";
-  const matchedUser = allUsers?.find(u => u.displayName === userName);
+  const name      = participant.user_name || "Brother";
+  const matchedUser = allUsers?.find(u => u.displayName === name);
   const avatarUrl = matchedUser?.avatarUrl || null;
   const glow      = isSpeaking ? "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 24px rgba(136,255,0,0.7),0 0 48px rgba(136,255,0,0.25)"
                                : "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 10px rgba(136,255,0,0.2)";
@@ -7726,23 +7725,23 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
       <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",position:"relative",
         border:"1px solid rgba(136,255,0,0.35)",boxShadow:glow,transition:"box-shadow 0.3s ease",background:"var(--surface2)"}}>
-        {/* Always mounted — CSS hides when no video, ensures videoEls registration */}
+        {/* video always in DOM so videoEls stays populated through state changes */}
         <video ref={registerRef} autoPlay playsInline muted={false}
           style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",
-            display:hasVideo?"block":"none"}} />
-        {/* Avatar shown when no video */}
-        {!hasVideo && (avatarUrl
-          ? <img src={avatarUrl} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} alt={userName} />
+            display:showVideo?"block":"none"}} />
+        {/* avatar shown when video not active */}
+        {!showVideo && (avatarUrl
+          ? <img src={avatarUrl} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} alt={name} />
           : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
               fontFamily:"'Orbitron',sans-serif",fontWeight:900,color:"var(--accent)",fontSize:size*0.28}}>
-              {initials(userName)}
+              {initials(name)}
             </div>)}
         {sphereOverlay}
       </div>
       <div style={{fontSize:10,fontFamily:"'Orbitron',sans-serif",letterSpacing:1,
         color:isSpeaking?"var(--accent)":"var(--muted)",transition:"color 0.3s ease",
         textAlign:"center",maxWidth:size,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-        {userName.split(" ")[0].toUpperCase()}
+        {name.split(" ")[0].toUpperCase()}
       </div>
     </div>
   );
