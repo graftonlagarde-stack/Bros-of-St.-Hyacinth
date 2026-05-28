@@ -7495,8 +7495,8 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
               return new MediaStream([localVideoTrack]);
             });
           }
-          // Directly attach video tracks to registered elements
-          // Run immediately and after a delay to catch elements not yet registered
+          // Directly attach video tracks — run now AND after React renders
+          // (React renders asynchronously so videoEls may be empty on first pass)
           const attachAll = () => {
             const fresh = call.participants();
             for (const [sid, el] of Object.entries(videoEls)) {
@@ -7508,6 +7508,8 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
             }
           };
           attachAll();
+          // Retry after React has had time to render and register video elements
+          setTimeout(() => { if (!destroyed) attachAll(); }, 50);
           setTimeout(() => { if (!destroyed) attachAll(); }, 300);
           setTimeout(() => { if (!destroyed) attachAll(); }, 1000);
           // Track join count for debug overlay
@@ -7626,7 +7628,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)"}}>
           {gridLayout.rows.map((row, ri) => (
             <div key={ri} style={{display:"flex",gap:gridLayout.circleSize*0.15,marginLeft:ri%2===1?gridLayout.offset:0,marginBottom:gridLayout.circleSize*0.1}}>
-              {row.items.map(p => <ParticipantBubble key={p.session_id} participant={p} size={gridLayout.circleSize} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} videoEls={videoEls} callRef={callRef} />)}
+              {row.items.map(p => <ParticipantBubble key={p.session_id} participant={p} size={gridLayout.circleSize} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} videoEls={videoEls} />)}
             </div>
           ))}
         </div>
@@ -7680,46 +7682,43 @@ function ParticipantAudio({ participant }) {
   return <audio ref={audioRef} autoPlay playsInline style={{display:"none"}} />;
 }
 
-function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls, callRef }) {
+function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls }) {
   const sid        = participant.session_id;
   const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
-  const hasVideo   = videoState === "playable";
+  const hasVideo   = videoState === "playable" && !!track;
 
+  // Always register — never depends on track so callback never recreates
   const registerRef = useCallback((el) => {
     if (el) videoEls[sid] = el;
     else delete videoEls[sid];
   }, [sid]);
 
+  // Attach track whenever it changes
   useEffect(() => {
     const el = videoEls[sid];
     if (!el) return;
-    // Get fresh track directly from Daily — avoids stale copied state
-    const freshTrack = callRef.current?.participants()?.[sid]?.tracks?.video?.persistentTrack;
-    const t = freshTrack || track;
-    if (t) {
-      if (el.srcObject?.getTracks()[0] !== t) {
-        el.srcObject = new MediaStream([t]);
-        el.play().catch(() => {});
-      }
+    if (track) {
+      el.srcObject = new MediaStream([track]);
+      el.play().catch(() => {});
     } else {
       el.srcObject = null;
     }
   }, [track, videoState, sid]);
 
-  const avatarUrl = participant.userData?.avatarUrl || null;
-  const name      = participant.user_name || "Brother";
-  const glow      = isSpeaking
-    ? "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 24px rgba(136,255,0,0.7),0 0 48px rgba(136,255,0,0.25)"
-    : "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 10px rgba(136,255,0,0.2)";
+  const avatarUrl  = participant.userData?.avatarUrl || null;
+  const name       = participant.user_name || "Brother";
+  const glow       = isSpeaking ? "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 24px rgba(136,255,0,0.7),0 0 48px rgba(136,255,0,0.25)"
+                                : "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 10px rgba(136,255,0,0.2)";
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
       <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",position:"relative",
         border:"1px solid rgba(136,255,0,0.35)",boxShadow:glow,transition:"box-shadow 0.3s ease",background:"var(--surface2)"}}>
+        {/* Video always mounted so videoEls registration persists through camera toggles */}
         <video ref={registerRef} autoPlay playsInline muted={false}
-          style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",display:hasVideo?"block":"none"}} />
+          style={{width:"100%",height:"100%",objectFit:"cover",display: hasVideo ? "block" : "none"}} />
         {!hasVideo && (avatarUrl
-          ? <img src={avatarUrl} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} alt={name} />
+          ? <img src={avatarUrl} style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}} alt={name} />
           : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
               fontFamily:"'Orbitron',sans-serif",fontWeight:900,color:"var(--accent)",fontSize:size*0.28}}>
               {initials(name)}
