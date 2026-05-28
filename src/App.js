@@ -7500,7 +7500,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           const attachAll = () => {
             const fresh = call.participants();
             for (const [sid, el] of Object.entries(videoEls)) {
-              const vtrack = fresh[sid]?.tracks?.video?.persistentTrack;
+              const vtrack = fresh[sid]?.tracks?.video?.track;
               if (el && vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
                 el.srcObject = new MediaStream([vtrack]);
                 el.play().catch(() => {});
@@ -7524,35 +7524,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         call.on("participant-joined",   update);
         call.on("participant-left",     update);
         call.on("participant-updated",  update);
-        call.on("track-started", (e) => {
-          update();
-          // e.track is the actual MediaStreamTrack — available immediately on the event,
-          // even before persistentTrack is set on the participant object
-          if (e?.track?.kind === "video" && e?.participant && !e.participant.local) {
-            const sid = e.participant.session_id;
-            const el = videoEls[sid];
-            if (el) {
-              el.srcObject = new MediaStream([e.track]);
-              el.play().catch(() => {});
-            } else {
-              // Element not registered yet — retry after React renders
-              setTimeout(() => {
-                const el2 = videoEls[sid];
-                if (el2) {
-                  el2.srcObject = new MediaStream([e.track]);
-                  el2.play().catch(() => {});
-                }
-              }, 100);
-              setTimeout(() => {
-                const el2 = videoEls[sid];
-                if (el2 && !el2.srcObject) {
-                  el2.srcObject = new MediaStream([e.track]);
-                  el2.play().catch(() => {});
-                }
-              }, 500);
-            }
-          }
-        });
+        call.on("track-started",        update);
         call.on("track-stopped",        update);
         call.on("active-speaker-change",e => { if (!destroyed) setActiveSpeaker(e?.activeSpeaker?.peerId || null); });
         call.on("left-meeting", () => {
@@ -7722,9 +7694,9 @@ function ParticipantAudio({ participant }) {
 
 function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls, allUsers }) {
   const sid        = participant.session_id;
-  const track      = participant.tracks?.video?.persistentTrack;
+  const track      = participant.tracks?.video?.track;
   const videoState = participant.tracks?.video?.state;
-  const showVideo  = videoState === "playable" || videoState === "loading" || videoState === "interrupted";
+  const showVideo  = videoState === "playable";
 
   const registerRef = useCallback((el) => {
     if (el) videoEls[sid] = el;
@@ -7734,12 +7706,8 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   useEffect(() => {
     const el = videoEls[sid];
     if (!el) return;
-    if (track) {
-      el.srcObject = new MediaStream([track]);
-      el.play().catch(() => {});
-    } else {
-      el.srcObject = null;
-    }
+    el.srcObject = track ? new MediaStream([track]) : null;
+    if (track) el.play().catch(() => {});
   }, [track, videoState, sid]);
 
   const name      = participant.user_name || "Brother";
@@ -7751,9 +7719,10 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
       <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",position:"relative",
         border:"1px solid rgba(136,255,0,0.35)",boxShadow:glow,transition:"box-shadow 0.3s ease",background:"var(--surface2)"}}>
-        {/* Always in DOM so videoEls stays populated */}
+        {/* Always in DOM — videoEls stays populated through all state changes */}
         <video ref={registerRef} autoPlay playsInline muted={false}
-          style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",display:showVideo?"block":"none"}} />
+          style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",
+            display:showVideo?"block":"none"}} />
         {!showVideo && (avatarUrl
           ? <img src={avatarUrl} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} alt={name} />
           : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
