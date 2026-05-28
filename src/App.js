@@ -7495,21 +7495,30 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
               return new MediaStream([localVideoTrack]);
             });
           }
-          // Directly attach video tracks to any registered video elements
-          // Also retry after React renders (videoEls may be empty on first pass)
+          // Attach video tracks to registered elements.
+          // Polls until all elements have streams, giving up after 10 seconds.
           const attachAll = () => {
             const fresh = call.participants();
+            let anyMissing = false;
             for (const [sid, el] of Object.entries(videoEls)) {
-              const vtrack = fresh[sid]?.tracks?.video?.track;
+              const vtrack = fresh[sid]?.tracks?.video?.persistentTrack;
               if (el && vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
                 el.srcObject = new MediaStream([vtrack]);
                 el.play().catch(() => {});
               }
+              // Check if any remote participant has a playable track but no stream yet
+              const state = fresh[sid]?.tracks?.video?.state;
+              if (state === "playable" && (!el || !el.srcObject)) anyMissing = true;
             }
+            return anyMissing;
+          };
+          const pollAttach = (attempts = 0) => {
+            if (destroyed || attempts > 20) return;
+            const missing = attachAll();
+            if (missing) setTimeout(() => pollAttach(attempts + 1), 500);
           };
           attachAll();
-          setTimeout(() => { if (!destroyed) attachAll(); }, 50);
-          setTimeout(() => { if (!destroyed) attachAll(); }, 500);
+          setTimeout(() => { if (!destroyed) pollAttach(); }, 50);
           // Track join count for debug overlay
           const others = Object.values(p).filter(x => !x.local);
           if (others.length > 0) joinedAtRef.current = joinedAtRef.current || Date.now();
@@ -7694,35 +7703,42 @@ function ParticipantAudio({ participant }) {
 
 function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls, allUsers }) {
   const sid        = participant.session_id;
-  const track      = participant.tracks?.video?.track;
+  const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
-  const showVideo  = videoState === "playable";
+  const showVideo  = videoState === "playable" || videoState === "loading" || videoState === "interrupted";
 
+  // Always register on mount — never depends on track
   const registerRef = useCallback((el) => {
     if (el) videoEls[sid] = el;
     else delete videoEls[sid];
   }, [sid]);
 
+  // Attach track whenever it changes
   useEffect(() => {
     const el = videoEls[sid];
     if (!el) return;
-    el.srcObject = track ? new MediaStream([track]) : null;
-    if (track) el.play().catch(() => {});
+    if (track) {
+      el.srcObject = new MediaStream([track]);
+      el.play().catch(() => {});
+    } else {
+      el.srcObject = null;
+    }
   }, [track, videoState, sid]);
 
   const name      = participant.user_name || "Brother";
-  const matched   = allUsers?.find(u => u.displayName === name);
-  const avatarUrl = matched?.avatarUrl || null;
+  const matchedUser = allUsers?.find(u => u.displayName === name);
+  const avatarUrl = matchedUser?.avatarUrl || null;
   const glow      = isSpeaking ? "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 24px rgba(136,255,0,0.7),0 0 48px rgba(136,255,0,0.25)"
                                : "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 10px rgba(136,255,0,0.2)";
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
       <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",position:"relative",
         border:"1px solid rgba(136,255,0,0.35)",boxShadow:glow,transition:"box-shadow 0.3s ease",background:"var(--surface2)"}}>
-        {/* Always in DOM — videoEls stays populated through all state changes */}
+        {/* video always in DOM so videoEls stays populated through state changes */}
         <video ref={registerRef} autoPlay playsInline muted={false}
           style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",
             display:showVideo?"block":"none"}} />
+        {/* avatar shown when video not active */}
         {!showVideo && (avatarUrl
           ? <img src={avatarUrl} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} alt={name} />
           : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
