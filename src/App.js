@@ -7495,23 +7495,15 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
               return new MediaStream([localVideoTrack]);
             });
           }
-          // Directly attach video tracks — run now AND after React renders
-          // (React renders asynchronously so videoEls may be empty on first pass)
-          const attachAll = () => {
-            const fresh = call.participants();
-            for (const [sid, el] of Object.entries(videoEls)) {
-              const vtrack = fresh[sid]?.tracks?.video?.persistentTrack;
-              if (el && vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
-                el.srcObject = new MediaStream([vtrack]);
-                el.play().catch(() => {});
-              }
+          // Directly attach video tracks to any registered video elements
+          for (const [sid, el] of Object.entries(videoEls)) {
+            const participant = p[sid];
+            const vtrack = participant?.tracks?.video?.persistentTrack;
+            if (el && vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
+              el.srcObject = new MediaStream([vtrack]);
+              el.play().catch(() => {});
             }
-          };
-          attachAll();
-          // Retry after React has had time to render and register video elements
-          setTimeout(() => { if (!destroyed) attachAll(); }, 50);
-          setTimeout(() => { if (!destroyed) attachAll(); }, 300);
-          setTimeout(() => { if (!destroyed) attachAll(); }, 1000);
+          }
           // Track join count for debug overlay
           const others = Object.values(p).filter(x => !x.local);
           if (others.length > 0) joinedAtRef.current = joinedAtRef.current || Date.now();
@@ -7687,6 +7679,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
   const hasVideo   = videoState === "playable" && !!track;
+  const bubbleSize = hasVideo ? size : Math.round(size / 3);
 
   // Always register — never depends on track so callback never recreates
   const registerRef = useCallback((el) => {
@@ -7708,11 +7701,12 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
 
   const avatarUrl  = participant.userData?.avatarUrl || null;
   const name       = participant.user_name || "Brother";
+  const bubbleSize = (track && videoState === "playable") ? size : Math.round(size / 3);
   const glow       = isSpeaking ? "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 24px rgba(136,255,0,0.7),0 0 48px rgba(136,255,0,0.25)"
                                 : "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 10px rgba(136,255,0,0.2)";
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
-      <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",position:"relative",
+      <div style={{width:bubbleSize,height:bubbleSize,borderRadius:"50%",overflow:"hidden",position:"relative",
         border:"1px solid rgba(136,255,0,0.35)",boxShadow:glow,transition:"box-shadow 0.3s ease",background:"var(--surface2)"}}>
         {/* Video always mounted so videoEls registration persists through camera toggles */}
         <video ref={registerRef} autoPlay playsInline muted={false}
@@ -7720,7 +7714,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
         {!hasVideo && (avatarUrl
           ? <img src={avatarUrl} style={{width:"100%",height:"100%",objectFit:"cover",position:"absolute",inset:0}} alt={name} />
           : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
-              fontFamily:"'Orbitron',sans-serif",fontWeight:900,color:"var(--accent)",fontSize:size*0.28}}>
+              fontFamily:"'Orbitron',sans-serif",fontWeight:900,color:"var(--accent)",fontSize:bubbleSize*0.28}}>
               {initials(name)}
             </div>)}
         {sphereOverlay}
