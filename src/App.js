@@ -7514,8 +7514,6 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           attachAll();
           setTimeout(() => { if (!destroyed) attachAll(); }, 50);
           setTimeout(() => { if (!destroyed) attachAll(); }, 500);
-          setTimeout(() => { if (!destroyed) attachAll(); }, 1500);
-          setTimeout(() => { if (!destroyed) attachAll(); }, 3000);
           // Track join count for debug overlay
           const others = Object.values(p).filter(x => !x.local);
           if (others.length > 0) joinedAtRef.current = joinedAtRef.current || Date.now();
@@ -7703,6 +7701,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
   const showVideo  = videoState === "playable" || videoState === "loading" || videoState === "interrupted";
+  const cameraOff  = !videoState || videoState === "off" || videoState === "blocked";
 
   // Always register on mount — never depends on track
   const registerRef = useCallback((el) => {
@@ -7710,16 +7709,15 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
     else delete videoEls[sid];
   }, [sid]);
 
+  // Attach track whenever it changes
   useEffect(() => {
     const el = videoEls[sid];
     if (!el) return;
-    if (videoState === "off" || videoState === "blocked") {
-      el.srcObject = null;
-    } else if (track) {
-      if (el.srcObject?.getTracks()[0] !== track) {
-        el.srcObject = new MediaStream([track]);
-      }
+    if (track) {
+      el.srcObject = new MediaStream([track]);
       el.play().catch(() => {});
+    } else {
+      el.srcObject = null;
     }
   }, [track, videoState, sid]);
 
@@ -7736,8 +7734,8 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
         <video ref={registerRef} autoPlay playsInline muted={false}
           style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",
             display:showVideo?"block":"none"}} />
-        {/* avatar shown when video not active */}
-        {!showVideo && (avatarUrl
+        {/* avatar shown when camera is off */}
+        {cameraOff && (avatarUrl
           ? <img src={avatarUrl} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} alt={name} />
           : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
               fontFamily:"'Orbitron',sans-serif",fontWeight:900,color:"var(--accent)",fontSize:size*0.28}}>
