@@ -7495,27 +7495,21 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
               return new MediaStream([localVideoTrack]);
             });
           }
+          // Directly attach video tracks to any registered video elements
+          // Also retry after React renders (videoEls may be empty on first pass)
           const attachAll = () => {
             const fresh = call.participants();
             for (const [sid, el] of Object.entries(videoEls)) {
-              if (!el) continue;
-              const vstate = fresh[sid]?.tracks?.video?.state;
               const vtrack = fresh[sid]?.tracks?.video?.persistentTrack;
-              if (vstate === "off" || vstate === "blocked" || !vstate) {
-                // Camera off — clear so avatar shows, not frozen frame
-                if (el.srcObject) el.srcObject = null;
-              } else if (vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
+              if (el && vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
                 el.srcObject = new MediaStream([vtrack]);
                 el.play().catch(() => {});
               }
             }
           };
-          // Retry on a fixed schedule — don't stop early, because state may be
-          // "off" initially and become "playable" seconds later
           attachAll();
-          [50, 200, 500, 1000, 2000, 4000].forEach(ms =>
-            setTimeout(() => { if (!destroyed) attachAll(); }, ms)
-          );
+          setTimeout(() => { if (!destroyed) attachAll(); }, 50);
+          setTimeout(() => { if (!destroyed) attachAll(); }, 500);
           // Track join count for debug overlay
           const others = Object.values(p).filter(x => !x.local);
           if (others.length > 0) joinedAtRef.current = joinedAtRef.current || Date.now();
@@ -7524,10 +7518,39 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         call.on("joined-meeting", () => {
           joinedAtRef.current = Date.now();
           setJoined(true); update();
-          const p2=call.participants();
-          if(p2.local){setMicOn(!p2.local.tracks?.audio?.off);setCamOn(!p2.local.tracks?.video?.off);}
+          const p2 = call.participants();
+          if (p2.local) { setMicOn(!p2.local.tracks?.audio?.off); setCamOn(!p2.local.tracks?.video?.off); }
+          // Force immediate resubscription to all existing remote participants
+          // This is the equivalent of "cameras on by default" — tells Daily to
+          // deliver all current track states immediately rather than passively
+          Object.values(p2).forEach(p => {
+            if (!p.local) {
+              call.updateParticipant(p.session_id, {
+                setSubscribedTracks: { audio: true, video: true },
+              });
+            }
+          });
+          // Also retry after a delay in case participants join after us
+          setTimeout(() => {
+            if (destroyed) return;
+            Object.values(call.participants()).forEach(p => {
+              if (!p.local) {
+                call.updateParticipant(p.session_id, {
+                  setSubscribedTracks: { audio: true, video: true },
+                });
+              }
+            });
+            update();
+          }, 1000);
         });
-        call.on("participant-joined",   update);
+        call.on("participant-joined", (e) => {
+          update();
+          if (e?.participant && !e.participant.local) {
+            call.updateParticipant(e.participant.session_id, {
+              setSubscribedTracks: { audio: true, video: true },
+            });
+          }
+        });
         call.on("participant-left",     update);
         call.on("participant-updated",  update);
         call.on("track-started",        update);
@@ -7698,13 +7721,12 @@ function ParticipantAudio({ participant }) {
   return <audio ref={audioRef} autoPlay playsInline style={{display:"none"}} />;
 }
 
-function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls, allUsers }) {
+function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls }) {
   const sid        = participant.session_id;
   const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
   const showVideo  = videoState === "playable" || videoState === "loading" || videoState === "interrupted";
 
-  // Always register on mount — never depends on track
   const registerRef = useCallback((el) => {
     if (el) videoEls[sid] = el;
     else delete videoEls[sid];
@@ -7722,19 +7744,18 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   }, [track, videoState, sid]);
 
   const name      = participant.user_name || "Brother";
-  const matchedUser = allUsers?.find(u => u.displayName === name);
-  const avatarUrl = matchedUser?.avatarUrl || null;
+  const matched   = allUsers?.find(u => u.displayName === name);
+  const avatarUrl = matched?.avatarUrl || null;
   const glow      = isSpeaking ? "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 24px rgba(136,255,0,0.7),0 0 48px rgba(136,255,0,0.25)"
                                : "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 10px rgba(136,255,0,0.2)";
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
       <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",position:"relative",
         border:"1px solid rgba(136,255,0,0.35)",boxShadow:glow,transition:"box-shadow 0.3s ease",background:"var(--surface2)"}}>
-        {/* video always in DOM so videoEls stays populated through state changes */}
+        {/* Always in DOM — never unmounts — so videoEls stays populated */}
         <video ref={registerRef} autoPlay playsInline muted={false}
           style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",
             display:showVideo?"block":"none"}} />
-        {/* avatar shown when video not active */}
         {!showVideo && (avatarUrl
           ? <img src={avatarUrl} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} alt={name} />
           : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
