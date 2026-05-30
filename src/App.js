@@ -7497,38 +7497,25 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           }
           const attachAll = () => {
             const fresh = call.participants();
-            let needsRetry = false;
             for (const [sid, el] of Object.entries(videoEls)) {
+              if (!el) continue;
               const vstate = fresh[sid]?.tracks?.video?.state;
               const vtrack = fresh[sid]?.tracks?.video?.persistentTrack;
-              if (!el) continue;
               if (vstate === "off" || vstate === "blocked" || !vstate) {
-                // Camera is off — clear srcObject so avatar shows
-                if (el.srcObject) { el.srcObject = null; }
-              } else if (vtrack) {
-                // Camera is on and track is ready — attach
-                if (el.srcObject?.getTracks()[0] !== vtrack) {
-                  el.srcObject = new MediaStream([vtrack]);
-                  el.play().catch(() => {});
-                }
-              } else if (vstate === "playable" || vstate === "loading") {
-                // State says playable/loading but track not yet delivered — retry
-                needsRetry = true;
+                // Camera off — clear so avatar shows, not frozen frame
+                if (el.srcObject) el.srcObject = null;
+              } else if (vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
+                el.srcObject = new MediaStream([vtrack]);
+                el.play().catch(() => {});
               }
             }
-            return needsRetry;
           };
-          const scheduleRetry = (delay, maxAttempts = 10, attempt = 0) => {
-            if (destroyed || attempt >= maxAttempts) return;
-            setTimeout(() => {
-              if (destroyed) return;
-              const stillNeeds = attachAll();
-              if (stillNeeds) scheduleRetry(delay, maxAttempts, attempt + 1);
-            }, delay);
-          };
+          // Retry on a fixed schedule — don't stop early, because state may be
+          // "off" initially and become "playable" seconds later
           attachAll();
-          scheduleRetry(50);    // First retry after React renders
-          scheduleRetry(500);   // Second wave in case 50ms wasn't enough
+          [50, 200, 500, 1000, 2000, 4000].forEach(ms =>
+            setTimeout(() => { if (!destroyed) attachAll(); }, ms)
+          );
           // Track join count for debug overlay
           const others = Object.values(p).filter(x => !x.local);
           if (others.length > 0) joinedAtRef.current = joinedAtRef.current || Date.now();
@@ -7715,7 +7702,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const sid        = participant.session_id;
   const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
-  const showVideo  = videoState === "playable" && !!track;
+  const showVideo  = videoState === "playable" || videoState === "loading" || videoState === "interrupted";
 
   // Always register on mount — never depends on track
   const registerRef = useCallback((el) => {
@@ -7727,8 +7714,6 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
     const el = videoEls[sid];
     if (!el) return;
     if (videoState === "off" || videoState === "blocked") {
-      // Explicitly clear — persistentTrack stays set even when camera is off,
-      // so we can't rely on !track to know when to clear
       el.srcObject = null;
     } else if (track) {
       el.srcObject = new MediaStream([track]);
