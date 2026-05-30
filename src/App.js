@@ -7495,30 +7495,40 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
               return new MediaStream([localVideoTrack]);
             });
           }
-          // Attach video tracks to registered elements.
-          // Polls until all elements have streams, giving up after 10 seconds.
           const attachAll = () => {
             const fresh = call.participants();
-            let anyMissing = false;
+            let needsRetry = false;
             for (const [sid, el] of Object.entries(videoEls)) {
+              const vstate = fresh[sid]?.tracks?.video?.state;
               const vtrack = fresh[sid]?.tracks?.video?.persistentTrack;
-              if (el && vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
-                el.srcObject = new MediaStream([vtrack]);
-                el.play().catch(() => {});
+              if (!el) continue;
+              if (vstate === "off" || vstate === "blocked" || !vstate) {
+                // Camera is off — clear srcObject so avatar shows
+                if (el.srcObject) { el.srcObject = null; }
+              } else if (vtrack) {
+                // Camera is on and track is ready — attach
+                if (el.srcObject?.getTracks()[0] !== vtrack) {
+                  el.srcObject = new MediaStream([vtrack]);
+                  el.play().catch(() => {});
+                }
+              } else if (vstate === "playable" || vstate === "loading") {
+                // State says playable/loading but track not yet delivered — retry
+                needsRetry = true;
               }
-              // Check if any remote participant has a playable track but no stream yet
-              const state = fresh[sid]?.tracks?.video?.state;
-              if (state === "playable" && (!el || !el.srcObject)) anyMissing = true;
             }
-            return anyMissing;
+            return needsRetry;
           };
-          const pollAttach = (attempts = 0) => {
-            if (destroyed || attempts > 20) return;
-            const missing = attachAll();
-            if (missing) setTimeout(() => pollAttach(attempts + 1), 500);
+          const scheduleRetry = (delay, maxAttempts = 10, attempt = 0) => {
+            if (destroyed || attempt >= maxAttempts) return;
+            setTimeout(() => {
+              if (destroyed) return;
+              const stillNeeds = attachAll();
+              if (stillNeeds) scheduleRetry(delay, maxAttempts, attempt + 1);
+            }, delay);
           };
           attachAll();
-          setTimeout(() => { if (!destroyed) pollAttach(); }, 50);
+          scheduleRetry(50);    // First retry after React renders
+          scheduleRetry(500);   // Second wave in case 50ms wasn't enough
           // Track join count for debug overlay
           const others = Object.values(p).filter(x => !x.local);
           if (others.length > 0) joinedAtRef.current = joinedAtRef.current || Date.now();
@@ -7705,7 +7715,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const sid        = participant.session_id;
   const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
-  const showVideo  = videoState === "playable" || videoState === "loading" || videoState === "interrupted";
+  const showVideo  = videoState === "playable" && !!track;
 
   // Always register on mount — never depends on track
   const registerRef = useCallback((el) => {
@@ -7713,15 +7723,16 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
     else delete videoEls[sid];
   }, [sid]);
 
-  // Attach track whenever it changes
   useEffect(() => {
     const el = videoEls[sid];
     if (!el) return;
-    if (track) {
+    if (videoState === "off" || videoState === "blocked") {
+      // Explicitly clear — persistentTrack stays set even when camera is off,
+      // so we can't rely on !track to know when to clear
+      el.srcObject = null;
+    } else if (track) {
       el.srcObject = new MediaStream([track]);
       el.play().catch(() => {});
-    } else {
-      el.srcObject = null;
     }
   }, [track, videoState, sid]);
 
