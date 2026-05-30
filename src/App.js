@@ -7478,8 +7478,8 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
             if (k === "local") continue;
             copy[k] = { ...v,
               tracks: {
-                audio: v.tracks?.audio ? { ...v.tracks.audio } : undefined,
-                video: v.tracks?.video ? { ...v.tracks.video } : undefined,
+                audio: v.tracks?.audio ? { ...v.tracks.audio, persistentTrack: v.tracks.audio.persistentTrack, track: v.tracks.audio.track } : undefined,
+                video: v.tracks?.video ? { ...v.tracks.video, persistentTrack: v.tracks.video.persistentTrack, track: v.tracks.video.track } : undefined,
               }
             };
           }
@@ -7693,16 +7693,12 @@ function ParticipantAudio({ participant }) {
 }
 
 function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, allUsers }) {
-  const videoEl = useRef(null);
-
-  // Use .track (only present when state === "playable") not .persistentTrack
-  // Daily docs: persistentTrack causes frozen frame when camera is muted
+  const videoEl    = useRef(null);
   const videoTrack = participant.tracks?.video?.track ?? null;
 
   useEffect(() => {
-    if (videoEl.current) {
-      videoEl.current.srcObject = videoTrack ? new MediaStream([videoTrack]) : null;
-    }
+    if (!videoEl.current) return;
+    videoEl.current.srcObject = videoTrack ? new MediaStream([videoTrack]) : null;
   }, [videoTrack]);
 
   const name      = participant.user_name || "Brother";
@@ -7711,7 +7707,6 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, allUs
   const glow      = isSpeaking
     ? "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 24px rgba(136,255,0,0.7),0 0 48px rgba(136,255,0,0.25)"
     : "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 10px rgba(136,255,0,0.2)";
-
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
       <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",position:"relative",
@@ -7724,11 +7719,9 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, allUs
                 {initials(name)}
               </div>}
         </div>
-        {/* Video on top — only mounted when track is playable, unmounts when camera off */}
-        {videoTrack && (
-          <video ref={videoEl} autoPlay playsInline muted={false}
-            style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} />
-        )}
+        {/* Video on top, only when track is playable */}
+        {videoTrack && <video ref={videoEl} autoPlay playsInline muted={false}
+          style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} />}
         {sphereOverlay}
       </div>
       <div style={{fontSize:10,fontFamily:"'Orbitron',sans-serif",letterSpacing:1,
