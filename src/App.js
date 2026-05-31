@@ -2121,7 +2121,6 @@ const css = `
     0%   { background-position: 200% 0; }
     100% { background-position: -200% 0; }
   }
-  @keyframes reticle-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   @keyframes energyBeat {
     0%,100% { box-shadow: 0 0 20px rgba(136,255,0,0.2), inset 0 0 40px rgba(0,255,180,0.03); }
     50%     { box-shadow: 0 0 40px rgba(0,255,180,0.45), inset 0 0 60px rgba(0,255,180,0.07); }
@@ -7781,11 +7780,10 @@ function CallButton({ active, danger, onClick, label, icon }) {
 }
 
 function ParticipantAudio({ participant, audioLevels, totalRemotes }) {
-  const audioRef  = useRef(null);
-  const rafRef    = useRef(null);
-  const track     = participant.tracks?.audio?.persistentTrack;
-  const sid       = participant.session_id;
-  const useAnalyser = totalRemotes <= 6; // cap analyser at 6 participants
+  const audioRef = useRef(null);
+  const track    = participant.tracks?.audio?.persistentTrack;
+  const sid      = participant.session_id;
+  const useAnalyser = totalRemotes <= 6;
 
   useEffect(() => {
     if (!audioRef.current || !track) return;
@@ -7795,41 +7793,32 @@ function ParticipantAudio({ participant, audioLevels, totalRemotes }) {
 
     if (!useAnalyser) return;
 
-    let ctx, analyser, data, destroyed = false;
+    let ctx, destroyed = false;
     try {
-      ctx      = new (window.AudioContext || window.webkitAudioContext)();
-      analyser = ctx.createAnalyser();
-      analyser.fftSize = 32; // minimal — just need RMS amplitude
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 64; // 32 bins of time-domain data — enough for a smooth waveform ring
+      analyser.smoothingTimeConstant = 0.5;
       const source = ctx.createMediaStreamSource(stream);
       source.connect(analyser);
-      data = new Uint8Array(analyser.frequencyBinCount);
+      const data = new Uint8Array(analyser.frequencyBinCount);
 
-      let lastTime = 0;
-      const INTERVAL = 1000 / 30; // 30fps
+      // Store waveform buffer on audioLevels keyed by sid
+      // Other components read audioLevels[sid].waveform
+      audioLevels[sid] = { waveform: data, analyser };
 
-      const tick = (now) => {
+      const tick = () => {
         if (destroyed) return;
-        if (now - lastTime >= INTERVAL) {
-          lastTime = now;
-          analyser.getByteTimeDomainData(data);
-          // RMS amplitude
-          let sum = 0;
-          for (let i = 0; i < data.length; i++) {
-            const v = (data[i] - 128) / 128;
-            sum += v * v;
-          }
-          audioLevels[sid] = Math.sqrt(sum / data.length);
-        }
-        rafRef.current = requestAnimationFrame(tick);
+        analyser.getByteTimeDomainData(data);
+        requestAnimationFrame(tick);
       };
-      rafRef.current = requestAnimationFrame(tick);
+      requestAnimationFrame(tick);
     } catch(e) {}
 
     return () => {
       destroyed = true;
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
       try { ctx?.close(); } catch(e) {}
-      audioLevels[sid] = 0;
+      delete audioLevels[sid];
     };
   }, [track, sid, useAnalyser]);
 
@@ -7848,43 +7837,6 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
     trackSetters[sid] = setHasActiveTrack;
     return () => { delete trackSetters[sid]; };
   }, [sid]);
-
-  // Audio-reactive ring — drive SVG stroke directly to avoid React re-renders
-  const svgRingRef  = useRef(null);
-  const svgHaloRef  = useRef(null);
-  const rafRef      = useRef(null);
-  const useReactive = totalRemotes <= 6;
-
-  useEffect(() => {
-    if (!useReactive) return;
-    let destroyed = false;
-    const tick = () => {
-      if (destroyed) return;
-      const level = audioLevels[sid] || 0;
-      // Smooth the level with a simple lerp stored on the ref
-      if (!tick.smoothed) tick.smoothed = 0;
-      tick.smoothed = tick.smoothed * 0.75 + level * 0.25;
-      const s = tick.smoothed;
-
-      if (svgRingRef.current) {
-        // Brightness: idle=0.6, max speaking=1.0
-        const brightness = 0.6 + s * 2.5;
-        const opacity = Math.min(1, brightness);
-        // Stroke width ripple
-        const baseW = Math.max(1, size * 0.018);
-        const w = baseW * (1 + s * 3);
-        svgRingRef.current.setAttribute('stroke-opacity', opacity.toFixed(2));
-        svgRingRef.current.setAttribute('stroke-width', w.toFixed(1));
-      }
-      if (svgHaloRef.current) {
-        const haloOpacity = Math.min(0.25 + s * 1.5, 0.9);
-        svgHaloRef.current.setAttribute('stroke-opacity', haloOpacity.toFixed(2));
-      }
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
-    return () => { destroyed = true; cancelAnimationFrame(rafRef.current); };
-  }, [sid, size, useReactive]);
 
   const registerRef = useCallback((el) => {
     if (el) {
@@ -7922,42 +7874,70 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   // Reticle sizing — slightly outside the bubble
   const pad       = Math.max(4, size * 0.06);
   const svgSize   = size + pad * 2;
-  const cx        = svgSize / 2;
-  const r1        = size / 2 + pad * 0.4;  // main arc ring
-  const r2        = size / 2 + pad * 0.9;  // outer tick ring
-  // Arc dasharray: 4 segments with gaps, scales with circumference
-  const circ1     = 2 * Math.PI * r1;
-  const segLen    = circ1 / 4 * 0.78;
-  const gapLen    = circ1 / 4 * 0.22;
-  const circ2     = 2 * Math.PI * r2;
-  const tickLen   = circ2 / 24 * 0.5;
-  const tickGap   = circ2 / 24 * 0.5;
 
-  const spinDur   = isSpeaking ? "3s" : "12s";
-  const glowSize1 = Math.round(size * 0.25);
-  const glowSize2 = Math.round(size * 0.6);
-  const glow      = isSpeaking
-    ? `0 0 ${glowSize1}px rgba(136,255,0,0.9), 0 0 ${glowSize2}px rgba(136,255,0,0.4)`
-    : `0 0 ${glowSize1}px rgba(136,255,0,0.35), 0 0 ${glowSize2}px rgba(136,255,0,0.1)`;
+  // Waveform ring — drive SVG path directly via DOM, no React re-renders
+  const wavePathRef = useRef(null);
+  const rafRef      = useRef(null);
+  const useReactive = totalRemotes <= 6;
+  const N_POINTS    = 64; // points around the circle
+
+  useEffect(() => {
+    if (!wavePathRef.current) return;
+    let destroyed = false;
+    const svgCx  = svgSize / 2;
+    const baseR  = size / 2 + pad * 0.5;
+    const maxDisp = Math.max(3, size * 0.06); // max waveform displacement in px
+
+    const tick = () => {
+      if (destroyed) return;
+      const entry   = audioLevels[sid];
+      const waveform = entry?.waveform;
+      let pathD = '';
+
+      for (let i = 0; i < N_POINTS; i++) {
+        const angle = (i / N_POINTS) * 2 * Math.PI - Math.PI / 2;
+        let r = baseR;
+        if (waveform) {
+          // Map waveform index to point index — interpolate around ring
+          const wIdx = Math.floor((i / N_POINTS) * waveform.length) % waveform.length;
+          const v = (waveform[wIdx] - 128) / 128; // -1..1
+          r = baseR + v * maxDisp;
+        }
+        const x = svgCx + r * Math.cos(angle);
+        const y = svgCx + r * Math.sin(angle);
+        pathD += i === 0 ? `M${x.toFixed(1)},${y.toFixed(1)}` : `L${x.toFixed(1)},${y.toFixed(1)}`;
+      }
+      pathD += 'Z';
+      wavePathRef.current.setAttribute('d', pathD);
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      destroyed = true;
+      cancelAnimationFrame(rafRef.current);
+    };
+  }, [sid, size, svgSize, pad, useReactive]);
+
+  const glowSize1 = Math.round(size * 0.2);
+  const glowSize2 = Math.round(size * 0.5);
+  const glow = isSpeaking
+    ? `0 0 ${glowSize1}px rgba(136,255,0,0.8), 0 0 ${glowSize2}px rgba(136,255,0,0.3)`
+    : `0 0 ${glowSize1}px rgba(136,255,0,0.25), 0 0 ${glowSize2}px rgba(136,255,0,0.08)`;
 
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
       <div style={{position:"relative",width:svgSize,height:svgSize,display:"flex",alignItems:"center",justifyContent:"center"}}>
-        {/* Rotating reticle SVG — sits outside the bubble */}
-        <svg width={svgSize} height={svgSize} style={{position:"absolute",inset:0,pointerEvents:"none",
-          animation:`reticle-spin ${spinDur} linear infinite`,
-          transition:"animation-duration 0.5s"}}>
-          {/* Main arc segments */}
-          <circle ref={svgRingRef} cx={cx} cy={cx} r={r1} fill="none"
-            stroke="rgba(136,255,0,0.85)" strokeWidth={Math.max(1, size*0.018)}
-            strokeDasharray={`${segLen} ${gapLen}`} strokeLinecap="butt"/>
-          <circle cx={cx} cy={cx} r={r1} fill="none"
-            stroke="rgba(136,255,0,0.15)" strokeWidth={Math.max(3, size*0.05)}
-            strokeDasharray={`${segLen} ${gapLen}`} strokeLinecap="butt"/>
-          {/* Outer tick ring */}
-          <circle ref={svgHaloRef} cx={cx} cy={cx} r={r2} fill="none"
-            stroke="rgba(136,255,0,0.4)" strokeWidth={Math.max(1, size*0.012)}
-            strokeDasharray={`${tickLen} ${tickGap}`} strokeLinecap="butt"/>
+        {/* Waveform ring — path updated directly via RAF */}
+        <svg width={svgSize} height={svgSize} style={{position:"absolute",inset:0,pointerEvents:"none",overflow:"visible"}}>
+          {/* Soft glow behind the waveform */}
+          <circle cx={svgSize/2} cy={svgSize/2} r={size/2 + pad*0.5}
+            fill="none" stroke="rgba(136,255,0,0.12)" strokeWidth={Math.max(4, size*0.06)}/>
+          {/* Waveform path */}
+          <path ref={wavePathRef}
+            fill="none"
+            stroke="rgba(136,255,0,0.9)"
+            strokeWidth={Math.max(1, size*0.014)}
+            strokeLinejoin="round"/>
         </svg>
         {/* Bubble itself */}
         <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",position:"relative",
