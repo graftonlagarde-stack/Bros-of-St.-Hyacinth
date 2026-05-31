@@ -7524,15 +7524,8 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           setJoined(true); update();
           const p2=call.participants();
           if(p2.local){setMicOn(!p2.local.tracks?.audio?.off);setCamOn(!p2.local.tracks?.video?.off);}
-          Object.values(p2).forEach(p => {
-            if (!p.local) call.updateParticipant(p.session_id, { setSubscribedTracks: { audio: true, video: true } });
-          });
         });
-        call.on("participant-joined", (e) => {
-          update();
-          if (e?.participant?.session_id && !e.participant.local)
-            call.updateParticipant(e.participant.session_id, { setSubscribedTracks: { audio: true, video: true } });
-        });
+        call.on("participant-joined",   update);
         call.on("participant-left",     update);
         call.on("participant-updated",  update);
         call.on("track-started",        update);
@@ -7649,7 +7642,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)"}}>
           {gridLayout.rows.map((row, ri) => (
             <div key={ri} style={{display:"flex",gap:gridLayout.circleSize*0.15,marginLeft:ri%2===1?gridLayout.offset:0,marginBottom:gridLayout.circleSize*0.1}}>
-              {row.items.map(p => <ParticipantBubble key={p.session_id} participant={p} size={gridLayout.circleSize} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} videoEls={videoEls} allUsers={allUsers} />)}
+              {row.items.map(p => <ParticipantBubble key={p.session_id} participant={p} size={gridLayout.circleSize} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} videoEls={videoEls} allUsers={allUsers} callRef={callRef} />)}
             </div>
           ))}
         </div>
@@ -7703,7 +7696,7 @@ function ParticipantAudio({ participant }) {
   return <audio ref={audioRef} autoPlay playsInline style={{display:"none"}} />;
 }
 
-function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls, allUsers }) {
+function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls, allUsers, callRef }) {
   const sid        = participant.session_id;
   const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
@@ -7711,18 +7704,32 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const cameraOff  = !videoState || videoState === "off" || videoState === "blocked";
 
   const registerRef = useCallback((el) => {
-    if (el) videoEls[sid] = el;
-    else delete videoEls[sid];
-  }, [sid]);
+    if (el) {
+      videoEls[sid] = el;
+      // Element just mounted — read fresh track directly from Daily, not stale state
+      const freshTrack = callRef?.current?.participants()?.[sid]?.tracks?.video?.persistentTrack;
+      const t = freshTrack || track;
+      if (t) {
+        el.srcObject = new MediaStream([t]);
+        el.play().catch(() => {});
+      }
+    } else {
+      delete videoEls[sid];
+    }
+  }, [sid, track]);
 
   useEffect(() => {
     const el = videoEls[sid];
     if (!el) return;
     if (cameraOff) {
       el.srcObject = null;
-    } else if (track) {
-      el.srcObject = new MediaStream([track]);
-      el.play().catch(() => {});
+    } else {
+      const freshTrack = callRef?.current?.participants()?.[sid]?.tracks?.video?.persistentTrack;
+      const t = freshTrack || track;
+      if (t) {
+        el.srcObject = new MediaStream([t]);
+        el.play().catch(() => {});
+      }
     }
   }, [track, videoState, sid]);
 
