@@ -7797,19 +7797,17 @@ function ParticipantAudio({ participant, audioLevels, totalRemotes }) {
     try {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256; // 128 time-domain samples — enough for distinct peaks
-      analyser.smoothingTimeConstant = 0.3; // less smoothing = snappier peaks
+      analyser.fftSize = 512; // 256 frequency bins — sharp distinct peaks
+      analyser.smoothingTimeConstant = 0.6; // some smoothing so peaks don't flicker
       const source = ctx.createMediaStreamSource(stream);
       source.connect(analyser);
       const data = new Uint8Array(analyser.frequencyBinCount);
 
-      // Store waveform buffer on audioLevels keyed by sid
-      // Other components read audioLevels[sid].waveform
-      audioLevels[sid] = { waveform: data, analyser };
+      audioLevels[sid] = { waveform: data, analyser, isFrequency: true };
 
       const tick = () => {
         if (destroyed) return;
-        analyser.getByteTimeDomainData(data);
+        analyser.getByteFrequencyData(data); // frequency domain = sharp peaks
         requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
@@ -7902,7 +7900,8 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
         let r = baseR;
         if (waveform) {
           const wIdx = Math.floor((i / N_POINTS) * waveform.length) % waveform.length;
-          const v = (waveform[wIdx] - 128) / 128;
+          // Frequency data: 0=silence, 255=loud. Map to displacement outward only
+          const v = waveform[wIdx] / 255; // 0..1
           r = baseR + v * maxDisp;
         }
         const x = svgCx + r * Math.cos(angle);
@@ -7932,12 +7931,8 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
       <div style={{position:"relative",width:svgSize,height:svgSize,display:"flex",alignItems:"center",justifyContent:"center"}}>
-        {/* Waveform ring — path updated directly via RAF */}
+        {/* Waveform ring — no static circle, just the live waveform layers */}
         <svg width={svgSize} height={svgSize} style={{position:"absolute",inset:0,pointerEvents:"none",overflow:"visible"}}>
-          {/* Idle atmospheric glow ring — always visible */}
-          <circle cx={svgSize/2} cy={svgSize/2} r={size/2 + pad*0.4}
-            fill="none" stroke="rgba(136,255,0,0.18)" strokeWidth={Math.max(6, size*0.08)}/>
-          {/* Waveform: 4 layers from wide/dim to thin/bright */}
           <path ref={waveGlowRef}
             fill="none" stroke="rgba(136,255,0,0.08)"
             strokeWidth={Math.max(6, size*0.07)} strokeLinejoin="round"/>
