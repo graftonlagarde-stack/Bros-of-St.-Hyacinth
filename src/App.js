@@ -1414,7 +1414,7 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
             {isLastInGroup && (
               msg.avatarUrl
                 ? <div className="avatar-photo sm">
-                    <img src={msg.avatarUrl} alt={msg.author} />
+                    <img src={msg.avatarUrl} alt={msg.author} crossOrigin="anonymous" />
                   </div>
                 : <div className="avatar sm" style={{ background:"linear-gradient(135deg,#001a10,#002e1a)", color:"#88ff00" }}>
                     {initials(msg.author)}
@@ -6803,7 +6803,7 @@ function ProfilePage({ user, onDeleted, onLogout, onAvatarUpdate }) {
         <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:20}}>
           {user.avatarUrl
             ? <div className="avatar-photo" style={{width:52,height:52}}>
-                <img src={user.avatarUrl} alt={user.displayName} />
+                <img src={user.avatarUrl} alt={user.displayName} crossOrigin="anonymous" />
               </div>
             : <div className="avatar" style={{width:52,height:52,fontSize:18}}>{initials(user.displayName)}</div>
           }
@@ -7750,7 +7750,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           ? <video ref={localVideoRef} autoPlay muted playsInline style={{width:"100%",height:"100%",objectFit:"cover",transform:"scaleX(-1)"}} />
           : <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
               {currentUser.avatarUrl
-                ? <img src={currentUser.avatarUrl} style={{width:"100%",height:"100%",objectFit:"cover"}} alt="" />
+                ? <img src={currentUser.avatarUrl} crossOrigin="anonymous" style={{width:"100%",height:"100%",objectFit:"cover"}} alt="" />
                 : <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:14,color:"var(--accent)",fontWeight:900}}>{initials(currentUser.displayName)}</span>}
             </div>}
         {SPHERE_OVERLAY}
@@ -7828,7 +7828,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
   const [hasActiveTrack, setHasActiveTrack] = useState(() => !!pendingTracks[sid]);
-  const cameraOff  = !hasActiveTrack && (!videoState || videoState === "off" || videoState === "blocked");
+  const cameraOff  = !hasActiveTrack;
 
   // Register setter so track-started/stopped can update this component's state
   useEffect(() => {
@@ -7863,7 +7863,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
     }
   }, [track, videoState, sid]);
 
-  const showVideo = hasActiveTrack || videoState === "playable" || videoState === "loading" || videoState === "interrupted";
+  const showVideo  = hasActiveTrack;
 
   const name      = participant.user_name || "Brother";
   const matched   = allUsers?.find(u => u.displayName === name);
@@ -7966,7 +7966,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
             style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",
               display:showVideo?"block":"none"}} />
           {cameraOff && (avatarUrl
-            ? <img src={avatarUrl} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} alt={name} />
+            ? <img src={avatarUrl} crossOrigin="anonymous" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} alt={name} />
             : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
                 fontFamily:"'Orbitron',sans-serif",fontWeight:900,color:"var(--accent)",fontSize:size*0.28}}>
                 {initials(name)}
