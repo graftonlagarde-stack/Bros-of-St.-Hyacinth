@@ -7478,8 +7478,8 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
             if (k === "local") continue;
             copy[k] = { ...v,
               tracks: {
-                audio: v.tracks?.audio ? { ...v.tracks.audio, persistentTrack: v.tracks.audio.persistentTrack, track: v.tracks.audio.track } : undefined,
-                video: v.tracks?.video ? { ...v.tracks.video, persistentTrack: v.tracks.video.persistentTrack, track: v.tracks.video.track } : undefined,
+                audio: v.tracks?.audio ? { ...v.tracks.audio } : undefined,
+                video: v.tracks?.video ? { ...v.tracks.video } : undefined,
               }
             };
           }
@@ -7510,6 +7510,9 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           attachAll();
           setTimeout(() => { if (!destroyed) attachAll(); }, 50);
           setTimeout(() => { if (!destroyed) attachAll(); }, 500);
+          setTimeout(() => { if (!destroyed) attachAll(); }, 1000);
+          setTimeout(() => { if (!destroyed) attachAll(); }, 2000);
+          setTimeout(() => { if (!destroyed) attachAll(); }, 4000);
           // Track join count for debug overlay
           const others = Object.values(p).filter(x => !x.local);
           if (others.length > 0) joinedAtRef.current = joinedAtRef.current || Date.now();
@@ -7638,7 +7641,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)"}}>
           {gridLayout.rows.map((row, ri) => (
             <div key={ri} style={{display:"flex",gap:gridLayout.circleSize*0.15,marginLeft:ri%2===1?gridLayout.offset:0,marginBottom:gridLayout.circleSize*0.1}}>
-              {row.items.map(p => <ParticipantBubble key={p.session_id} participant={p} size={gridLayout.circleSize} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} allUsers={allUsers} />)}
+              {row.items.map(p => <ParticipantBubble key={p.session_id} participant={p} size={gridLayout.circleSize} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} videoEls={videoEls} allUsers={allUsers} />)}
             </div>
           ))}
         </div>
@@ -7692,36 +7695,50 @@ function ParticipantAudio({ participant }) {
   return <audio ref={audioRef} autoPlay playsInline style={{display:"none"}} />;
 }
 
-function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, allUsers }) {
-  const videoEl    = useRef(null);
-  const videoTrack = participant.tracks?.video?.track ?? null;
+function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls, allUsers }) {
+  const sid        = participant.session_id;
+  const track      = participant.tracks?.video?.persistentTrack;
+  const videoState = participant.tracks?.video?.state;
+  const showVideo  = videoState === "playable" || videoState === "loading" || videoState === "interrupted";
 
+  // Always register on mount — never depends on track
+  const registerRef = useCallback((el) => {
+    if (el) videoEls[sid] = el;
+    else delete videoEls[sid];
+  }, [sid]);
+
+  // Attach track whenever it changes
   useEffect(() => {
-    if (!videoEl.current) return;
-    videoEl.current.srcObject = videoTrack ? new MediaStream([videoTrack]) : null;
-  }, [videoTrack]);
+    const el = videoEls[sid];
+    if (!el) return;
+    if (track) {
+      el.srcObject = new MediaStream([track]);
+      el.play().catch(() => {});
+    } else {
+      el.srcObject = null;
+    }
+  }, [track, videoState, sid]);
 
   const name      = participant.user_name || "Brother";
-  const matched   = allUsers?.find(u => u.displayName === name);
-  const avatarUrl = matched?.avatarUrl || null;
-  const glow      = isSpeaking
-    ? "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 24px rgba(136,255,0,0.7),0 0 48px rgba(136,255,0,0.25)"
-    : "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 10px rgba(136,255,0,0.2)";
+  const matchedUser = allUsers?.find(u => u.displayName === name);
+  const avatarUrl = matchedUser?.avatarUrl || null;
+  const glow      = isSpeaking ? "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 24px rgba(136,255,0,0.7),0 0 48px rgba(136,255,0,0.25)"
+                               : "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 10px rgba(136,255,0,0.2)";
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
       <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",position:"relative",
         border:"1px solid rgba(136,255,0,0.35)",boxShadow:glow,transition:"box-shadow 0.3s ease",background:"var(--surface2)"}}>
-        {/* Avatar always underneath */}
-        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          {avatarUrl
-            ? <img src={avatarUrl} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={name} />
-            : <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:900,color:"var(--accent)",fontSize:size*0.28}}>
-                {initials(name)}
-              </div>}
-        </div>
-        {/* Video on top, only when track is playable */}
-        {videoTrack && <video ref={videoEl} autoPlay playsInline muted={false}
-          style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} />}
+        {/* video always in DOM so videoEls stays populated through state changes */}
+        <video ref={registerRef} autoPlay playsInline muted={false}
+          style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",
+            display:showVideo?"block":"none"}} />
+        {/* avatar shown when video not active */}
+        {!showVideo && (avatarUrl
+          ? <img src={avatarUrl} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} alt={name} />
+          : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
+              fontFamily:"'Orbitron',sans-serif",fontWeight:900,color:"var(--accent)",fontSize:size*0.28}}>
+              {initials(name)}
+            </div>)}
         {sphereOverlay}
       </div>
       <div style={{fontSize:10,fontFamily:"'Orbitron',sans-serif",letterSpacing:1,
