@@ -7797,8 +7797,8 @@ function ParticipantAudio({ participant, audioLevels, totalRemotes }) {
     try {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 64; // 32 bins of time-domain data — enough for a smooth waveform ring
-      analyser.smoothingTimeConstant = 0.5;
+      analyser.fftSize = 256; // 128 time-domain samples — enough for distinct peaks
+      analyser.smoothingTimeConstant = 0.3; // less smoothing = snappier peaks
       const source = ctx.createMediaStreamSource(stream);
       source.connect(analyser);
       const data = new Uint8Array(analyser.frequencyBinCount);
@@ -7876,10 +7876,11 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const svgSize   = size + pad * 2;
 
   // Waveform ring — drive SVG path directly via DOM, no React re-renders
-  const wavePathRef = useRef(null);
-  const rafRef      = useRef(null);
-  const useReactive = totalRemotes <= 6;
-  const N_POINTS    = 64; // points around the circle
+  const wavePathRef  = useRef(null);
+  const waveGlowRef  = useRef(null);
+  const rafRef       = useRef(null);
+  const useReactive  = totalRemotes <= 6;
+  const N_POINTS     = 128; // more points = more peak detail
 
   useEffect(() => {
     if (!wavePathRef.current) return;
@@ -7909,6 +7910,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
       }
       pathD += 'Z';
       wavePathRef.current.setAttribute('d', pathD);
+      if (waveGlowRef.current) waveGlowRef.current.setAttribute('d', pathD);
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -7929,15 +7931,25 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
       <div style={{position:"relative",width:svgSize,height:svgSize,display:"flex",alignItems:"center",justifyContent:"center"}}>
         {/* Waveform ring — path updated directly via RAF */}
         <svg width={svgSize} height={svgSize} style={{position:"absolute",inset:0,pointerEvents:"none",overflow:"visible"}}>
-          {/* Soft glow behind the waveform */}
-          <circle cx={svgSize/2} cy={svgSize/2} r={size/2 + pad*0.5}
-            fill="none" stroke="rgba(136,255,0,0.12)" strokeWidth={Math.max(4, size*0.06)}/>
-          {/* Waveform path */}
+          <defs>
+            <filter id={`neon-${sid}`} x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          {/* Wide soft glow layer */}
+          <path ref={waveGlowRef}
+            fill="none"
+            stroke="rgba(136,255,0,0.18)"
+            strokeWidth={Math.max(6, size*0.07)}
+            strokeLinejoin="round"/>
+          {/* Thin bright neon line */}
           <path ref={wavePathRef}
             fill="none"
-            stroke="rgba(136,255,0,0.9)"
-            strokeWidth={Math.max(1, size*0.014)}
-            strokeLinejoin="round"/>
+            stroke="rgba(160,255,80,0.95)"
+            strokeWidth={Math.max(0.8, size*0.008)}
+            strokeLinejoin="round"
+            filter={`url(#neon-${sid})`}/>
         </svg>
         {/* Bubble itself */}
         <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",position:"relative",
