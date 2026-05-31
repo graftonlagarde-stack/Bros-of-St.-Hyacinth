@@ -1054,7 +1054,7 @@ app.post("/api/profile/avatar", requireAuth, upload.single("file"), async (req, 
     // Upload new avatar to Cloudinary
     const result = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
-        { folder: "avatars", resource_type: "image" },
+        { folder: "avatars", resource_type: "image", transformation: [{ width: 200, height: 200, crop: "fill", gravity: "face" }] },
         (err, res) => err ? reject(err) : resolve(res)
       );
       stream.end(req.file.buffer);
