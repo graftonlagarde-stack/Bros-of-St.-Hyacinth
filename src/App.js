@@ -7512,7 +7512,10 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
             }
           };
           attachAll();
+          // Retry after React renders elements into videoEls
           setTimeout(() => { if (!destroyed) attachAll(); }, 50);
+          // Retry after Daily sets persistentTrack (set asynchronously after events fire)
+          setTimeout(() => { if (!destroyed) attachAll(); }, 200);
           setTimeout(() => { if (!destroyed) attachAll(); }, 500);
           // Track join count for debug overlay
           const others = Object.values(p).filter(x => !x.local);
@@ -7642,7 +7645,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)"}}>
           {gridLayout.rows.map((row, ri) => (
             <div key={ri} style={{display:"flex",gap:gridLayout.circleSize*0.15,marginLeft:ri%2===1?gridLayout.offset:0,marginBottom:gridLayout.circleSize*0.1}}>
-              {row.items.map(p => <ParticipantBubble key={p.session_id} participant={p} size={gridLayout.circleSize} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} videoEls={videoEls} allUsers={allUsers} callRef={callRef} />)}
+              {row.items.map(p => <ParticipantBubble key={p.session_id} participant={p} size={gridLayout.circleSize} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} videoEls={videoEls} allUsers={allUsers} />)}
             </div>
           ))}
         </div>
@@ -7696,7 +7699,7 @@ function ParticipantAudio({ participant }) {
   return <audio ref={audioRef} autoPlay playsInline style={{display:"none"}} />;
 }
 
-function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls, allUsers, callRef }) {
+function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls, allUsers }) {
   const sid        = participant.session_id;
   const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
@@ -7704,32 +7707,18 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const cameraOff  = !videoState || videoState === "off" || videoState === "blocked";
 
   const registerRef = useCallback((el) => {
-    if (el) {
-      videoEls[sid] = el;
-      // Element just mounted — read fresh track directly from Daily, not stale state
-      const freshTrack = callRef?.current?.participants()?.[sid]?.tracks?.video?.persistentTrack;
-      const t = freshTrack || track;
-      if (t) {
-        el.srcObject = new MediaStream([t]);
-        el.play().catch(() => {});
-      }
-    } else {
-      delete videoEls[sid];
-    }
-  }, [sid, track]);
+    if (el) videoEls[sid] = el;
+    else delete videoEls[sid];
+  }, [sid]);
 
   useEffect(() => {
     const el = videoEls[sid];
     if (!el) return;
     if (cameraOff) {
       el.srcObject = null;
-    } else {
-      const freshTrack = callRef?.current?.participants()?.[sid]?.tracks?.video?.persistentTrack;
-      const t = freshTrack || track;
-      if (t) {
-        el.srcObject = new MediaStream([t]);
-        el.play().catch(() => {});
-      }
+    } else if (track) {
+      el.srcObject = new MediaStream([track]);
+      el.play().catch(() => {});
     }
   }, [track, videoState, sid]);
 
