@@ -7876,22 +7876,24 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const svgSize   = size + pad * 2;
 
   // Waveform ring — drive SVG path directly via DOM, no React re-renders
-  const wavePathRef  = useRef(null);
   const waveGlowRef  = useRef(null);
+  const waveMidRef   = useRef(null);
+  const waveSharpRef = useRef(null);
+  const waveCoreRef  = useRef(null);
   const rafRef       = useRef(null);
   const useReactive  = totalRemotes <= 6;
   const N_POINTS     = 128; // more points = more peak detail
 
   useEffect(() => {
-    if (!wavePathRef.current) return;
+    if (!waveGlowRef.current) return;
     let destroyed = false;
     const svgCx  = svgSize / 2;
     const baseR  = size / 2 + pad * 0.5;
-    const maxDisp = Math.max(3, size * 0.06); // max waveform displacement in px
+    const maxDisp = Math.max(6, size * 0.14); // dramatic displacement
 
     const tick = () => {
       if (destroyed) return;
-      const entry   = audioLevels[sid];
+      const entry    = audioLevels[sid];
       const waveform = entry?.waveform;
       let pathD = '';
 
@@ -7899,9 +7901,8 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
         const angle = (i / N_POINTS) * 2 * Math.PI - Math.PI / 2;
         let r = baseR;
         if (waveform) {
-          // Map waveform index to point index — interpolate around ring
           const wIdx = Math.floor((i / N_POINTS) * waveform.length) % waveform.length;
-          const v = (waveform[wIdx] - 128) / 128; // -1..1
+          const v = (waveform[wIdx] - 128) / 128;
           r = baseR + v * maxDisp;
         }
         const x = svgCx + r * Math.cos(angle);
@@ -7909,8 +7910,10 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
         pathD += i === 0 ? `M${x.toFixed(1)},${y.toFixed(1)}` : `L${x.toFixed(1)},${y.toFixed(1)}`;
       }
       pathD += 'Z';
-      wavePathRef.current.setAttribute('d', pathD);
-      if (waveGlowRef.current) waveGlowRef.current.setAttribute('d', pathD);
+      waveGlowRef.current?.setAttribute('d', pathD);
+      waveMidRef.current?.setAttribute('d', pathD);
+      waveSharpRef.current?.setAttribute('d', pathD);
+      waveCoreRef.current?.setAttribute('d', pathD);
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -7931,25 +7934,22 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
       <div style={{position:"relative",width:svgSize,height:svgSize,display:"flex",alignItems:"center",justifyContent:"center"}}>
         {/* Waveform ring — path updated directly via RAF */}
         <svg width={svgSize} height={svgSize} style={{position:"absolute",inset:0,pointerEvents:"none",overflow:"visible"}}>
-          <defs>
-            <filter id={`neon-${sid}`} x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="2" result="blur"/>
-              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-            </filter>
-          </defs>
-          {/* Wide soft glow layer */}
+          {/* Idle atmospheric glow ring — always visible */}
+          <circle cx={svgSize/2} cy={svgSize/2} r={size/2 + pad*0.4}
+            fill="none" stroke="rgba(136,255,0,0.18)" strokeWidth={Math.max(6, size*0.08)}/>
+          {/* Waveform: 4 layers from wide/dim to thin/bright */}
           <path ref={waveGlowRef}
-            fill="none"
-            stroke="rgba(136,255,0,0.18)"
-            strokeWidth={Math.max(6, size*0.07)}
-            strokeLinejoin="round"/>
-          {/* Thin bright neon line */}
-          <path ref={wavePathRef}
-            fill="none"
-            stroke="rgba(160,255,80,0.95)"
-            strokeWidth={Math.max(0.8, size*0.008)}
-            strokeLinejoin="round"
-            filter={`url(#neon-${sid})`}/>
+            fill="none" stroke="rgba(136,255,0,0.08)"
+            strokeWidth={Math.max(6, size*0.07)} strokeLinejoin="round"/>
+          <path ref={waveMidRef}
+            fill="none" stroke="rgba(136,255,0,0.2)"
+            strokeWidth={Math.max(3, size*0.03)} strokeLinejoin="round"/>
+          <path ref={waveSharpRef}
+            fill="none" stroke="rgba(160,255,80,0.6)"
+            strokeWidth={Math.max(1.5, size*0.012)} strokeLinejoin="round"/>
+          <path ref={waveCoreRef}
+            fill="none" stroke="rgba(200,255,120,0.95)"
+            strokeWidth={Math.max(0.8, size*0.007)} strokeLinejoin="round"/>
         </svg>
         {/* Bubble itself */}
         <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",position:"relative",
