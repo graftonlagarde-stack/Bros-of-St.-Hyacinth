@@ -7615,22 +7615,84 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
 
   const gridLayout = useMemo(() => {
     const n = remotes.length;
-    if (n === 0) return { rows:[], circleSize:180, offset:0 };
-    const vw = window.innerWidth;
-    const vh = window.innerHeight - 160;
-    const cols = Math.ceil(Math.sqrt(n));
-    const rows = Math.ceil(n / cols);
-    const circleSize = Math.max(80, Math.min(200, Math.floor(Math.min((vw-32)/cols, (vh-32)/rows) * 0.85)));
-    const offset = Math.floor(circleSize * 0.35);
-    const result = [];
-    let idx = 0;
-    for (let r = 0; r < rows && idx < n; r++) {
-      const rowCount = Math.min(cols, n - idx);
-      result.push({ items: remotes.slice(idx, idx + rowCount), rowIndex: r });
-      idx += rowCount;
+    if (n === 0) return { positions: [], D: 180 };
+
+    const isMob = window.innerWidth <= 768;
+    const availW = window.innerWidth - 28;
+    const availH = window.innerHeight - 160 - 28;
+
+    const sq2 = Math.sqrt(2);
+    const GAP_FRAC = 0.15;
+
+    // Layouts in grid coords [a,b] for 1-9
+    const DESKTOP_LAYOUTS = {
+      1: [[0,0]],
+      2: [[1,-1],[-1,1]],
+      3: [[-1,-1],[1,-1],[0,0]],
+      4: [[0,-2],[-1,-1],[1,-1],[0,0]],
+      5: [[-2,-1],[0,-1],[2,-1],[-1,0],[1,0]],
+      6: [[-1,-1],[1,-1],[3,-1],[-2,0],[0,0],[2,0]],
+      7: [[0,-2],[2,-2],[-1,0],[1,0],[3,0],[0,2],[2,2]],
+      8: [[-2,-1],[0,-1],[2,-1],[4,-1],[-3,0],[-1,0],[1,0],[3,0]],
+      9: [[0,-2],[2,-2],[4,-2],[-1,0],[1,0],[3,0],[-2,2],[0,2],[2,2]],
+    };
+    const rot90cw = pts => pts.map(([a,b]) => [b,-a]);
+    const MOBILE_LAYOUTS = {
+      ...DESKTOP_LAYOUTS,
+      5: rot90cw(DESKTOP_LAYOUTS[5]),
+      6: rot90cw(DESKTOP_LAYOUTS[6]),
+      8: rot90cw(DESKTOP_LAYOUTS[8]),
+      9: rot90cw(DESKTOP_LAYOUTS[9]),
+    };
+
+    let layout;
+    if (n <= 9) {
+      layout = (isMob ? MOBILE_LAYOUTS : DESKTOP_LAYOUTS)[n];
+    } else {
+      // 10+ : standard grid, each row offset by 1 on diagonal
+      layout = [];
+      const cols = Math.ceil(Math.sqrt(n));
+      for (let i = 0; i < n; i++) {
+        const row = Math.floor(i / cols);
+        const col = i % cols;
+        layout.push([col * 2 + row, row]);
+      }
     }
-    return { rows: result, circleSize, offset };
-  }, [remotes.length]);
+
+    // Find min distance between any two points
+    let minD = Infinity;
+    for (let i = 0; i < layout.length; i++)
+      for (let j = i+1; j < layout.length; j++) {
+        const da = layout[i][0]-layout[j][0], db = layout[i][1]-layout[j][1];
+        const d = Math.sqrt(da*da+db*db);
+        if (d < minD) minD = d;
+      }
+    if (layout.length === 1) minD = 1;
+
+    const as = layout.map(p=>p[0]), bs = layout.map(p=>p[1]);
+    const spanA = Math.max(...as)-Math.min(...as);
+    const spanB = Math.max(...bs)-Math.min(...bs);
+
+    // D*(spanA*(1+GAP_FRAC)/minD + 1) = availW
+    const kA = spanA*(1+GAP_FRAC)/minD + 1;
+    const kB = spanB*(1+GAP_FRAC)/minD + 1;
+    const DfromW = availW / kA;
+    const DfromH = availH / kB;
+    const D = Math.max(40, Math.floor(Math.min(DfromW, DfromH)));
+    const U = D*(1+GAP_FRAC)/minD;
+
+    const pxPts = layout.map(([a,b]) => [a*U, b*U]);
+    const pxAs = pxPts.map(p=>p[0]), pxBs = pxPts.map(p=>p[1]);
+    const boxCX = (Math.min(...pxAs)+Math.max(...pxAs))/2;
+    const boxCY = (Math.min(...pxBs)+Math.max(...pxBs))/2;
+
+    const positions = pxPts.map(([px,py]) => ({
+      x: px - boxCX,
+      y: py - boxCY,
+    }));
+
+    return { positions, D };
+  }, [remotes.length, window.innerWidth, window.innerHeight]);
 
   if (error) return (
     <div style={{position:"fixed",inset:0,background:"var(--bg)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,zIndex:10000}}>
@@ -7656,30 +7718,22 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:12,letterSpacing:2,color:"var(--accent)"}}>{meeting.title}</div>
         {!joined && <div style={{fontSize:11,color:"var(--muted)"}}>Connecting…</div>}
       </div>
-      {/* DEBUG — remove after diagnosis */}
-      <div style={{position:"absolute",top:60,left:8,right:8,zIndex:20,background:"rgba(0,0,0,0.8)",
-        fontSize:10,color:"#88ff00",padding:8,borderRadius:4,fontFamily:"monospace",maxHeight:200,overflowY:"auto"}}>
-        {Object.values(participants).map(p => (
-          <div key={p.session_id} style={{marginBottom:6}}>
-            <b>{p.user_name}</b> {p.local?"(you)":""}<br/>
-            audio: {p.tracks?.audio?.state} | video: {p.tracks?.video?.state}<br/>
-            audioTrack: {p.tracks?.audio?.persistentTrack?"YES":"NO"} | videoTrack: {p.tracks?.video?.persistentTrack?"YES":"NO"}
-          </div>
-        ))}
-        {Object.keys(participants).length === 0 && <div>No participants yet</div>}
-      </div>
       {remotes.map(p => <ParticipantAudio key={p.session_id} participant={p} />)}
       {/* Remote grid */}
       <div style={{flex:1,position:"relative",overflow:"hidden"}}>
         {remotes.length === 0 && joined && (
           <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",color:"var(--muted)",fontSize:13}}>Waiting for others to join…</div>
         )}
-        <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)"}}>
-          {gridLayout.rows.map((row, ri) => (
-            <div key={ri} style={{display:"flex",gap:gridLayout.circleSize*0.15,marginLeft:ri%2===1?gridLayout.offset:0,marginBottom:gridLayout.circleSize*0.1}}>
-              {row.items.map(p => <ParticipantBubble key={p.session_id} participant={p} size={gridLayout.circleSize} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} videoEls={videoEls} pendingTracks={pendingTracks} trackSetters={trackSetters} allUsers={allUsers} />)}
-            </div>
-          ))}
+        <div style={{position:"absolute",top:"50%",left:"50%"}}>
+          {remotes.map((p, i) => {
+            const pos = gridLayout.positions[i];
+            if (!pos) return null;
+            return (
+              <div key={p.session_id} style={{position:"absolute",transform:`translate(calc(${pos.x}px - 50%), calc(${pos.y}px - 50%))`}}>
+                <ParticipantBubble participant={p} size={gridLayout.D} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} videoEls={videoEls} pendingTracks={pendingTracks} trackSetters={trackSetters} allUsers={allUsers} />
+              </div>
+            );
+          })}
         </div>
       </div>
       {/* Local self-view pip */}
