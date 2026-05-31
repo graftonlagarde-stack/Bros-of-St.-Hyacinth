@@ -7531,16 +7531,21 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
             const sid = e.participant.session_id;
             pendingTracks[sid] = e.track;
             const el = videoEls[sid];
+            console.log(`[track-started] sid=${sid.slice(0,8)} el=${!!el} track=${!!e.track} showVideo will be based on state`);
             if (el) {
               el.srcObject = new MediaStream([e.track]);
-              el.play().catch(() => {});
+              el.play().catch(err => console.warn("[track-started] play failed:", err));
+              console.log(`[track-started] attached directly to element`);
+            } else {
+              console.log(`[track-started] no element yet, stored in pendingTracks`);
             }
-            // Also retry after React renders the element
             setTimeout(() => {
               const el2 = videoEls[sid];
+              console.log(`[track-started 100ms] el=${!!el2} pendingMatch=${pendingTracks[sid] === e.track}`);
               if (el2 && pendingTracks[sid] === e.track) {
                 el2.srcObject = new MediaStream([e.track]);
                 el2.play().catch(() => {});
+                console.log(`[track-started 100ms] attached`);
               }
             }, 100);
           }
@@ -7730,11 +7735,12 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const registerRef = useCallback((el) => {
     if (el) {
       videoEls[sid] = el;
-      // If track-started already fired before element mounted, attach now
       const pending = pendingTracks[sid];
+      console.log(`[registerRef] sid=${sid.slice(0,8)} pending=${!!pending}`);
       if (pending) {
         el.srcObject = new MediaStream([pending]);
         el.play().catch(() => {});
+        console.log(`[registerRef] attached pending track`);
       }
     } else {
       delete videoEls[sid];
