@@ -7507,15 +7507,13 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
                 if (el.srcObject) el.srcObject = null;
               } else if (vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
                 el.srcObject = new MediaStream([vtrack]);
+                el.load();
                 el.play().catch(() => {});
               }
             }
           };
           attachAll();
-          // Retry after React renders elements into videoEls
           setTimeout(() => { if (!destroyed) attachAll(); }, 50);
-          // Retry after Daily sets persistentTrack (set asynchronously after events fire)
-          setTimeout(() => { if (!destroyed) attachAll(); }, 200);
           setTimeout(() => { if (!destroyed) attachAll(); }, 500);
           // Track join count for debug overlay
           const others = Object.values(p).filter(x => !x.local);
@@ -7718,6 +7716,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
       el.srcObject = null;
     } else if (track) {
       el.srcObject = new MediaStream([track]);
+      el.load();
       el.play().catch(() => {});
     }
   }, [track, videoState, sid]);
