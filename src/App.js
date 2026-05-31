@@ -7724,7 +7724,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
       </div>
       {remotes.map(p => <ParticipantAudio key={p.session_id} participant={p} />)}
       {/* Remote grid */}
-      <div style={{flex:1,position:"relative",overflow:"visible",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{flex:1,position:"relative",overflow:"visible",display:"flex",alignItems:"center",justifyContent:"center",paddingBottom:96}}>
         {remotes.length === 0 && joined && (
           <div style={{color:"var(--muted)",fontSize:13}}>Waiting for others to join…</div>
         )}
