@@ -7526,7 +7526,27 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         });
         call.on("participant-joined",   update);
         call.on("participant-left",     update);
-        call.on("participant-updated",  update);
+        call.on("participant-updated",  (e) => {
+          update();
+          // Handle camera turning off — track-stopped doesn't always fire
+          if (e?.participant && !e.participant.local) {
+            const sid   = e.participant.session_id;
+            const vstate = e.participant.tracks?.video?.state;
+            if (vstate === "off" || vstate === "blocked") {
+              trackSetters[sid]?.(false);
+              delete pendingTracks[sid];
+              const el = videoEls[sid];
+              if (el) el.srcObject = null;
+            } else if (vstate === "playable" && e.participant.tracks?.video?.persistentTrack) {
+              // Camera turned on via participant-updated (backup to track-started)
+              const vtrack = e.participant.tracks.video.persistentTrack;
+              pendingTracks[sid] = vtrack;
+              trackSetters[sid]?.(true);
+              const el = videoEls[sid];
+              if (el) { el.srcObject = new MediaStream([vtrack]); el.play().catch(()=>{}); }
+            }
+          }
+        });
         call.on("track-started", (e) => {
           update();
           if (e?.track?.kind === "video" && e?.participant && !e.participant.local) {
@@ -7553,15 +7573,6 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
             const sid = e.participant.session_id;
             delete pendingTracks[sid];
             trackSetters[sid]?.(false); // tell the component to show avatar
-            const el = videoEls[sid];
-            if (el) el.srcObject = null;
-          }
-        });
-        call.on("track-stopped", (e) => {
-          update();
-          if (e?.track?.kind === "video" && e?.participant && !e.participant.local) {
-            const sid = e.participant.session_id;
-            delete pendingTracks[sid];
             const el = videoEls[sid];
             if (el) el.srcObject = null;
           }
