@@ -7691,7 +7691,10 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
       y: py - boxCY,
     }));
 
-    return { positions, D };
+    const groupW = Math.max(...pxAs) - Math.min(...pxAs) + D;
+    const groupH = Math.max(...pxBs) - Math.min(...pxBs) + D;
+
+    return { positions, D, groupW, groupH };
   }, [remotes.length, window.innerWidth, window.innerHeight]);
 
   if (error) return (
@@ -7720,16 +7723,18 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
       </div>
       {remotes.map(p => <ParticipantAudio key={p.session_id} participant={p} />)}
       {/* Remote grid */}
-      <div style={{flex:1,position:"relative",overflow:"hidden"}}>
+      <div style={{flex:1,position:"relative",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
         {remotes.length === 0 && joined && (
-          <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",color:"var(--muted)",fontSize:13}}>Waiting for others to join…</div>
+          <div style={{color:"var(--muted)",fontSize:13}}>Waiting for others to join…</div>
         )}
-        <div style={{position:"absolute",top:"50%",left:"50%"}}>
+        <div style={{position:"relative",width:gridLayout.groupW||0,height:gridLayout.groupH||0}}>
           {remotes.map((p, i) => {
             const pos = gridLayout.positions[i];
             if (!pos) return null;
             return (
-              <div key={p.session_id} style={{position:"absolute",transform:`translate(calc(${pos.x}px - 50%), calc(${pos.y}px - 50%))`}}>
+              <div key={p.session_id} style={{position:"absolute",
+                left: (gridLayout.groupW||0)/2 + pos.x - gridLayout.D/2,
+                top:  (gridLayout.groupH||0)/2 + pos.y - gridLayout.D/2}}>
                 <ParticipantBubble participant={p} size={gridLayout.D} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} videoEls={videoEls} pendingTracks={pendingTracks} trackSetters={trackSetters} allUsers={allUsers} />
               </div>
             );
@@ -7830,12 +7835,17 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const name      = participant.user_name || "Brother";
   const matched   = allUsers?.find(u => u.displayName === name);
   const avatarUrl = matched?.avatarUrl || null;
-  const glow      = isSpeaking ? "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 24px rgba(136,255,0,0.7),0 0 48px rgba(136,255,0,0.25)"
-                               : "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 10px rgba(136,255,0,0.2)";
+  const borderW = Math.max(1.5, size * 0.025); // border scales with bubble size
+  const glowSize1 = Math.round(size * 0.3);
+  const glowSize2 = Math.round(size * 0.6);
+  const glowSize3 = Math.round(size * 1.0);
+  const glow = isSpeaking
+    ? `0 0 0 ${borderW}px rgba(136,255,0,0.9), 0 0 ${glowSize1}px rgba(136,255,0,0.9), 0 0 ${glowSize2}px rgba(136,255,0,0.6), 0 0 ${glowSize3}px rgba(136,255,0,0.3), 0 10px 20px rgba(0,0,0,0.85)`
+    : `0 0 0 ${borderW}px rgba(136,255,0,0.5), 0 0 ${glowSize1}px rgba(136,255,0,0.4), 0 0 ${glowSize2}px rgba(136,255,0,0.15), 0 10px 20px rgba(0,0,0,0.85)`;
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
       <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",position:"relative",
-        border:"1px solid rgba(136,255,0,0.35)",boxShadow:glow,transition:"box-shadow 0.3s ease",background:"var(--surface2)"}}>
+        boxShadow:glow,transition:"box-shadow 0.3s ease",background:"var(--surface2)"}}>
         <video ref={registerRef} autoPlay playsInline muted={false}
           style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",
             display:showVideo?"block":"none"}} />
