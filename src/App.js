@@ -7449,7 +7449,8 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
   const [error,         setError]         = useState("");
   const videoEls      = useRef({}).current;
   const pendingTracks = useRef({}).current;
-  const trackSetters  = useRef({}).current; // sid -> setHasActiveTrack
+  const trackSetters  = useRef({}).current;
+  const audioLevels   = useRef({}).current; // sid -> current amplitude 0..1
   const callRef       = useRef(null);
   const localVideoRef = useRef(null);
 
@@ -7722,7 +7723,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:12,letterSpacing:2,color:"var(--accent)"}}>{meeting.title}</div>
         {!joined && <div style={{fontSize:11,color:"var(--muted)"}}>Connecting…</div>}
       </div>
-      {remotes.map(p => <ParticipantAudio key={p.session_id} participant={p} />)}
+      {remotes.map(p => <ParticipantAudio key={p.session_id} participant={p} audioLevels={audioLevels} totalRemotes={remotes.length} />)}
       {/* Remote grid */}
       <div style={{flex:1,position:"relative",overflow:"visible",display:"flex",alignItems:"center",justifyContent:"center",paddingBottom:96}}>
         {remotes.length === 0 && joined && (
@@ -7736,7 +7737,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
               <div key={p.session_id} style={{position:"absolute",
                 left: (gridLayout.groupW||0)/2 + pos.x - gridLayout.D/2,
                 top:  (gridLayout.groupH||0)/2 + pos.y - gridLayout.D/2}}>
-                <ParticipantBubble participant={p} size={gridLayout.D} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} videoEls={videoEls} pendingTracks={pendingTracks} trackSetters={trackSetters} allUsers={allUsers} />
+                <ParticipantBubble participant={p} size={gridLayout.D} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} videoEls={videoEls} pendingTracks={pendingTracks} trackSetters={trackSetters} allUsers={allUsers} audioLevels={audioLevels} totalRemotes={remotes.length} />
               </div>
             );
           })}
@@ -7779,19 +7780,63 @@ function CallButton({ active, danger, onClick, label, icon }) {
   );
 }
 
-function ParticipantAudio({ participant }) {
-  const audioRef = useRef(null);
-  const track = participant.tracks?.audio?.persistentTrack;
+function ParticipantAudio({ participant, audioLevels, totalRemotes }) {
+  const audioRef  = useRef(null);
+  const rafRef    = useRef(null);
+  const track     = participant.tracks?.audio?.persistentTrack;
+  const sid       = participant.session_id;
+  const useAnalyser = totalRemotes <= 6; // cap analyser at 6 participants
+
   useEffect(() => {
-    if (audioRef.current && track) {
-      audioRef.current.srcObject = new MediaStream([track]);
-      audioRef.current.play().catch(() => {});
-    }
-  }, [track]);
+    if (!audioRef.current || !track) return;
+    const stream = new MediaStream([track]);
+    audioRef.current.srcObject = stream;
+    audioRef.current.play().catch(() => {});
+
+    if (!useAnalyser) return;
+
+    let ctx, analyser, data, destroyed = false;
+    try {
+      ctx      = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = ctx.createAnalyser();
+      analyser.fftSize = 32; // minimal — just need RMS amplitude
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(analyser);
+      data = new Uint8Array(analyser.frequencyBinCount);
+
+      let lastTime = 0;
+      const INTERVAL = 1000 / 30; // 30fps
+
+      const tick = (now) => {
+        if (destroyed) return;
+        if (now - lastTime >= INTERVAL) {
+          lastTime = now;
+          analyser.getByteTimeDomainData(data);
+          // RMS amplitude
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) {
+            const v = (data[i] - 128) / 128;
+            sum += v * v;
+          }
+          audioLevels[sid] = Math.sqrt(sum / data.length);
+        }
+        rafRef.current = requestAnimationFrame(tick);
+      };
+      rafRef.current = requestAnimationFrame(tick);
+    } catch(e) {}
+
+    return () => {
+      destroyed = true;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      try { ctx?.close(); } catch(e) {}
+      audioLevels[sid] = 0;
+    };
+  }, [track, sid, useAnalyser]);
+
   return <audio ref={audioRef} autoPlay playsInline style={{display:"none"}} />;
 }
 
-function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls, pendingTracks, trackSetters, allUsers }) {
+function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls, pendingTracks, trackSetters, allUsers, audioLevels, totalRemotes }) {
   const sid        = participant.session_id;
   const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
@@ -7803,6 +7848,43 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
     trackSetters[sid] = setHasActiveTrack;
     return () => { delete trackSetters[sid]; };
   }, [sid]);
+
+  // Audio-reactive ring — drive SVG stroke directly to avoid React re-renders
+  const svgRingRef  = useRef(null);
+  const svgHaloRef  = useRef(null);
+  const rafRef      = useRef(null);
+  const useReactive = totalRemotes <= 6;
+
+  useEffect(() => {
+    if (!useReactive) return;
+    let destroyed = false;
+    const tick = () => {
+      if (destroyed) return;
+      const level = audioLevels[sid] || 0;
+      // Smooth the level with a simple lerp stored on the ref
+      if (!tick.smoothed) tick.smoothed = 0;
+      tick.smoothed = tick.smoothed * 0.75 + level * 0.25;
+      const s = tick.smoothed;
+
+      if (svgRingRef.current) {
+        // Brightness: idle=0.6, max speaking=1.0
+        const brightness = 0.6 + s * 2.5;
+        const opacity = Math.min(1, brightness);
+        // Stroke width ripple
+        const baseW = Math.max(1, size * 0.018);
+        const w = baseW * (1 + s * 3);
+        svgRingRef.current.setAttribute('stroke-opacity', opacity.toFixed(2));
+        svgRingRef.current.setAttribute('stroke-width', w.toFixed(1));
+      }
+      if (svgHaloRef.current) {
+        const haloOpacity = Math.min(0.25 + s * 1.5, 0.9);
+        svgHaloRef.current.setAttribute('stroke-opacity', haloOpacity.toFixed(2));
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => { destroyed = true; cancelAnimationFrame(rafRef.current); };
+  }, [sid, size, useReactive]);
 
   const registerRef = useCallback((el) => {
     if (el) {
@@ -7866,14 +7948,14 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
           animation:`reticle-spin ${spinDur} linear infinite`,
           transition:"animation-duration 0.5s"}}>
           {/* Main arc segments */}
-          <circle cx={cx} cy={cx} r={r1} fill="none"
+          <circle ref={svgRingRef} cx={cx} cy={cx} r={r1} fill="none"
             stroke="rgba(136,255,0,0.85)" strokeWidth={Math.max(1, size*0.018)}
             strokeDasharray={`${segLen} ${gapLen}`} strokeLinecap="butt"/>
           <circle cx={cx} cy={cx} r={r1} fill="none"
             stroke="rgba(136,255,0,0.15)" strokeWidth={Math.max(3, size*0.05)}
             strokeDasharray={`${segLen} ${gapLen}`} strokeLinecap="butt"/>
           {/* Outer tick ring */}
-          <circle cx={cx} cy={cx} r={r2} fill="none"
+          <circle ref={svgHaloRef} cx={cx} cy={cx} r={r2} fill="none"
             stroke="rgba(136,255,0,0.4)" strokeWidth={Math.max(1, size*0.012)}
             strokeDasharray={`${tickLen} ${tickGap}`} strokeLinecap="butt"/>
         </svg>
