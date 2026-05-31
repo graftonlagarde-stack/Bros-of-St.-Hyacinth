@@ -7463,8 +7463,8 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         const call = DailyIframe.createCallObject({
           audioSource: true,
           videoSource: true,
-          subscribeToTracksAutomatically: true,
         });
+        call.setSubscribeToTracksAutomatically(true);
         window.__dailyCallInstance = call;
         callRef.current = call;
         const update = () => {
