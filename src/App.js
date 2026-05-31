@@ -7531,23 +7531,28 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
             const sid = e.participant.session_id;
             pendingTracks[sid] = e.track;
             const el = videoEls[sid];
-            console.log(`[track-started] sid=${sid.slice(0,8)} el=${!!el} track=${!!e.track} showVideo will be based on state`);
             if (el) {
               el.srcObject = new MediaStream([e.track]);
-              el.play().catch(err => console.warn("[track-started] play failed:", err));
-              console.log(`[track-started] attached directly to element`);
-            } else {
-              console.log(`[track-started] no element yet, stored in pendingTracks`);
+              el.style.display = "block"; // force visible — showVideo may still be false in React state
+              el.play().catch(() => {});
             }
             setTimeout(() => {
               const el2 = videoEls[sid];
-              console.log(`[track-started 100ms] el=${!!el2} pendingMatch=${pendingTracks[sid] === e.track}`);
               if (el2 && pendingTracks[sid] === e.track) {
                 el2.srcObject = new MediaStream([e.track]);
+                el2.style.display = "block";
                 el2.play().catch(() => {});
-                console.log(`[track-started 100ms] attached`);
               }
             }, 100);
+          }
+        });
+        call.on("track-stopped", (e) => {
+          update();
+          if (e?.track?.kind === "video" && e?.participant && !e.participant.local) {
+            const sid = e.participant.session_id;
+            delete pendingTracks[sid];
+            const el = videoEls[sid];
+            if (el) { el.srcObject = null; el.style.display = "none"; }
           }
         });
         call.on("track-stopped", (e) => {
@@ -7736,11 +7741,10 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
     if (el) {
       videoEls[sid] = el;
       const pending = pendingTracks[sid];
-      console.log(`[registerRef] sid=${sid.slice(0,8)} pending=${!!pending}`);
       if (pending) {
         el.srcObject = new MediaStream([pending]);
+        el.style.display = "block";
         el.play().catch(() => {});
-        console.log(`[registerRef] attached pending track`);
       }
     } else {
       delete videoEls[sid];
