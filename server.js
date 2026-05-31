@@ -536,6 +536,14 @@ const requireAuth = (req, res, next) => {
 };
 
 const displayName = (u) => `${u.first_name} ${u.last_name}`;
+// Ensure Cloudinary URLs include a transformation so CORS headers are returned
+// Cloudinary only sends Access-Control-Allow-Origin when a transformation is present
+const cloudinaryWithCors = (url) => {
+  if (!url || !url.includes('res.cloudinary.com')) return url;
+  // Insert f_auto,q_auto after /upload/
+  return url.replace('/upload/', '/upload/f_auto,q_auto/');
+};
+
 const shapeUser = (u) => ({
   id:          Number(u.id),
   firstName:   u.first_name,
@@ -543,7 +551,7 @@ const shapeUser = (u) => ({
   email:       u.email,
   displayName: displayName(u),
   role:        u.role,
-  avatarUrl:   u.avatar_url || null,
+  avatarUrl:   cloudinaryWithCors(u.avatar_url) || null,
 });
 
 // Middleware: require arch_admin or admin role
@@ -581,8 +589,7 @@ async function loadReactions(messageIds) {
 const shapeMessage = (row, reactionsMap) => ({
   id:        Number(row.id),
   author:    row.author,
-  avatarUrl: row.avatar_url || null,
-  ts:        Number(row.ts),
+  avatarUrl: cloudinaryWithCors(row.avatar_url) || null,
   text:      row.text,
   chapterId: row.chapter_id ? Number(row.chapter_id) : null,
   media:     row.media_url ? {
@@ -1507,7 +1514,7 @@ app.get("/api/users", requireAuth, async (req, res) => {
       id:          Number(u.id),
       displayName: `${u.first_name} ${u.last_name}`,
       email:       u.email,
-      avatarUrl:   u.avatar_url || null,
+      avatarUrl:   cloudinaryWithCors(u.avatar_url) || null,
     })));
   } catch (err) {
     console.error("GET /api/users:", err);
