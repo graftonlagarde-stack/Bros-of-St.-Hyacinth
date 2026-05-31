@@ -2121,6 +2121,7 @@ const css = `
     0%   { background-position: 200% 0; }
     100% { background-position: -200% 0; }
   }
+  @keyframes reticle-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   @keyframes energyBeat {
     0%,100% { box-shadow: 0 0 20px rgba(136,255,0,0.2), inset 0 0 40px rgba(0,255,180,0.03); }
     50%     { box-shadow: 0 0 40px rgba(0,255,180,0.45), inset 0 0 60px rgba(0,255,180,0.07); }
@@ -7723,7 +7724,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
       </div>
       {remotes.map(p => <ParticipantAudio key={p.session_id} participant={p} />)}
       {/* Remote grid */}
-      <div style={{flex:1,position:"relative",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{flex:1,position:"relative",overflow:"visible",display:"flex",alignItems:"center",justifyContent:"center"}}>
         {remotes.length === 0 && joined && (
           <div style={{color:"var(--muted)",fontSize:13}}>Waiting for others to join…</div>
         )}
@@ -7835,27 +7836,61 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const name      = participant.user_name || "Brother";
   const matched   = allUsers?.find(u => u.displayName === name);
   const avatarUrl = matched?.avatarUrl || null;
-  const borderW = Math.max(1.5, size * 0.025); // border scales with bubble size
-  const glowSize1 = Math.round(size * 0.3);
+
+  // Reticle sizing — slightly outside the bubble
+  const pad       = Math.max(4, size * 0.06);
+  const svgSize   = size + pad * 2;
+  const cx        = svgSize / 2;
+  const r1        = size / 2 + pad * 0.4;  // main arc ring
+  const r2        = size / 2 + pad * 0.9;  // outer tick ring
+  // Arc dasharray: 4 segments with gaps, scales with circumference
+  const circ1     = 2 * Math.PI * r1;
+  const segLen    = circ1 / 4 * 0.78;
+  const gapLen    = circ1 / 4 * 0.22;
+  const circ2     = 2 * Math.PI * r2;
+  const tickLen   = circ2 / 24 * 0.5;
+  const tickGap   = circ2 / 24 * 0.5;
+
+  const spinDur   = isSpeaking ? "3s" : "12s";
+  const glowSize1 = Math.round(size * 0.25);
   const glowSize2 = Math.round(size * 0.6);
-  const glowSize3 = Math.round(size * 1.0);
-  const glow = isSpeaking
-    ? `0 0 0 ${borderW}px rgba(136,255,0,0.9), 0 0 ${glowSize1}px rgba(136,255,0,0.9), 0 0 ${glowSize2}px rgba(136,255,0,0.6), 0 0 ${glowSize3}px rgba(136,255,0,0.3), 0 10px 20px rgba(0,0,0,0.85)`
-    : `0 0 0 ${borderW}px rgba(136,255,0,0.5), 0 0 ${glowSize1}px rgba(136,255,0,0.4), 0 0 ${glowSize2}px rgba(136,255,0,0.15), 0 10px 20px rgba(0,0,0,0.85)`;
+  const glow      = isSpeaking
+    ? `0 0 ${glowSize1}px rgba(136,255,0,0.9), 0 0 ${glowSize2}px rgba(136,255,0,0.4)`
+    : `0 0 ${glowSize1}px rgba(136,255,0,0.35), 0 0 ${glowSize2}px rgba(136,255,0,0.1)`;
+
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
-      <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",position:"relative",
-        boxShadow:glow,transition:"box-shadow 0.3s ease",background:"var(--surface2)"}}>
-        <video ref={registerRef} autoPlay playsInline muted={false}
-          style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",
-            display:showVideo?"block":"none"}} />
-        {cameraOff && (avatarUrl
-          ? <img src={avatarUrl} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} alt={name} />
-          : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
-              fontFamily:"'Orbitron',sans-serif",fontWeight:900,color:"var(--accent)",fontSize:size*0.28}}>
-              {initials(name)}
-            </div>)}
-        {sphereOverlay}
+      <div style={{position:"relative",width:svgSize,height:svgSize,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        {/* Rotating reticle SVG — sits outside the bubble */}
+        <svg width={svgSize} height={svgSize} style={{position:"absolute",inset:0,pointerEvents:"none",
+          animation:`reticle-spin ${spinDur} linear infinite`,
+          transition:"animation-duration 0.5s"}}>
+          {/* Main arc segments */}
+          <circle cx={cx} cy={cx} r={r1} fill="none"
+            stroke="rgba(136,255,0,0.85)" strokeWidth={Math.max(1, size*0.018)}
+            strokeDasharray={`${segLen} ${gapLen}`} strokeLinecap="butt"/>
+          <circle cx={cx} cy={cx} r={r1} fill="none"
+            stroke="rgba(136,255,0,0.15)" strokeWidth={Math.max(3, size*0.05)}
+            strokeDasharray={`${segLen} ${gapLen}`} strokeLinecap="butt"/>
+          {/* Outer tick ring */}
+          <circle cx={cx} cy={cx} r={r2} fill="none"
+            stroke="rgba(136,255,0,0.4)" strokeWidth={Math.max(1, size*0.012)}
+            strokeDasharray={`${tickLen} ${tickGap}`} strokeLinecap="butt"/>
+        </svg>
+        {/* Bubble itself */}
+        <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",position:"relative",
+          boxShadow:glow,transition:"box-shadow 0.4s ease",background:"var(--surface2)",flexShrink:0}}>
+          <video ref={registerRef} autoPlay playsInline muted={false}
+            style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",
+              display:showVideo?"block":"none"}} />
+          {cameraOff && (avatarUrl
+            ? <img src={avatarUrl} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} alt={name} />
+            : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
+                fontFamily:"'Orbitron',sans-serif",fontWeight:900,color:"var(--accent)",fontSize:size*0.28}}>
+                {initials(name)}
+              </div>)}
+          {sphereOverlay}
+        </div>
       </div>
       <div style={{fontSize:10,fontFamily:"'Orbitron',sans-serif",letterSpacing:1,
         color:isSpeaking?"var(--accent)":"var(--muted)",transition:"color 0.3s ease",
