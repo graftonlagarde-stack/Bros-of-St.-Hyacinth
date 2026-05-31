@@ -7446,8 +7446,9 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
   const [activeSpeaker, setActiveSpeaker] = useState(null);
   const [joined,        setJoined]        = useState(false);
   const [error,         setError]         = useState("");
-  const videoEls      = useRef({}).current; // session_id -> video element
-  const pendingTracks = useRef({}).current; // sid -> track when element not mounted yet
+  const videoEls      = useRef({}).current;
+  const pendingTracks = useRef({}).current;
+  const trackSetters  = useRef({}).current; // sid -> setHasActiveTrack
   const callRef       = useRef(null);
   const localVideoRef = useRef(null);
 
@@ -7530,17 +7531,16 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           if (e?.track?.kind === "video" && e?.participant && !e.participant.local) {
             const sid = e.participant.session_id;
             pendingTracks[sid] = e.track;
+            trackSetters[sid]?.(true); // tell the component to show video
             const el = videoEls[sid];
             if (el) {
               el.srcObject = new MediaStream([e.track]);
-              el.style.display = "block"; // force visible — showVideo may still be false in React state
               el.play().catch(() => {});
             }
             setTimeout(() => {
               const el2 = videoEls[sid];
               if (el2 && pendingTracks[sid] === e.track) {
                 el2.srcObject = new MediaStream([e.track]);
-                el2.style.display = "block";
                 el2.play().catch(() => {});
               }
             }, 100);
@@ -7551,8 +7551,9 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           if (e?.track?.kind === "video" && e?.participant && !e.participant.local) {
             const sid = e.participant.session_id;
             delete pendingTracks[sid];
+            trackSetters[sid]?.(false); // tell the component to show avatar
             const el = videoEls[sid];
-            if (el) { el.srcObject = null; el.style.display = "none"; }
+            if (el) el.srcObject = null;
           }
         });
         call.on("track-stopped", (e) => {
@@ -7676,7 +7677,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)"}}>
           {gridLayout.rows.map((row, ri) => (
             <div key={ri} style={{display:"flex",gap:gridLayout.circleSize*0.15,marginLeft:ri%2===1?gridLayout.offset:0,marginBottom:gridLayout.circleSize*0.1}}>
-              {row.items.map(p => <ParticipantBubble key={p.session_id} participant={p} size={gridLayout.circleSize} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} videoEls={videoEls} pendingTracks={pendingTracks} allUsers={allUsers} />)}
+              {row.items.map(p => <ParticipantBubble key={p.session_id} participant={p} size={gridLayout.circleSize} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} videoEls={videoEls} pendingTracks={pendingTracks} trackSetters={trackSetters} allUsers={allUsers} />)}
             </div>
           ))}
         </div>
@@ -7730,12 +7731,18 @@ function ParticipantAudio({ participant }) {
   return <audio ref={audioRef} autoPlay playsInline style={{display:"none"}} />;
 }
 
-function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls, pendingTracks, allUsers }) {
+function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls, pendingTracks, trackSetters, allUsers }) {
   const sid        = participant.session_id;
   const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
-  const showVideo  = videoState === "playable" || videoState === "loading" || videoState === "interrupted";
-  const cameraOff  = !videoState || videoState === "off" || videoState === "blocked";
+  const [hasActiveTrack, setHasActiveTrack] = useState(() => !!pendingTracks[sid]);
+  const cameraOff  = !hasActiveTrack && (!videoState || videoState === "off" || videoState === "blocked");
+
+  // Register setter so track-started/stopped can update this component's state
+  useEffect(() => {
+    trackSetters[sid] = setHasActiveTrack;
+    return () => { delete trackSetters[sid]; };
+  }, [sid]);
 
   const registerRef = useCallback((el) => {
     if (el) {
@@ -7743,8 +7750,8 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
       const pending = pendingTracks[sid];
       if (pending) {
         el.srcObject = new MediaStream([pending]);
-        el.style.display = "block";
         el.play().catch(() => {});
+        setHasActiveTrack(true);
       }
     } else {
       delete videoEls[sid];
@@ -7754,13 +7761,17 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   useEffect(() => {
     const el = videoEls[sid];
     if (!el) return;
-    if (cameraOff) {
-      el.srcObject = null;
-    } else if (track) {
+    if (track) {
       el.srcObject = new MediaStream([track]);
       el.play().catch(() => {});
+      setHasActiveTrack(true);
+    } else if (videoState === "off" || videoState === "blocked") {
+      el.srcObject = null;
+      setHasActiveTrack(false);
     }
   }, [track, videoState, sid]);
+
+  const showVideo = hasActiveTrack || videoState === "playable" || videoState === "loading" || videoState === "interrupted";
 
   const name      = participant.user_name || "Brother";
   const matched   = allUsers?.find(u => u.displayName === name);
