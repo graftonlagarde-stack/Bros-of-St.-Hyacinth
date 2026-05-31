@@ -7797,17 +7797,17 @@ function ParticipantAudio({ participant, audioLevels, totalRemotes }) {
     try {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 512; // 256 frequency bins — sharp distinct peaks
-      analyser.smoothingTimeConstant = 0.6; // some smoothing so peaks don't flicker
+      analyser.fftSize = 512; // 256 time-domain samples — fills full circle with detail
+      analyser.smoothingTimeConstant = 0.5;
       const source = ctx.createMediaStreamSource(stream);
       source.connect(analyser);
       const data = new Uint8Array(analyser.frequencyBinCount);
 
-      audioLevels[sid] = { waveform: data, analyser, isFrequency: true };
+      audioLevels[sid] = { waveform: data, analyser };
 
       const tick = () => {
         if (destroyed) return;
-        analyser.getByteFrequencyData(data); // frequency domain = sharp peaks
+        analyser.getByteTimeDomainData(data); // time domain fills all bins
         requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
@@ -7900,8 +7900,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
         let r = baseR;
         if (waveform) {
           const wIdx = Math.floor((i / N_POINTS) * waveform.length) % waveform.length;
-          // Frequency data: 0=silence, 255=loud. Map to displacement outward only
-          const v = waveform[wIdx] / 255; // 0..1
+          const v = (waveform[wIdx] - 128) / 128; // -1..1 centered
           r = baseR + v * maxDisp;
         }
         const x = svgCx + r * Math.cos(angle);
@@ -7923,28 +7922,42 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   }, [sid, size, svgSize, pad, useReactive]);
 
   const glowSize1 = Math.round(size * 0.2);
-  const glowSize2 = Math.round(size * 0.5);
+  const glowSize2 = Math.round(size * 0.6);
+  const glowSize3 = Math.round(size * 1.0);
   const glow = isSpeaking
-    ? `0 0 ${glowSize1}px rgba(136,255,0,0.8), 0 0 ${glowSize2}px rgba(136,255,0,0.3)`
-    : `0 0 ${glowSize1}px rgba(136,255,0,0.25), 0 0 ${glowSize2}px rgba(136,255,0,0.08)`;
+    ? `0 0 ${glowSize1}px rgba(136,255,0,0.9), 0 0 ${glowSize2}px rgba(136,255,0,0.5), 0 0 ${glowSize3}px rgba(136,255,0,0.2)`
+    : `0 0 ${glowSize1}px rgba(136,255,0,0.5), 0 0 ${glowSize2}px rgba(136,255,0,0.2), 0 0 ${glowSize3}px rgba(136,255,0,0.07)`;
 
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
       <div style={{position:"relative",width:svgSize,height:svgSize,display:"flex",alignItems:"center",justifyContent:"center"}}>
         {/* Waveform ring — no static circle, just the live waveform layers */}
         <svg width={svgSize} height={svgSize} style={{position:"absolute",inset:0,pointerEvents:"none",overflow:"visible"}}>
+          <defs>
+            <filter id={`wf-blur-${sid}`} x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation={Math.max(1.5, size*0.02)} result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <filter id={`wf-halo-${sid}`} x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation={Math.max(4, size*0.05)}/>
+            </filter>
+          </defs>
+          {/* Wide blurred halo layer */}
           <path ref={waveGlowRef}
-            fill="none" stroke="rgba(136,255,0,0.08)"
-            strokeWidth={Math.max(6, size*0.07)} strokeLinejoin="round"/>
+            fill="none" stroke="rgba(136,255,0,0.35)"
+            strokeWidth={Math.max(2, size*0.025)} strokeLinejoin="round"
+            filter={`url(#wf-halo-${sid})`}/>
+          {/* Mid glow */}
           <path ref={waveMidRef}
-            fill="none" stroke="rgba(136,255,0,0.2)"
-            strokeWidth={Math.max(3, size*0.03)} strokeLinejoin="round"/>
+            fill="none" stroke="rgba(136,255,0,0.4)"
+            strokeWidth={Math.max(1.5, size*0.015)} strokeLinejoin="round"
+            filter={`url(#wf-blur-${sid})`}/>
+          {/* Sharp bright core */}
           <path ref={waveSharpRef}
-            fill="none" stroke="rgba(160,255,80,0.6)"
-            strokeWidth={Math.max(1.5, size*0.012)} strokeLinejoin="round"/>
-          <path ref={waveCoreRef}
-            fill="none" stroke="rgba(200,255,120,0.95)"
-            strokeWidth={Math.max(0.8, size*0.007)} strokeLinejoin="round"/>
+            fill="none" stroke="rgba(180,255,100,0.9)"
+            strokeWidth={Math.max(0.8, size*0.008)} strokeLinejoin="round"/>
+          {/* Invisible ref for core — same path, used for sync */}
+          <path ref={waveCoreRef} fill="none" stroke="none"/>
         </svg>
         {/* Bubble itself */}
         <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",position:"relative",
