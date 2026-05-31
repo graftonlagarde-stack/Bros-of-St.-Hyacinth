@@ -7446,7 +7446,8 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
   const [activeSpeaker, setActiveSpeaker] = useState(null);
   const [joined,        setJoined]        = useState(false);
   const [error,         setError]         = useState("");
-  const videoEls    = useRef({}).current; // session_id -> video element registry
+  const videoEls      = useRef({}).current; // session_id -> video element
+  const pendingTracks = useRef({}).current; // sid -> track when element not mounted yet
   const callRef       = useRef(null);
   const localVideoRef = useRef(null);
 
@@ -7500,14 +7501,9 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           const attachAll = () => {
             const fresh = call.participants();
             for (const [sid, el] of Object.entries(videoEls)) {
-              if (!el) continue;
-              const vstate = fresh[sid]?.tracks?.video?.state;
               const vtrack = fresh[sid]?.tracks?.video?.persistentTrack;
-              if (vstate === "off" || vstate === "blocked") {
-                if (el.srcObject) el.srcObject = null;
-              } else if (vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
+              if (el && vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
                 el.srcObject = new MediaStream([vtrack]);
-                el.load();
                 el.play().catch(() => {});
               }
             }
@@ -7529,8 +7525,35 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         call.on("participant-joined",   update);
         call.on("participant-left",     update);
         call.on("participant-updated",  update);
-        call.on("track-started",        update);
-        call.on("track-stopped",        update);
+        call.on("track-started", (e) => {
+          update();
+          if (e?.track?.kind === "video" && e?.participant && !e.participant.local) {
+            const sid = e.participant.session_id;
+            pendingTracks[sid] = e.track;
+            const el = videoEls[sid];
+            if (el) {
+              el.srcObject = new MediaStream([e.track]);
+              el.play().catch(() => {});
+            }
+            // Also retry after React renders the element
+            setTimeout(() => {
+              const el2 = videoEls[sid];
+              if (el2 && pendingTracks[sid] === e.track) {
+                el2.srcObject = new MediaStream([e.track]);
+                el2.play().catch(() => {});
+              }
+            }, 100);
+          }
+        });
+        call.on("track-stopped", (e) => {
+          update();
+          if (e?.track?.kind === "video" && e?.participant && !e.participant.local) {
+            const sid = e.participant.session_id;
+            delete pendingTracks[sid];
+            const el = videoEls[sid];
+            if (el) el.srcObject = null;
+          }
+        });
         call.on("active-speaker-change",e => { if (!destroyed) setActiveSpeaker(e?.activeSpeaker?.peerId || null); });
         call.on("left-meeting", () => {
           if (!destroyed) {
@@ -7643,7 +7666,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)"}}>
           {gridLayout.rows.map((row, ri) => (
             <div key={ri} style={{display:"flex",gap:gridLayout.circleSize*0.15,marginLeft:ri%2===1?gridLayout.offset:0,marginBottom:gridLayout.circleSize*0.1}}>
-              {row.items.map(p => <ParticipantBubble key={p.session_id} participant={p} size={gridLayout.circleSize} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} videoEls={videoEls} allUsers={allUsers} />)}
+              {row.items.map(p => <ParticipantBubble key={p.session_id} participant={p} size={gridLayout.circleSize} isSpeaking={activeSpeaker===p.session_id} sphereOverlay={SPHERE_OVERLAY} videoEls={videoEls} pendingTracks={pendingTracks} allUsers={allUsers} />)}
             </div>
           ))}
         </div>
@@ -7697,7 +7720,7 @@ function ParticipantAudio({ participant }) {
   return <audio ref={audioRef} autoPlay playsInline style={{display:"none"}} />;
 }
 
-function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls, allUsers }) {
+function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, videoEls, pendingTracks, allUsers }) {
   const sid        = participant.session_id;
   const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
@@ -7705,8 +7728,17 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const cameraOff  = !videoState || videoState === "off" || videoState === "blocked";
 
   const registerRef = useCallback((el) => {
-    if (el) videoEls[sid] = el;
-    else delete videoEls[sid];
+    if (el) {
+      videoEls[sid] = el;
+      // If track-started already fired before element mounted, attach now
+      const pending = pendingTracks[sid];
+      if (pending) {
+        el.srcObject = new MediaStream([pending]);
+        el.play().catch(() => {});
+      }
+    } else {
+      delete videoEls[sid];
+    }
   }, [sid]);
 
   useEffect(() => {
@@ -7716,7 +7748,6 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
       el.srcObject = null;
     } else if (track) {
       el.srcObject = new MediaStream([track]);
-      el.load();
       el.play().catch(() => {});
     }
   }, [track, videoState, sid]);
