@@ -7463,8 +7463,8 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         const call = DailyIframe.createCallObject({
           audioSource: true,
           videoSource: true,
+          subscribeToTracksAutomatically: true,
         });
-        call.setSubscribeToTracksAutomatically(true);
         window.__dailyCallInstance = call;
         callRef.current = call;
         const update = () => {
@@ -7500,8 +7500,12 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           const attachAll = () => {
             const fresh = call.participants();
             for (const [sid, el] of Object.entries(videoEls)) {
+              if (!el) continue;
+              const vstate = fresh[sid]?.tracks?.video?.state;
               const vtrack = fresh[sid]?.tracks?.video?.persistentTrack;
-              if (el && vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
+              if (vstate === "off" || vstate === "blocked") {
+                if (el.srcObject) el.srcObject = null;
+              } else if (vtrack && el.srcObject?.getTracks()[0] !== vtrack) {
                 el.srcObject = new MediaStream([vtrack]);
                 el.play().catch(() => {});
               }
@@ -7510,9 +7514,6 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           attachAll();
           setTimeout(() => { if (!destroyed) attachAll(); }, 50);
           setTimeout(() => { if (!destroyed) attachAll(); }, 500);
-          setTimeout(() => { if (!destroyed) attachAll(); }, 1000);
-          setTimeout(() => { if (!destroyed) attachAll(); }, 2000);
-          setTimeout(() => { if (!destroyed) attachAll(); }, 4000);
           // Track join count for debug overlay
           const others = Object.values(p).filter(x => !x.local);
           if (others.length > 0) joinedAtRef.current = joinedAtRef.current || Date.now();
@@ -7523,8 +7524,15 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           setJoined(true); update();
           const p2=call.participants();
           if(p2.local){setMicOn(!p2.local.tracks?.audio?.off);setCamOn(!p2.local.tracks?.video?.off);}
+          Object.values(p2).forEach(p => {
+            if (!p.local) call.updateParticipant(p.session_id, { setSubscribedTracks: { audio: true, video: true } });
+          });
         });
-        call.on("participant-joined",   update);
+        call.on("participant-joined", (e) => {
+          update();
+          if (e?.participant?.session_id && !e.participant.local)
+            call.updateParticipant(e.participant.session_id, { setSubscribedTracks: { audio: true, video: true } });
+        });
         call.on("participant-left",     update);
         call.on("participant-updated",  update);
         call.on("track-started",        update);
@@ -7700,40 +7708,37 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const track      = participant.tracks?.video?.persistentTrack;
   const videoState = participant.tracks?.video?.state;
   const showVideo  = videoState === "playable" || videoState === "loading" || videoState === "interrupted";
+  const cameraOff  = !videoState || videoState === "off" || videoState === "blocked";
 
-  // Always register on mount — never depends on track
   const registerRef = useCallback((el) => {
     if (el) videoEls[sid] = el;
     else delete videoEls[sid];
   }, [sid]);
 
-  // Attach track whenever it changes
   useEffect(() => {
     const el = videoEls[sid];
     if (!el) return;
-    if (track) {
+    if (cameraOff) {
+      el.srcObject = null;
+    } else if (track) {
       el.srcObject = new MediaStream([track]);
       el.play().catch(() => {});
-    } else {
-      el.srcObject = null;
     }
   }, [track, videoState, sid]);
 
   const name      = participant.user_name || "Brother";
-  const matchedUser = allUsers?.find(u => u.displayName === name);
-  const avatarUrl = matchedUser?.avatarUrl || null;
+  const matched   = allUsers?.find(u => u.displayName === name);
+  const avatarUrl = matched?.avatarUrl || null;
   const glow      = isSpeaking ? "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 24px rgba(136,255,0,0.7),0 0 48px rgba(136,255,0,0.25)"
                                : "0 0 0 1px rgba(0,0,0,0.55),0 10px 20px rgba(0,0,0,0.85),0 20px 40px rgba(0,0,0,0.45),0 0 10px rgba(136,255,0,0.2)";
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
       <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",position:"relative",
         border:"1px solid rgba(136,255,0,0.35)",boxShadow:glow,transition:"box-shadow 0.3s ease",background:"var(--surface2)"}}>
-        {/* video always in DOM so videoEls stays populated through state changes */}
         <video ref={registerRef} autoPlay playsInline muted={false}
           style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",
             display:showVideo?"block":"none"}} />
-        {/* avatar shown when video not active */}
-        {!showVideo && (avatarUrl
+        {cameraOff && (avatarUrl
           ? <img src={avatarUrl} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} alt={name} />
           : <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
               fontFamily:"'Orbitron',sans-serif",fontWeight:900,color:"var(--accent)",fontSize:size*0.28}}>
