@@ -7744,7 +7744,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
 
     const isMob = window.innerWidth <= 768;
     const availW = window.innerWidth - 28;
-    const availH = window.innerHeight - 160 - 28;
+    const availH = window.innerHeight - 160 - 28 - (isMob ? 60 : 0); // extra margin for mobile browser chrome
 
     const sq2 = Math.sqrt(2);
     const GAP_FRAC = 0.15;
@@ -7847,7 +7847,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
       </div>
       {remotes.map(p => <ParticipantAudio key={p.session_id} participant={p} audioLevels={audioLevels} totalRemotes={remotes.length} />)}
       {/* Remote grid */}
-      <div style={{flex:1,position:"relative",overflow:"visible",display:"flex",alignItems:"center",justifyContent:"center",paddingBottom:96}}>
+      <div style={{flex:1,position:"relative",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",paddingBottom:96}}>
         {remotes.length === 0 && joined && (
           <div style={{color:"var(--muted)",fontSize:13}}>Waiting for others to join…</div>
         )}
