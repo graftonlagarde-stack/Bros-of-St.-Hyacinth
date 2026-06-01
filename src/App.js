@@ -7333,6 +7333,8 @@ function MeetPage({ currentUser, onCallActive }) {
   const canJoin = (m) => true; // joinable any time once scheduled
   const fmtTime = (ts) => new Date(ts).toLocaleString("en-US", { weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });
 
+  const callContainerRef = useRef(null);
+
   if (view === "create") return (
     <div className="page">
       <div className="page-title">SCHEDULE <span className="accentText">CALL</span></div>
@@ -7367,7 +7369,6 @@ function MeetPage({ currentUser, onCallActive }) {
     </div>
   );
 
-  const callContainerRef = useRef(null);
   const inCall = view === "call" && activeMeeting && callToken && callRoom;
   const onLeave = async () => {
     onCallActive?.(false);
