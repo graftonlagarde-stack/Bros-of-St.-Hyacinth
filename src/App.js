@@ -7528,22 +7528,21 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         call.on("participant-left",     update);
         call.on("participant-updated",  (e) => {
           update();
-          // Handle camera turning off — track-stopped doesn't always fire
           if (e?.participant && !e.participant.local) {
-            const sid   = e.participant.session_id;
-            const vstate = e.participant.tracks?.video?.state;
-            if (vstate === "off" || vstate === "blocked") {
+            const sid    = e.participant.session_id;
+            const vtrack = e.participant.tracks?.video;
+            const vstate = vtrack?.state;
+            const off    = vstate === "off" || vstate === "blocked" || vtrack?.off === true;
+            if (off) {
               trackSetters[sid]?.(false);
               delete pendingTracks[sid];
               const el = videoEls[sid];
-              if (el) el.srcObject = null;
-            } else if (vstate === "playable" && e.participant.tracks?.video?.persistentTrack) {
-              // Camera turned on via participant-updated (backup to track-started)
-              const vtrack = e.participant.tracks.video.persistentTrack;
-              pendingTracks[sid] = vtrack;
+              if (el) { el.srcObject = null; el.load(); }
+            } else if (vstate === "playable" && vtrack?.persistentTrack) {
+              pendingTracks[sid] = vtrack.persistentTrack;
               trackSetters[sid]?.(true);
               const el = videoEls[sid];
-              if (el) { el.srcObject = new MediaStream([vtrack]); el.play().catch(()=>{}); }
+              if (el) { el.srcObject = new MediaStream([vtrack.persistentTrack]); el.play().catch(()=>{}); }
             }
           }
         });
@@ -7861,16 +7860,26 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
     }
   }, [sid]);
 
+  // Clear video element whenever hasActiveTrack goes false
+  useEffect(() => {
+    if (!hasActiveTrack) {
+      const el = videoEls[sid];
+      if (el) { el.srcObject = null; el.load(); }
+    }
+  }, [hasActiveTrack, sid]);
+
   useEffect(() => {
     const el = videoEls[sid];
     if (!el) return;
-    if (track) {
+    // videoState=off/blocked always wins — clear regardless of whether track exists
+    if (videoState === "off" || videoState === "blocked" || !videoState) {
+      el.srcObject = null;
+      el.load();
+      setHasActiveTrack(false);
+    } else if (track && (videoState === "playable" || videoState === "loading" || videoState === "interrupted")) {
       el.srcObject = new MediaStream([track]);
       el.play().catch(() => {});
       setHasActiveTrack(true);
-    } else if (videoState === "off" || videoState === "blocked") {
-      el.srcObject = null;
-      setHasActiveTrack(false);
     }
   }, [track, videoState, sid]);
 
