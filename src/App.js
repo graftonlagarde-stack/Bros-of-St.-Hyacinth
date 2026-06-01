@@ -7352,10 +7352,9 @@ function MeetPage({ currentUser, onCallActive }) {
     return (
       <div style={{
         opacity, transition:"opacity 0.35s ease",
-        position:"fixed", top:0, left:0,
+        position:"absolute", top:0, left:0,
         width:"100%", height:"100%",
         overflow:"hidden",
-        zIndex:500,
       }}>
         <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} allUsers={allUsers} onLeave={async () => {
           onCallActive?.(false);
@@ -7746,8 +7745,9 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
     if (n === 0) return { positions: [], D: 180 };
 
     const isMob = window.innerWidth <= 768;
+    const vh = document.documentElement.clientHeight || window.innerHeight;
     const availW = window.innerWidth - 28;
-    const availH = window.innerHeight - 160 - 28 - (isMob ? 60 : 0); // extra margin for mobile browser chrome
+    const availH = vh - 160 - 28 - (isMob ? 60 : 0);
 
     const sq2 = Math.sqrt(2);
     const GAP_FRAC = 0.15;
