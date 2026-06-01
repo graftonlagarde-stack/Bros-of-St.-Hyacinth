@@ -3161,7 +3161,7 @@ const css = `
     }
     .main.nav-open  { transform: translateX(100vw) !important; }
     .main.nav-closed { transform: translateX(0)    !important; }
-    .main.in-call { transform: none !important; transition: none !important; overflow: hidden !important; }
+    .main.in-call { overflow: hidden !important; }
 
     /* ── Page: compact padding, smaller title ── */
     .page { padding: 20px 14px !important; }
@@ -7311,7 +7311,8 @@ function MeetPage({ currentUser, onCallActive }) {
       setCallToken(data.token); setCallRoom(data.roomName); setCallRoomUrl(data.roomUrl);
       setActiveMeeting(meeting);
       onCallActive?.(true);
-      document.querySelector('.main')?.scrollTo(0, 0);
+      const main = document.querySelector('.main');
+      if (main) { main.scrollTop = 0; }
       switchView("call");
     } catch (err) {
       setJoinError(err.message || "Could not join call. Please try again.");
@@ -7352,10 +7353,9 @@ function MeetPage({ currentUser, onCallActive }) {
     return (
       <div style={{
         opacity, transition:"opacity 0.35s ease",
-        position:"fixed", inset:0,
-        height:"100dvh",
+        position:"absolute", top:0, left:0,
+        width:"100%", height:"100dvh",
         overflow:"hidden",
-        zIndex:10000,
       }}>
         <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} allUsers={allUsers} onLeave={async () => {
           onCallActive?.(false);
