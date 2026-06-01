@@ -7485,6 +7485,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
   const [activeSpeaker, setActiveSpeaker] = useState(null);
   const [joined,        setJoined]        = useState(false);
   const [error,         setError]         = useState("");
+  const isMobile = useIsMobile();
   const videoEls      = useRef({}).current;
   const pendingTracks = useRef({}).current;
   const trackSetters  = useRef({}).current;
@@ -7747,14 +7748,26 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
   };
   const leave = async () => { if (callRef.current) await callRef.current.leave(); else onLeave(); };
 
-  const [facingMode, setFacingMode] = useState("user"); // "user" | "environment"
+  const [facingMode, setFacingMode] = useState("user");
   const switchCamera = async () => {
     if (!callRef.current || !camOn) return;
     const next = facingMode === "user" ? "environment" : "user";
     try {
-      await callRef.current.cycleCamera();
-      setFacingMode(next);
-    } catch(e) {}
+      await callRef.current.setInputDevicesAsync({
+        videoDeviceId: { exact: next === "user" ? "user" : "environment" },
+      });
+    } catch(e) {
+      // fallback: some devices need the constraint passed differently
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: next } }
+        });
+        const track = stream.getVideoTracks()[0];
+        await callRef.current.setInputDevicesAsync({ videoDeviceId: track.getSettings().deviceId });
+        track.stop();
+      } catch(e2) {}
+    }
+    setFacingMode(next);
   };
 
   const remotes = Object.values(participants)
@@ -7924,11 +7937,11 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
             {!camOn && <line x1="2" y1="2" x2="22" y2="22"/>}
           </svg>
         } />
-        <CallButton onClick={switchCamera} label="Flip" icon={
+        {isMobile && <CallButton onClick={switchCamera} label="Flip" icon={
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20 7h-9"/><path d="M14 17H5"/><polyline points="17 4 20 7 17 10"/><polyline points="7 14 4 17 7 20"/>
           </svg>
-        } active={false} />
+        } active={false} />}
         <CallButton danger onClick={leave} label="Leave" icon={
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.42 19.42 0 0 1 4.43 9.6a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 3.34 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.4 9.9"/>
