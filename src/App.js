@@ -3160,7 +3160,7 @@ const css = `
     }
     .main.nav-open  { transform: translateX(100vw) !important; }
     .main.nav-closed { transform: translateX(0)    !important; }
-    .main.in-call { transform: none !important; transition: none !important; }
+    .main.in-call { transform: none !important; transition: none !important; overflow: hidden !important; height: 100vh !important; }
 
     /* ── Page: compact padding, smaller title ── */
     .page { padding: 20px 14px !important; }
@@ -7349,9 +7349,7 @@ function MeetPage({ currentUser, onCallActive }) {
     return (
       <div style={{
         opacity, transition:"opacity 0.35s ease",
-        position: isMobile ? "fixed" : "absolute",
-        inset: 0,
-        zIndex: isMobile ? 200 : "auto",
+        position:"absolute", inset:0,
       }}>
         <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} allUsers={allUsers} onLeave={async () => {
           onCallActive?.(false);
