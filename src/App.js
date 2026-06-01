@@ -2637,6 +2637,7 @@ const css = `
   .avatar-photo.lg { width: 48px; height: 48px; }
 
   /* ── MAIN ── */
+  .main { flex: 1; overflow-y: auto; position: relative; padding-bottom: 10px; z-index: 20; margin-left: 80px; }
   .mobile-only { display: none !important; }
 
   .page { padding: 40px 48px; max-width: 1000px; margin: 0 auto; }
@@ -7965,12 +7966,13 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
 
 function CallButton({ active, danger, onClick, label, icon, extraClass }) {
   return (
-    <button onClick={onClick} className={extraClass || ""} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,
+    <button onClick={onClick} className={extraClass || ""} style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,
       background:danger?"rgba(255,68,85,0.15)":active?"rgba(136,255,0,0.1)":"rgba(255,255,255,0.05)",
       border:`1px solid ${danger?"rgba(255,68,85,0.4)":active?"rgba(136,255,0,0.3)":"rgba(255,255,255,0.1)"}`,
-      borderRadius:12,padding:"10px 18px",cursor:"pointer",minWidth:64,
+      borderRadius:12,padding:0,cursor:"pointer",
+      width:72, height:64,
       color:danger?"rgba(255,68,85,0.9)":active?"var(--accent)":"var(--muted)",
-      transition:"all 0.15s"}}>
+      transition:"all 0.15s", flexShrink:0}}>
       {icon}
       <span style={{fontSize:9,fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>{label.toUpperCase()}</span>
     </button>
