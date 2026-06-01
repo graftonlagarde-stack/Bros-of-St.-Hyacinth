@@ -7472,6 +7472,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         if (window.__dailyCallInstance) {
           try { await window.__dailyCallInstance.destroy(); } catch(e) {}
           window.__dailyCallInstance = null;
+          await new Promise(r => setTimeout(r, 100)); // wait for Daily to fully teardown
         }
         const call = DailyIframe.createCallObject({
           audioSource: true,
@@ -7798,7 +7799,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
   }, [remotes.length, containerRef?.current?.clientWidth, containerRef?.current?.clientHeight]);
 
   if (error) return (
-    <div style={{position:"absolute",inset:0,background:"var(--bg)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
+    <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
       <div style={{color:"rgba(255,68,85,0.8)",fontSize:14,textAlign:"center",padding:"0 32px"}}>{error}</div>
       <button className="btn" onClick={onLeave}>Leave</button>
     </div>
@@ -7812,7 +7813,6 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
   return (
     <div style={{
       position:"absolute", inset:0,
-      background:"var(--bg)",
       display:"flex", flexDirection:"column",
       overflow:"hidden",
     }}>
