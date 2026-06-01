@@ -7351,6 +7351,9 @@ function MeetPage({ currentUser, onCallActive }) {
       <div style={{
         opacity, transition:"opacity 0.35s ease",
         position:"absolute", inset:0,
+        overflow:"hidden",
+        touchAction:"none",
+        overscrollBehavior:"none",
       }}>
         <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} allUsers={allUsers} onLeave={async () => {
           onCallActive?.(false);
