@@ -7606,6 +7606,62 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
 
   useEffect(() => { if (localVideoRef.current && localStream) localVideoRef.current.srcObject = localStream; }, [localStream]);
 
+  // Wake lock + visibility change: keep audio alive during sleep
+  useEffect(() => {
+    let wakeLock = null;
+    let destroyed = false;
+
+    const acquireWakeLock = async () => {
+      if (!navigator.wakeLock) return;
+      try {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => {
+          // Re-acquire if released by OS and call is still active
+          if (!destroyed && !document.hidden) acquireWakeLock();
+        });
+      } catch (e) {
+        // Wake lock not available — not fatal
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        // Going to background — nothing to do, audio session keeps running
+        // RAF loops in ParticipantBubble pause automatically (browser stops RAF when hidden)
+      } else {
+        // Returning to foreground
+        // Re-acquire wake lock
+        acquireWakeLock();
+        // Verify Daily connection still alive, rejoin if dropped
+        const call = callRef.current;
+        if (call) {
+          try {
+            const state = call.meetingState();
+            if (state === 'left' || state === 'error') {
+              // Connection dropped during sleep — rejoin
+              call.join({ url: roomUrl, token });
+            }
+          } catch (e) {}
+        }
+        // Resume any suspended AudioContexts (iOS suspends them on background)
+        if (window.__bshm_audio_contexts) {
+          for (const ctx of window.__bshm_audio_contexts) {
+            if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+          }
+        }
+      }
+    };
+
+    acquireWakeLock();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      destroyed = true;
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (wakeLock) { try { wakeLock.release(); } catch (e) {} }
+    };
+  }, [roomUrl, token]);
+
   const toggleMic = async () => { if (!callRef.current) return; await callRef.current.setLocalAudio(!micOn); setMicOn(!micOn); };
   const toggleCam = async () => {
     if (!callRef.current) return;
@@ -7806,6 +7862,9 @@ function ParticipantAudio({ participant, audioLevels, totalRemotes }) {
     let ctx, destroyed = false;
     try {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
+      // Register in global set so visibility handler can resume on foreground
+      if (!window.__bshm_audio_contexts) window.__bshm_audio_contexts = new Set();
+      window.__bshm_audio_contexts.add(ctx);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512; // 256 time-domain samples — fills full circle with detail
       analyser.smoothingTimeConstant = 0.5;
@@ -7817,7 +7876,7 @@ function ParticipantAudio({ participant, audioLevels, totalRemotes }) {
 
       const tick = () => {
         if (destroyed) return;
-        analyser.getByteTimeDomainData(data); // time domain fills all bins
+        if (!document.hidden) analyser.getByteTimeDomainData(data);
         requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
@@ -7825,7 +7884,7 @@ function ParticipantAudio({ participant, audioLevels, totalRemotes }) {
 
     return () => {
       destroyed = true;
-      try { ctx?.close(); } catch(e) {}
+      try { ctx?.close(); window.__bshm_audio_contexts?.delete(ctx); } catch(e) {}
       delete audioLevels[sid];
     };
   }, [track, sid, useAnalyser]);
@@ -7911,6 +7970,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
 
     const tick = () => {
       if (destroyed) return;
+      if (document.hidden) { rafRef.current = requestAnimationFrame(tick); return; }
       const entry    = audioLevels[sid];
       const waveform = entry?.waveform;
       let pathD = '';
