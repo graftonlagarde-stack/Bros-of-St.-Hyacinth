@@ -3161,7 +3161,7 @@ const css = `
     }
     .main.nav-open  { transform: translateX(100vw) !important; }
     .main.nav-closed { transform: translateX(0)    !important; }
-    .main.in-call { overflow: hidden !important; }
+    .main.in-call { overflow: hidden !important; touch-action: none; }
 
     /* ── Page: compact padding, smaller title ── */
     .page { padding: 20px 14px !important; }
@@ -7313,6 +7313,8 @@ function MeetPage({ currentUser, onCallActive }) {
       onCallActive?.(true);
       const main = document.querySelector('.main');
       if (main) { main.scrollTop = 0; main.style.setProperty('overflow', 'hidden', 'important'); }
+      document.body.style.setProperty('overflow', 'hidden', 'important');
+      document.documentElement.style.setProperty('overflow', 'hidden', 'important');
       switchView("call");
     } catch (err) {
       setJoinError(err.message || "Could not join call. Please try again.");
@@ -7359,6 +7361,10 @@ function MeetPage({ currentUser, onCallActive }) {
       }}>
         <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} allUsers={allUsers} onLeave={async () => {
           onCallActive?.(false);
+          const main = document.querySelector('.main');
+          if (main) main.style.removeProperty('overflow');
+          document.body.style.removeProperty('overflow');
+          document.documentElement.style.removeProperty('overflow');
           document.querySelector('.main')?.style.removeProperty('overflow');
           const mid = activeMeeting.id;
           switchView("list", () => {
