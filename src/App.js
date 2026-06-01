@@ -2637,7 +2637,8 @@ const css = `
   .avatar-photo.lg { width: 48px; height: 48px; }
 
   /* ── MAIN ── */
-  .main { flex: 1; overflow-y: auto; position: relative; padding-bottom: 10px; z-index: 20; margin-left: 80px; }
+  .mobile-only { display: none !important; }
+
   .page { padding: 40px 48px; max-width: 1000px; margin: 0 auto; }
   .app { display: flex; min-height: 100vh; position: relative; z-index: 1; overflow: visible; }
   .page > *:not(:first-child) { position: relative; z-index: 1; }
@@ -3162,6 +3163,7 @@ const css = `
     .main.nav-open  { transform: translateX(100vw) !important; }
     .main.nav-closed { transform: translateX(0)    !important; }
     .main.in-call { overflow: hidden !important; touch-action: none; }
+    .mobile-only { display: flex !important; }
 
     /* Prevent iOS Safari zoom on input focus — requires font-size >= 16px */
     input, textarea, select { font-size: 16px !important; }
@@ -7753,21 +7755,29 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
     if (!callRef.current || !camOn) return;
     const next = facingMode === "user" ? "environment" : "user";
     try {
-      await callRef.current.setInputDevicesAsync({
-        videoDeviceId: { exact: next === "user" ? "user" : "environment" },
+      // Get a stream from the specific camera direction
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { exact: next } }
       });
+      const newTrack = stream.getVideoTracks()[0];
+      // Tell Daily to use this track
+      await callRef.current.setInputDevicesAsync({ videoDeviceId: newTrack.getSettings().deviceId });
+      newTrack.stop(); // Daily will request its own stream with that device ID
+      setFacingMode(next);
     } catch(e) {
-      // fallback: some devices need the constraint passed differently
+      // exact constraint failed — try ideal instead
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { exact: next } }
+          video: { facingMode: next }
         });
-        const track = stream.getVideoTracks()[0];
-        await callRef.current.setInputDevicesAsync({ videoDeviceId: track.getSettings().deviceId });
-        track.stop();
-      } catch(e2) {}
+        const newTrack = stream.getVideoTracks()[0];
+        await callRef.current.setInputDevicesAsync({ videoDeviceId: newTrack.getSettings().deviceId });
+        newTrack.stop();
+        setFacingMode(next);
+      } catch(e2) {
+        console.warn("switchCamera failed:", e2);
+      }
     }
-    setFacingMode(next);
   };
 
   const remotes = Object.values(participants)
@@ -7937,7 +7947,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
             {!camOn && <line x1="2" y1="2" x2="22" y2="22"/>}
           </svg>
         } />
-        {isMobile && <CallButton onClick={switchCamera} label="Flip" icon={
+        {<CallButton onClick={switchCamera} label="Flip" extraClass="mobile-only" icon={
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20 7h-9"/><path d="M14 17H5"/><polyline points="17 4 20 7 17 10"/><polyline points="7 14 4 17 7 20"/>
           </svg>
@@ -7953,9 +7963,9 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
   );
 }
 
-function CallButton({ active, danger, onClick, label, icon }) {
+function CallButton({ active, danger, onClick, label, icon, extraClass }) {
   return (
-    <button onClick={onClick} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,
+    <button onClick={onClick} className={extraClass || ""} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,
       background:danger?"rgba(255,68,85,0.15)":active?"rgba(136,255,0,0.1)":"rgba(255,255,255,0.05)",
       border:`1px solid ${danger?"rgba(255,68,85,0.4)":active?"rgba(136,255,0,0.3)":"rgba(255,255,255,0.1)"}`,
       borderRadius:12,padding:"10px 18px",cursor:"pointer",minWidth:64,
