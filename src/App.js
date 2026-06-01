@@ -3149,6 +3149,7 @@ const css = `
       display: block !important;
       width: 100vw !important;
       height: 100vh;
+      overflow-y: auto;
       margin-left: 0 !important;
       padding-left: 0 !important;
       padding-bottom: 0 !important;
@@ -3160,7 +3161,7 @@ const css = `
     }
     .main.nav-open  { transform: translateX(100vw) !important; }
     .main.nav-closed { transform: translateX(0)    !important; }
-    .main.in-call { transform: none !important; transition: none !important; overflow: hidden !important; height: 100vh !important; }
+    .main.in-call { overflow: hidden !important; }
 
     /* ── Page: compact padding, smaller title ── */
     .page { padding: 20px 14px !important; }
