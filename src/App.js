@@ -3148,6 +3148,7 @@ const css = `
     .main {
       display: block !important;
       width: 100vw !important;
+      height: 100vh;
       margin-left: 0 !important;
       padding-left: 0 !important;
       padding-bottom: 0 !important;
@@ -7388,7 +7389,7 @@ function MeetPage({ currentUser, onCallActive }) {
   };
 
   return (
-    <div style={{position:"relative",flex:1,overflow:"hidden"}}>
+    <div style={{position:"relative",width:"100%",height:"100%",overflow:"hidden"}}>
       {/* Meet list — fades out when call is active */}
       <div style={{position:"absolute",inset:0,opacity:inCall?0:1,transition:"opacity 0.4s ease",pointerEvents:inCall?"none":"auto",overflowY:"auto"}}>
         <div className="page">
@@ -7797,7 +7798,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
   }, [remotes.length, containerRef?.current?.clientWidth, containerRef?.current?.clientHeight]);
 
   if (error) return (
-    <div style={{position:"fixed",inset:0,background:"var(--bg)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,zIndex:10000}}>
+    <div style={{position:"absolute",inset:0,background:"var(--bg)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
       <div style={{color:"rgba(255,68,85,0.8)",fontSize:14,textAlign:"center",padding:"0 32px"}}>{error}</div>
       <button className="btn" onClick={onLeave}>Leave</button>
     </div>
@@ -7810,10 +7811,10 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
 
   return (
     <div style={{
-      position:"fixed", inset:0,
+      position:"absolute", inset:0,
       background:"var(--bg)",
       display:"flex", flexDirection:"column",
-      zIndex:10000, overflow:"hidden",
+      overflow:"hidden",
     }}>
       {/* Header */}
       <div style={{padding:"12px 16px",borderBottom:"1px solid rgba(136,255,0,0.1)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
