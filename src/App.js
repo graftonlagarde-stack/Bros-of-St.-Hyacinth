@@ -6466,7 +6466,8 @@ function AvatarUpload({ user, onUpdate }) {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const dragRef  = useRef(null);
 
-  const CROP_SIZE = 240;
+  const DISPLAY_SIZE = 240; // preview circle size on screen
+  const CROP_SIZE = 600;    // actual canvas output resolution
 
   const handleFile = (e) => {
     const file = e.target.files[0];
@@ -6490,14 +6491,14 @@ function AvatarUpload({ user, onUpdate }) {
     const w = img.naturalWidth;
     const h = img.naturalHeight;
     setImgSize({ w, h });
-    // Set initial scale so the image fills the crop window (shorter side = CROP_SIZE)
-    const fitScale = CROP_SIZE / Math.min(w, h);
+    // Set initial scale so the image fills the crop window (shorter side = DISPLAY_SIZE)
+    const fitScale = DISPLAY_SIZE / Math.min(w, h);
     setScale(fitScale);
   };
 
   // Minimum scale: image fits entirely within crop window (longer side = CROP_SIZE)
   const minScale = imgSize.w && imgSize.h
-    ? CROP_SIZE / Math.max(imgSize.w, imgSize.h)
+    ? DISPLAY_SIZE / Math.max(imgSize.w, imgSize.h)
     : 0.1;
 
   const drawCanvas = () => {
@@ -6512,9 +6513,11 @@ function AvatarUpload({ user, onUpdate }) {
     ctx.beginPath();
     ctx.arc(CROP_SIZE / 2, CROP_SIZE / 2, CROP_SIZE / 2, 0, Math.PI * 2);
     ctx.clip();
-    const iw = imgSize.w * scale;
-    const ih = imgSize.h * scale;
-    ctx.drawImage(img, (CROP_SIZE - iw) / 2 + offset.x, (CROP_SIZE - ih) / 2 + offset.y, iw, ih);
+    // Scale factor from display space to output canvas space
+    const ratio = CROP_SIZE / DISPLAY_SIZE;
+    const iw = imgSize.w * scale * ratio;
+    const ih = imgSize.h * scale * ratio;
+    ctx.drawImage(img, (CROP_SIZE - iw) / 2 + offset.x * ratio, (CROP_SIZE - ih) / 2 + offset.y * ratio, iw, ih);
     ctx.restore();
   };
 
@@ -6558,7 +6561,7 @@ function AvatarUpload({ user, onUpdate }) {
       <div style={{marginBottom:20}}>
         <div className="form-label" style={{marginBottom:8}}>Position your photo</div>
         <div style={{
-          width:CROP_SIZE, height:CROP_SIZE, borderRadius:"50%", overflow:"hidden",
+          width:DISPLAY_SIZE, height:DISPLAY_SIZE, borderRadius:"50%", overflow:"hidden",
           border:"2px solid rgba(136,255,0,0.4)", boxShadow:"0 0 16px rgba(136,255,0,0.15)",
           position:"relative", cursor:"grab", userSelect:"none", touchAction:"none",
           background:"var(--surface2)",
@@ -6571,15 +6574,15 @@ function AvatarUpload({ user, onUpdate }) {
             style={{
               position:"absolute",
               width: iw || "auto", height: ih || "auto",
-              left: (CROP_SIZE - iw) / 2 + offset.x,
-              top:  (CROP_SIZE - ih) / 2 + offset.y,
+              left: (DISPLAY_SIZE - iw) / 2 + offset.x,
+              top:  (DISPLAY_SIZE - ih) / 2 + offset.y,
               maxWidth:"none", pointerEvents:"none", userSelect:"none",
               display: imgSize.w ? "block" : "none",
             }}
           />
           {!imgSize.w && <div style={{color:"var(--muted)",fontSize:12,textAlign:"center",paddingTop:100}}>Loading…</div>}
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginTop:12,maxWidth:CROP_SIZE}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginTop:12,maxWidth:DISPLAY_SIZE}}>
           <span style={{fontSize:11,color:"var(--muted)"}}>−</span>
           <input type="range" min={minScale} max="3" step="0.01" value={scale}
             onChange={e => setScale(Number(e.target.value))}
