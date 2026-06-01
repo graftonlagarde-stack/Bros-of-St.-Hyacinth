@@ -139,6 +139,9 @@ async function purgeOrphanCloudinaryAssets() {
         }
       }
     }
+    // Also protect avatar public IDs
+    const { rows: avatarRows } = await db.query("SELECT avatar_public_id FROM users WHERE avatar_public_id IS NOT NULL");
+    for (const row of avatarRows) knownIds.add(row.avatar_public_id);
     let orphanCount = 0;
     // Cloudinary requires separate calls per resource_type — "auto" is not valid for listing
     for (const resourceType of ["image", "video", "raw"]) {
