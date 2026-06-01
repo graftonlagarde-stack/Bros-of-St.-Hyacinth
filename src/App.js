@@ -7468,6 +7468,9 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
     const setup = async () => {
       try {
         if (!DailyIframe) { setError("Daily.co SDK not loaded."); return; }
+        // Guard against StrictMode double-invocation and re-entrant setup
+        if (window.__dailySetupInProgress) return;
+        window.__dailySetupInProgress = true;
         // Use module-level singleton to prevent duplicate instances
         if (window.__dailyCallInstance) {
           try { await window.__dailyCallInstance.destroy(); } catch(e) {}
@@ -7621,7 +7624,9 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         });
         call.on("error",                e => { if (!destroyed) setError(e.errorMsg || "Call error"); });
         await call.join({ url: roomUrl, token, startVideoOff: true, startAudioOff: false });
+        window.__dailySetupInProgress = false;
       } catch(err) {
+        window.__dailySetupInProgress = false;
         if (!destroyed) setError(err.message || "Could not connect.");
         console.error("Daily setup:", err);
       }
@@ -7629,6 +7634,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
     setup();
     return () => {
       destroyed = true;
+      window.__dailySetupInProgress = false;
       if (callRef.current) {
         callRef.current.destroy();
         callRef.current = null;
