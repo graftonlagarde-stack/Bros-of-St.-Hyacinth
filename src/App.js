@@ -7253,6 +7253,16 @@ function MeetPage({ currentUser, onCallActive }) {
   const [meetings,    setMeetings]    = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [view,        setView]        = useState("list"); // "list" | "create" | "call"
+  const [opacity,     setOpacity]     = useState(1);
+
+  const switchView = useCallback((next, extraWork) => {
+    setOpacity(0);
+    setTimeout(() => {
+      extraWork?.();
+      setView(next);
+      setOpacity(1);
+    }, 350);
+  }, []);
   const [activeMeeting, setActiveMeeting] = useState(null);
   const [callToken,   setCallToken]   = useState(null);
   const [callRoom,    setCallRoom]    = useState(null);
@@ -7298,7 +7308,8 @@ function MeetPage({ currentUser, onCallActive }) {
         return;
       }
       setCallToken(data.token); setCallRoom(data.roomName); setCallRoomUrl(data.roomUrl);
-      setActiveMeeting(meeting); setView("call"); onCallActive?.(true);
+      setActiveMeeting(meeting);
+      switchView("call", () => onCallActive?.(true));
     } catch (err) {
       setJoinError(err.message || "Could not join call. Please try again.");
       console.warn("joinMeeting:", err);
@@ -7334,9 +7345,32 @@ function MeetPage({ currentUser, onCallActive }) {
   const canJoin = (m) => true; // joinable any time once scheduled
   const fmtTime = (ts) => new Date(ts).toLocaleString("en-US", { weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });
 
-  const callContainerRef = useRef(null);
+  if (view === "call" && activeMeeting && callToken && callRoom)
+    return (
+      <div style={{opacity,transition:"opacity 0.35s ease",height:"100%",position:"relative"}}>
+        <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} allUsers={allUsers} onLeave={async () => {
+          onCallActive?.(false);
+          const mid = activeMeeting.id;
+          switchView("list", () => {
+            setCallToken(null); setCallRoom(null); setCallRoomUrl(null);
+            setActiveMeeting(null);
+          });
+          try {
+            const result = await api.leaveMeeting(mid);
+            if (result?.deleted) {
+              setMeetings(prev => prev.filter(m => m.id !== mid));
+            } else {
+              api.getMeetings().then(setMeetings).catch(() => {});
+            }
+          } catch(e) {
+            api.getMeetings().then(setMeetings).catch(() => {});
+          }
+        }} />
+      </div>
+    );
 
   if (view === "create") return (
+    <div style={{opacity,transition:"opacity 0.35s ease"}}>
     <div className="page">
       <div className="page-title">SCHEDULE <span className="accentText">CALL</span></div>
       <div className="card">
@@ -7368,87 +7402,63 @@ function MeetPage({ currentUser, onCallActive }) {
         </div>
       </div>
     </div>
+    </div>
   );
 
-  const inCall = view === "call" && activeMeeting && callToken && callRoom;
-  const onLeave = async () => {
-    onCallActive?.(false);
-    const mid = activeMeeting.id;
-    setView("list"); setCallToken(null); setCallRoom(null); setCallRoomUrl(null);
-    setActiveMeeting(null);
-    try {
-      const result = await api.leaveMeeting(mid);
-      if (result?.deleted) {
-        setMeetings(prev => prev.filter(m => m.id !== mid));
-      } else {
-        api.getMeetings().then(setMeetings).catch(() => {});
-      }
-    } catch(e) {
-      api.getMeetings().then(setMeetings).catch(() => {});
-    }
-  };
-
   return (
-    <div style={{position:"relative",width:"100%",height:"100%",overflow:"hidden"}}>
-      {/* Meet list — fades out when call is active */}
-      <div style={{position:"absolute",inset:0,opacity:inCall?0:1,transition:"opacity 0.4s ease",pointerEvents:inCall?"none":"auto",overflowY:"auto"}}>
-        <div className="page">
-          <div className="page-title">MEET</div>
-          <div className="page-sub">&ldquo;Where two or three are gathered in my name, there am I among them.&rdquo; &mdash; Matthew 18:20</div>
-          <button className="btn btn-primary" onClick={() => setView("create")} style={{marginBottom:20,width:"100%",fontSize:13,padding:"10px 0"}}>+ Schedule a Call</button>
-          {joinError && <div style={{color:"rgba(255,68,85,0.8)",fontSize:13,marginBottom:12,padding:"8px 12px",border:"1px solid rgba(255,68,85,0.2)",borderRadius:4}}>{joinError}</div>}
-          {loading && <div style={{color:"var(--muted)",textAlign:"center",padding:32,fontFamily:"'Orbitron',sans-serif",letterSpacing:2,fontSize:12}}>LOADING…</div>}
-          {!loading && meetings.length === 0 && <div style={{color:"var(--muted)",textAlign:"center",padding:32,fontSize:13}}>No upcoming calls scheduled.</div>}
-          {meetings.map(m => {
-            const isCreator = m.createdBy === currentUser.id;
-            const joinable  = canJoin(m) && m.myStatus !== "declined";
-            const started   = now >= m.scheduledAt;
-            return (
-              <div key={m.id} className="card" style={{marginBottom:12}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-                  <div>
-                    <div style={{fontWeight:700,fontSize:16,marginBottom:2}}>{m.title}</div>
-                    <div style={{fontSize:12,color:"var(--muted)"}}>{fmtTime(m.scheduledAt)}</div>
-                    <div style={{fontSize:12,color:"var(--muted)",marginTop:2}}>{isCreator?"You scheduled this":`Scheduled by ${m.creatorName}`}</div>
-                  </div>
-                  {isCreator && <button onClick={() => cancelMeeting(m.id)} style={{background:"none",border:"none",color:"rgba(255,68,85,0.6)",cursor:"pointer",fontSize:18,padding:"0 4px"}}>✕</button>}
-                </div>
-                {m.invitees?.length > 0 && (
-                  <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:10}}>
-                    {m.invitees.map(inv => (
-                      <div key={inv.userId} style={{padding:"2px 8px",borderRadius:999,fontSize:11,
-                        background:inv.status==="accepted"?"rgba(136,255,0,0.1)":inv.status==="declined"?"rgba(255,68,85,0.08)":"var(--surface2)",
-                        border:`1px solid ${inv.status==="accepted"?"rgba(136,255,0,0.3)":inv.status==="declined"?"rgba(255,68,85,0.2)":"var(--border)"}`,
-                        color:inv.status==="accepted"?"var(--accent)":inv.status==="declined"?"rgba(255,68,85,0.7)":"var(--muted)"}}>
-                        {inv.name.split(" ")[0]}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  {joinable && <button className="btn btn-primary" onClick={() => joinMeeting(m)} style={{fontSize:12,padding:"6px 16px"}}>{started?"Join Call":"Join Early"}</button>}
-                  {!isCreator && m.myStatus==="invited" && <>
-                    <button className="btn" onClick={() => rsvp(m.id,"accepted")} style={{fontSize:12,padding:"6px 14px",borderColor:"rgba(136,255,0,0.3)",color:"var(--accent)"}}>Accept</button>
-                    <button className="btn" onClick={() => rsvp(m.id,"declined")} style={{fontSize:12,padding:"6px 14px",color:"rgba(255,68,85,0.7)",borderColor:"rgba(255,68,85,0.2)"}}>Decline</button>
-                  </>}
-                  {m.myStatus==="accepted"&&!joinable&&<div style={{fontSize:12,color:"var(--accent)",padding:"6px 0"}}>✓ Accepted</div>}
-                  {m.myStatus==="declined"&&<div style={{fontSize:12,color:"rgba(255,68,85,0.6)",padding:"6px 0"}}>Declined</div>}
-                </div>
+    <div style={{opacity,transition:"opacity 0.35s ease"}}>
+    <div className="page">
+      <div className="page-title">MEET</div>
+      <div className="page-sub">&ldquo;Where two or three are gathered in my name, there am I among them.&rdquo; &mdash; Matthew 18:20</div>
+      <button className="btn btn-primary" onClick={() => setView("create")} style={{marginBottom:20,width:"100%",fontSize:13,padding:"10px 0"}}>+ Schedule a Call</button>
+      {joinError && <div style={{color:"rgba(255,68,85,0.8)",fontSize:13,marginBottom:12,padding:"8px 12px",border:"1px solid rgba(255,68,85,0.2)",borderRadius:4}}>{joinError}</div>}
+      {loading && <div style={{color:"var(--muted)",textAlign:"center",padding:32,fontFamily:"'Orbitron',sans-serif",letterSpacing:2,fontSize:12}}>LOADING…</div>}
+      {!loading && meetings.length === 0 && <div style={{color:"var(--muted)",textAlign:"center",padding:32,fontSize:13}}>No upcoming calls scheduled.</div>}
+      {meetings.map(m => {
+        const isCreator = m.createdBy === currentUser.id;
+        const joinable  = canJoin(m) && m.myStatus !== "declined";
+        const started   = now >= m.scheduledAt;
+        return (
+          <div key={m.id} className="card" style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:16,marginBottom:2}}>{m.title}</div>
+                <div style={{fontSize:12,color:"var(--muted)"}}>{fmtTime(m.scheduledAt)}</div>
+                <div style={{fontSize:12,color:"var(--muted)",marginTop:2}}>{isCreator?"You scheduled this":`Scheduled by ${m.creatorName}`}</div>
               </div>
-            );
-          })}
-        </div>
-      </div>
-      {/* Call screen — fades in when call is active, mounted only when needed */}
-      <div ref={callContainerRef} style={{position:"absolute",inset:0,opacity:inCall?1:0,transition:"opacity 0.4s ease",pointerEvents:inCall?"auto":"none"}}>
-        {inCall && <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} allUsers={allUsers} onLeave={onLeave} containerRef={callContainerRef} />}
-      </div>
+              {isCreator && <button onClick={() => cancelMeeting(m.id)} style={{background:"none",border:"none",color:"rgba(255,68,85,0.6)",cursor:"pointer",fontSize:18,padding:"0 4px"}}>✕</button>}
+            </div>
+            {m.invitees?.length > 0 && (
+              <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:10}}>
+                {m.invitees.map(inv => (
+                  <div key={inv.userId} style={{padding:"2px 8px",borderRadius:999,fontSize:11,
+                    background:inv.status==="accepted"?"rgba(136,255,0,0.1)":inv.status==="declined"?"rgba(255,68,85,0.08)":"var(--surface2)",
+                    border:`1px solid ${inv.status==="accepted"?"rgba(136,255,0,0.3)":inv.status==="declined"?"rgba(255,68,85,0.2)":"var(--border)"}`,
+                    color:inv.status==="accepted"?"var(--accent)":inv.status==="declined"?"rgba(255,68,85,0.7)":"var(--muted)"}}>
+                    {inv.name.split(" ")[0]}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {joinable && <button className="btn btn-primary" onClick={() => joinMeeting(m)} style={{fontSize:12,padding:"6px 16px"}}>{started?"Join Call":"Join Early"}</button>}
+              {!isCreator && m.myStatus==="invited" && <>
+                <button className="btn" onClick={() => rsvp(m.id,"accepted")} style={{fontSize:12,padding:"6px 14px",borderColor:"rgba(136,255,0,0.3)",color:"var(--accent)"}}>Accept</button>
+                <button className="btn" onClick={() => rsvp(m.id,"declined")} style={{fontSize:12,padding:"6px 14px",color:"rgba(255,68,85,0.7)",borderColor:"rgba(255,68,85,0.2)"}}>Decline</button>
+              </>}
+              {m.myStatus==="accepted"&&!joinable&&<div style={{fontSize:12,color:"var(--accent)",padding:"6px 0"}}>✓ Accepted</div>}
+              {m.myStatus==="declined"&&<div style={{fontSize:12,color:"rgba(255,68,85,0.6)",padding:"6px 0"}}>Declined</div>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
     </div>
   );
 }
 
 // ─── DAILY CALL SCREEN ─────────────────────────────────────────────────────────
-function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, currentUser, onLeave, allUsers, containerRef }) {
+function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, currentUser, onLeave, allUsers }) {
   const [participants,  setParticipants]  = useState({});
   const [localStream,   setLocalStream]   = useState(null);
   const [micOn,         setMicOn]         = useState(true);
@@ -7465,17 +7475,20 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
 
   useEffect(() => {
     let destroyed = false;
+    let didJoin = false;
     const setup = async () => {
       try {
         if (!DailyIframe) { setError("Daily.co SDK not loaded."); return; }
-        // Guard against StrictMode double-invocation and re-entrant setup
-        if (window.__dailySetupInProgress) return;
-        window.__dailySetupInProgress = true;
-        // Use module-level singleton to prevent duplicate instances
+        // If an instance exists and we already joined it, reuse it
         if (window.__dailyCallInstance) {
-          try { await window.__dailyCallInstance.destroy(); } catch(e) {}
+          const state = window.__dailyCallInstance.meetingState();
+          if (state === 'joined-meeting' || state === 'joining-meeting') {
+            callRef.current = window.__dailyCallInstance;
+            didJoin = true;
+            return; // already in call, don't create a new one
+          }
+          try { window.__dailyCallInstance.destroy(); } catch(e) {}
           window.__dailyCallInstance = null;
-          await new Promise(r => setTimeout(r, 100)); // wait for Daily to fully teardown
         }
         const call = DailyIframe.createCallObject({
           audioSource: true,
@@ -7624,9 +7637,8 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         });
         call.on("error",                e => { if (!destroyed) setError(e.errorMsg || "Call error"); });
         await call.join({ url: roomUrl, token, startVideoOff: true, startAudioOff: false });
-        window.__dailySetupInProgress = false;
+        didJoin = true;
       } catch(err) {
-        window.__dailySetupInProgress = false;
         if (!destroyed) setError(err.message || "Could not connect.");
         console.error("Daily setup:", err);
       }
@@ -7634,8 +7646,9 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
     setup();
     return () => {
       destroyed = true;
-      window.__dailySetupInProgress = false;
-      if (callRef.current) {
+      // Only destroy if we actually joined — prevents StrictMode double-mount
+      // from destroying an instance that's still initializing
+      if (didJoin && callRef.current) {
         callRef.current.destroy();
         callRef.current = null;
         window.__dailyCallInstance = null;
@@ -7724,9 +7737,8 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
     if (n === 0) return { positions: [], D: 180 };
 
     const isMob = window.innerWidth <= 768;
-    const el = containerRef?.current;
-    const availW = (el ? el.clientWidth : window.innerWidth) - 28;
-    const availH = (el ? el.clientHeight : window.innerHeight) - 160 - 28;
+    const availW = window.innerWidth - 28;
+    const availH = window.innerHeight - 160 - 28;
 
     const sq2 = Math.sqrt(2);
     const GAP_FRAC = 0.15;
@@ -7802,7 +7814,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
     const groupH = Math.max(...pxBs) - Math.min(...pxBs) + D;
 
     return { positions, D, groupW, groupH };
-  }, [remotes.length, containerRef?.current?.clientWidth, containerRef?.current?.clientHeight]);
+  }, [remotes.length, window.innerWidth, window.innerHeight]);
 
   if (error) return (
     <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
@@ -8540,7 +8552,7 @@ export default function App() {
         <RuleBackdrop visible={page === "rule"} isMobile={isMobile} />
         <WorkoutFigureBackdrop             visible={page === "workout"}   isMobile={isMobile} />
       </div>
-      {currentTrack && !inCall && <PlayerBar track={currentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} tracks={PERMANENT_TRACKS} setTrack={setCurrentTrack} navExpanded={navExpanded} />}
+      {currentTrack && <PlayerBar track={currentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} tracks={PERMANENT_TRACKS} setTrack={setCurrentTrack} navExpanded={navExpanded} />}
     </>
   );
 }
