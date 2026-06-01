@@ -3163,6 +3163,9 @@ const css = `
     .main.nav-closed { transform: translateX(0)    !important; }
     .main.in-call { overflow: hidden !important; touch-action: none; }
 
+    /* Prevent iOS Safari zoom on input focus — requires font-size >= 16px */
+    input, textarea, select { font-size: 16px !important; }
+
     /* ── Page: compact padding, smaller title ── */
     .page { padding: 20px 14px !important; }
     .page-title { font-size: 20px !important; margin-bottom: 4px !important; }
