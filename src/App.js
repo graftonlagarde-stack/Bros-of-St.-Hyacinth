@@ -3161,7 +3161,7 @@ const css = `
     }
     .main.nav-open  { transform: translateX(100vw) !important; }
     .main.nav-closed { transform: translateX(0)    !important; }
-    .main.in-call { transform: none !important; transition: none !important; }
+    .main.in-call { transform: none !important; transition: none !important; overflow: hidden !important; }
 
     /* ── Page: compact padding, smaller title ── */
     .page { padding: 20px 14px !important; }
@@ -7352,9 +7352,10 @@ function MeetPage({ currentUser, onCallActive }) {
     return (
       <div style={{
         opacity, transition:"opacity 0.35s ease",
-        position:"absolute", top:0, left:0,
-        width:"100%", height:"100%",
+        position:"fixed", inset:0,
+        height:"100dvh",
         overflow:"hidden",
+        zIndex:10000,
       }}>
         <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} allUsers={allUsers} onLeave={async () => {
           onCallActive?.(false);
@@ -7745,9 +7746,10 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
     if (n === 0) return { positions: [], D: 180 };
 
     const isMob = window.innerWidth <= 768;
-    const vh = document.documentElement.clientHeight || window.innerHeight;
+    const vh = (window.visualViewport?.height || window.innerHeight);
     const availW = window.innerWidth - 28;
-    const availH = vh - 160 - 28 - (isMob ? 60 : 0);
+    // header ~45px + paddingBottom on grid ~96px + some breathing room
+    const availH = vh - 45 - 96 - 20;
 
     const sq2 = Math.sqrt(2);
     const GAP_FRAC = 0.15;
