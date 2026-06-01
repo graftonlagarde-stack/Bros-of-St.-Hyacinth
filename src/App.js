@@ -7312,7 +7312,7 @@ function MeetPage({ currentUser, onCallActive }) {
       setActiveMeeting(meeting);
       onCallActive?.(true);
       const main = document.querySelector('.main');
-      if (main) { main.scrollTop = 0; }
+      if (main) { main.scrollTop = 0; main.style.overflow = 'hidden'; }
       switchView("call");
     } catch (err) {
       setJoinError(err.message || "Could not join call. Please try again.");
@@ -7359,6 +7359,8 @@ function MeetPage({ currentUser, onCallActive }) {
       }}>
         <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} allUsers={allUsers} onLeave={async () => {
           onCallActive?.(false);
+          const main = document.querySelector('.main');
+          if (main) main.style.overflow = '';
           const mid = activeMeeting.id;
           switchView("list", () => {
             setCallToken(null); setCallRoom(null); setCallRoomUrl(null);
