@@ -7310,7 +7310,8 @@ function MeetPage({ currentUser, onCallActive }) {
       }
       setCallToken(data.token); setCallRoom(data.roomName); setCallRoomUrl(data.roomUrl);
       setActiveMeeting(meeting);
-      switchView("call", () => onCallActive?.(true));
+      onCallActive?.(true); // set immediately so .main gets overflow:hidden before fade
+      switchView("call");
     } catch (err) {
       setJoinError(err.message || "Could not join call. Please try again.");
       console.warn("joinMeeting:", err);
