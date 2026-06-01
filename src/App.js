@@ -7523,6 +7523,28 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           setJoined(true); update();
           const p2=call.participants();
           if(p2.local){setMicOn(!p2.local.tracks?.audio?.off);setCamOn(!p2.local.tracks?.video?.off);}
+          // Audio-first: cap video bitrate so audio is never starved
+          try { call.setBandwidth({ kbs: 150, trackConstraints: { frameRate: 15 } }); } catch(e) {}
+          // Set RTCRtpSender priority: audio=high, video=low
+          try {
+            const pc = call.peerConnections?.();
+            const connections = pc ? Object.values(pc) : [];
+            for (const conn of connections) {
+              if (!conn?.getSenders) continue;
+              for (const sender of conn.getSenders()) {
+                if (!sender.track) continue;
+                const params = sender.getParameters();
+                if (!params.encodings?.length) continue;
+                const isAudio = sender.track.kind === 'audio';
+                params.encodings = params.encodings.map(enc => ({
+                  ...enc,
+                  priority: isAudio ? 'high' : 'low',
+                  networkPriority: isAudio ? 'high' : 'low',
+                }));
+                sender.setParameters(params).catch(() => {});
+              }
+            }
+          } catch(e) {}
         });
         call.on("participant-joined",   update);
         call.on("participant-left",     update);
