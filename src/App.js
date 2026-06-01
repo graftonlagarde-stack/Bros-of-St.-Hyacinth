@@ -7312,7 +7312,9 @@ function MeetPage({ currentUser, onCallActive }) {
       setActiveMeeting(meeting);
       onCallActive?.(true);
       const main = document.querySelector('.main');
-      if (main) { main.scrollTop = 0; main.style.overflow = 'hidden'; }
+      if (main) { main.scrollTop = 0; main.style.setProperty('overflow', 'hidden', 'important'); }
+      const main = document.querySelector('.main');
+      if (main) { main.scrollTop = 0; }
       switchView("call");
     } catch (err) {
       setJoinError(err.message || "Could not join call. Please try again.");
@@ -7359,8 +7361,7 @@ function MeetPage({ currentUser, onCallActive }) {
       }}>
         <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} allUsers={allUsers} onLeave={async () => {
           onCallActive?.(false);
-          const main = document.querySelector('.main');
-          if (main) main.style.overflow = '';
+          document.querySelector('.main')?.style.removeProperty('overflow');
           const mid = activeMeeting.id;
           switchView("list", () => {
             setCallToken(null); setCallRoom(null); setCallRoomUrl(null);
@@ -8554,7 +8555,14 @@ export default function App() {
           {page === "workout" && <div><WorkoutPage username={username} /></div>}
           {page === "topcharts" && <div><TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
           {page === "boards" && <div><BoardPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
-          {page === "meet" && <MeetPage currentUser={user} onCallActive={setInCall} />}
+          <div style={{
+            visibility: page === "meet" ? "visible" : "hidden",
+            pointerEvents: page === "meet" ? "auto" : "none",
+            position: page === "meet" ? "static" : "absolute",
+            width: "100%", height: "100%",
+          }}>
+            {(page === "meet" || inCall) && <MeetPage currentUser={user} onCallActive={setInCall} />}
+          </div>
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
           {page === "rule" && <RulePage user={user} />}
           {page === "profile" && <ProfilePage user={user} onDeleted={() => { api.clearToken(); setUser(null); }} onLogout={() => { handleLogout(); setPage("workout"); }} onAvatarUpdate={(url) => setUser(u => ({ ...u, avatarUrl: url }))} />}
