@@ -7347,7 +7347,12 @@ function MeetPage({ currentUser, onCallActive }) {
 
   if (view === "call" && activeMeeting && callToken && callRoom)
     return (
-      <div style={{opacity,transition:"opacity 0.35s ease",height:"100%",position:"relative"}}>
+      <div style={{
+        opacity, transition:"opacity 0.35s ease",
+        position: isMobile ? "fixed" : "absolute",
+        inset: 0,
+        zIndex: isMobile ? 200 : "auto",
+      }}>
         <DailyCallScreen roomName={callRoom} roomUrl={callRoomUrl} token={callToken} meeting={activeMeeting} meetingId={activeMeeting.id} currentUser={currentUser} allUsers={allUsers} onLeave={async () => {
           onCallActive?.(false);
           const mid = activeMeeting.id;
