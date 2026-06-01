@@ -8367,6 +8367,7 @@ export default function App() {
     setHasMobileChapter(false); // reset until new page reports its chapter status
     if (!navExpanded) setNavExpanded(false);
     if (id === "boards") clearBadge(["global-chat", "reaction"]);
+    if (id === "meet")   clearBadge(["meeting"]);
   };
 
   // Clear notification badge for specific types when user views the relevant page
