@@ -7313,8 +7313,6 @@ function MeetPage({ currentUser, onCallActive }) {
       onCallActive?.(true);
       const main = document.querySelector('.main');
       if (main) { main.scrollTop = 0; main.style.setProperty('overflow', 'hidden', 'important'); }
-      const main = document.querySelector('.main');
-      if (main) { main.scrollTop = 0; }
       switchView("call");
     } catch (err) {
       setJoinError(err.message || "Could not join call. Please try again.");
