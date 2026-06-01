@@ -7333,40 +7333,6 @@ function MeetPage({ currentUser, onCallActive }) {
   const canJoin = (m) => true; // joinable any time once scheduled
   const fmtTime = (ts) => new Date(ts).toLocaleString("en-US", { weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });
 
-  if (view === "create") return (
-    <div className="page">
-      <div className="page-title">SCHEDULE <span className="accentText">CALL</span></div>
-      <div className="card">
-        <div className="form-label" style={{marginBottom:6}}>Title</div>
-        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Weekly Check-In" style={{width:"100%",boxSizing:"border-box",marginBottom:16}} />
-        <div className="form-label" style={{marginBottom:6}}>Date & Time</div>
-        <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} style={{width:"100%",boxSizing:"border-box",marginBottom:16,background:"var(--surface2)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:4,padding:"8px 10px",fontSize:14}} />
-        <div className="form-label" style={{marginBottom:8}}>Invite</div>
-        <div className="tab-row" style={{marginBottom:14}}>
-          {[["all","All Brothers"],["chapter","My Chapter"],["specific","Specific"]].map(([v,l]) => (
-            <div key={v} className={`tab ${inviteMode===v?"active":""}`} onClick={() => { setInviteMode(v); setSelectedIds(new Set()); }}>{l}</div>
-          ))}
-        </div>
-        {inviteMode === "specific" && (
-          <div style={{maxHeight:200,overflowY:"auto",border:"1px solid var(--border)",borderRadius:6,padding:8,marginBottom:16}}>
-            {allUsers.filter(u => u.id !== currentUser.id).map(u => (
-              <div key={u.id} onClick={() => setSelectedIds(prev => { const n = new Set(prev); n.has(u.id) ? n.delete(u.id) : n.add(u.id); return n; })}
-                style={{display:"flex",alignItems:"center",gap:10,padding:"8px 4px",cursor:"pointer",borderBottom:"1px solid rgba(136,255,0,0.05)"}}>
-                <div style={{width:18,height:18,borderRadius:3,border:"1px solid var(--border)",background:selectedIds.has(u.id)?"var(--accent)":"transparent",flexShrink:0}} />
-                <div className="avatar sm" style={{width:28,height:28,fontSize:9}}>{initials(u.displayName)}</div>
-                <span style={{fontSize:14}}>{u.displayName}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        <div style={{display:"flex",gap:8}}>
-          <button className="btn btn-primary" onClick={createMeeting} disabled={creating||!title.trim()||!scheduledAt} style={{flex:1}}>{creating?"Scheduling…":"Schedule Call"}</button>
-          <button className="btn" onClick={() => setView("list")} style={{padding:"0 16px"}}>Cancel</button>
-        </div>
-      </div>
-    </div>
-  );
-
   const callContainerRef = useRef(null);
 
   const inCall = view === "call" && activeMeeting && callToken && callRoom;
@@ -7389,9 +7355,41 @@ function MeetPage({ currentUser, onCallActive }) {
 
   return (
     <div style={{position:"relative",flex:1,overflow:"hidden"}}>
-      {/* Meet list — fades out when call is active */}
+      {/* Meet list / create — fades out when call is active */}
       <div style={{position:"absolute",inset:0,opacity:inCall?0:1,transition:"opacity 0.4s ease",pointerEvents:inCall?"none":"auto",overflowY:"auto"}}>
-        <div className="page">
+        {view === "create" ? (
+          <div className="page">
+            <div className="page-title">SCHEDULE <span className="accentText">CALL</span></div>
+            <div className="card">
+              <div className="form-label" style={{marginBottom:6}}>Title</div>
+              <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Weekly Check-In" style={{width:"100%",boxSizing:"border-box",marginBottom:16}} />
+              <div className="form-label" style={{marginBottom:6}}>Date & Time</div>
+              <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} style={{width:"100%",boxSizing:"border-box",marginBottom:16,background:"var(--surface2)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:4,padding:"8px 10px",fontSize:14}} />
+              <div className="form-label" style={{marginBottom:8}}>Invite</div>
+              <div className="tab-row" style={{marginBottom:14}}>
+                {[["all","All Brothers"],["chapter","My Chapter"],["specific","Specific"]].map(([v,l]) => (
+                  <div key={v} className={`tab ${inviteMode===v?"active":""}`} onClick={() => { setInviteMode(v); setSelectedIds(new Set()); }}>{l}</div>
+                ))}
+              </div>
+              {inviteMode === "specific" && (
+                <div style={{maxHeight:200,overflowY:"auto",border:"1px solid var(--border)",borderRadius:6,padding:8,marginBottom:16}}>
+                  {allUsers.filter(u => u.id !== currentUser.id).map(u => (
+                    <div key={u.id} onClick={() => setSelectedIds(prev => { const n = new Set(prev); n.has(u.id) ? n.delete(u.id) : n.add(u.id); return n; })}
+                      style={{display:"flex",alignItems:"center",gap:10,padding:"8px 4px",cursor:"pointer",borderBottom:"1px solid rgba(136,255,0,0.05)"}}>
+                      <div style={{width:18,height:18,borderRadius:3,border:"1px solid var(--border)",background:selectedIds.has(u.id)?"var(--accent)":"transparent",flexShrink:0}} />
+                      <div className="avatar sm" style={{width:28,height:28,fontSize:9}}>{initials(u.displayName)}</div>
+                      <span style={{fontSize:14}}>{u.displayName}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{display:"flex",gap:8}}>
+                <button className="btn btn-primary" onClick={createMeeting} disabled={creating||!title.trim()||!scheduledAt} style={{flex:1}}>{creating?"Scheduling…":"Schedule Call"}</button>
+                <button className="btn" onClick={() => setView("list")} style={{padding:"0 16px"}}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        ) : (
           <div className="page-title">MEET</div>
           <div className="page-sub">&ldquo;Where two or three are gathered in my name, there am I among them.&rdquo; &mdash; Matthew 18:20</div>
           <button className="btn btn-primary" onClick={() => setView("create")} style={{marginBottom:20,width:"100%",fontSize:13,padding:"10px 0"}}>+ Schedule a Call</button>
@@ -7437,6 +7435,7 @@ function MeetPage({ currentUser, onCallActive }) {
             );
           })}
         </div>
+        )}
       </div>
       {/* Call screen — fades in when call is active, mounted only when needed */}
       <div ref={callContainerRef} style={{position:"absolute",inset:0,opacity:inCall?1:0,transition:"opacity 0.4s ease",pointerEvents:inCall?"auto":"none"}}>
