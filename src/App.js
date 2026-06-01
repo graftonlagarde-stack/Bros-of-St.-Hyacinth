@@ -7747,6 +7747,16 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
   };
   const leave = async () => { if (callRef.current) await callRef.current.leave(); else onLeave(); };
 
+  const [facingMode, setFacingMode] = useState("user"); // "user" | "environment"
+  const switchCamera = async () => {
+    if (!callRef.current || !camOn) return;
+    const next = facingMode === "user" ? "environment" : "user";
+    try {
+      await callRef.current.cycleCamera();
+      setFacingMode(next);
+    } catch(e) {}
+  };
+
   const remotes = Object.values(participants)
     .filter(p => !p.local)
     .filter((p, i, arr) => arr.findIndex(x => x.session_id === p.session_id) === i);
@@ -7894,10 +7904,37 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
         {SPHERE_OVERLAY}
       </div>
       {/* Controls */}
-      <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"12px 24px 20px",background:"linear-gradient(to top,rgba(0,8,4,0.95),transparent)",display:"flex",alignItems:"center",justifyContent:"center",gap:16}}>
-        <CallButton active={micOn} onClick={toggleMic} label={micOn?"Mute":"Unmute"} icon={micOn?"🎙":"🔇"} />
-        <CallButton active={camOn} onClick={toggleCam} label={camOn?"Cam Off":"Cam On"} icon="📷" />
-        <CallButton danger onClick={leave} label="Leave" icon="✕" />
+      <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"12px 24px 20px",display:"flex",alignItems:"center",justifyContent:"center",gap:16}}>
+        <CallButton active={micOn} onClick={toggleMic} label={micOn?"Mute":"Unmute"} icon={micOn ? (
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="9" y="2" width="6" height="12" rx="3"/>
+            <path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8" y1="21" x2="16" y2="21"/>
+          </svg>
+        ) : (
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="2" y1="2" x2="22" y2="22"/>
+            <path d="M18.89 13.23A7 7 0 0 0 19 12"/><path d="M5 10a7 7 0 0 0 11.06 5.78"/>
+            <path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/>
+            <line x1="12" y1="17" x2="12" y2="21"/><line x1="8" y1="21" x2="16" y2="21"/>
+          </svg>
+        )} />
+        <CallButton active={camOn} onClick={toggleCam} label={camOn?"Cam Off":"Cam On"} icon={
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+            {!camOn && <line x1="2" y1="2" x2="22" y2="22"/>}
+          </svg>
+        } />
+        <CallButton onClick={switchCamera} label="Flip" icon={
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 7h-9"/><path d="M14 17H5"/><polyline points="17 4 20 7 17 10"/><polyline points="7 14 4 17 7 20"/>
+          </svg>
+        } active={false} />
+        <CallButton danger onClick={leave} label="Leave" icon={
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.42 19.42 0 0 1 4.43 9.6a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 3.34 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.4 9.9"/>
+            <line x1="18" y1="6" x2="6" y2="18"/>
+          </svg>
+        } />
       </div>
     </div>
   );
@@ -7910,8 +7947,8 @@ function CallButton({ active, danger, onClick, label, icon }) {
       border:`1px solid ${danger?"rgba(255,68,85,0.4)":active?"rgba(136,255,0,0.3)":"rgba(255,255,255,0.1)"}`,
       borderRadius:12,padding:"10px 18px",cursor:"pointer",minWidth:64,
       color:danger?"rgba(255,68,85,0.9)":active?"var(--accent)":"var(--muted)",
-      fontSize:20,transition:"all 0.15s"}}>
-      <span>{icon}</span>
+      transition:"all 0.15s"}}>
+      {icon}
       <span style={{fontSize:9,fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>{label.toUpperCase()}</span>
     </button>
   );
