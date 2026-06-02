@@ -7316,6 +7316,7 @@ function MeetPage({ currentUser, onCallActive }) {
   const [myMembership,setMyMembership]= useState(null);
   const [creating,    setCreating]    = useState(false);
   const [search,      setSearch]      = useState("");
+  const [confirmDeclineId, setConfirmDeclineId] = useState(null);
 
   useEffect(() => {
     api.getMeetings().then(setMeetings).catch(() => {}).finally(() => setLoading(false));
@@ -7489,17 +7490,19 @@ function MeetPage({ currentUser, onCallActive }) {
       {joinError && <div style={{color:"rgba(255,68,85,0.8)",fontSize:13,marginBottom:12,padding:"8px 12px",border:"1px solid rgba(255,68,85,0.2)",borderRadius:4}}>{joinError}</div>}
       {loading && <div style={{color:"var(--muted)",textAlign:"center",padding:32,fontFamily:"'Orbitron',sans-serif",letterSpacing:2,fontSize:12}}>LOADING…</div>}
       {!loading && meetings.length === 0 && <div style={{color:"var(--muted)",textAlign:"center",padding:32,fontSize:13}}>No upcoming calls scheduled.</div>}
-      {meetings.map(m => {
+      {meetings.filter(m => m.myStatus !== "declined" || m.createdBy === currentUser.id).map(m => {
         const isCreator = m.createdBy === currentUser.id;
-        const joinable  = canJoin(m) && m.myStatus !== "declined";
+        const accepted  = m.myStatus === "accepted" || isCreator;
+        const joinable  = canJoin(m) && accepted;
         const started   = now >= m.scheduledAt;
+        const declining = confirmDeclineId === m.id;
         return (
           <div key={m.id} className="card" style={{marginBottom:12}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
               <div>
                 <div style={{fontWeight:700,fontSize:16,marginBottom:2}}>{m.title}</div>
                 <div style={{fontSize:12,color:"var(--muted)"}}>{fmtTime(m.scheduledAt)}</div>
-                <div style={{fontSize:12,color:"var(--muted)",marginTop:2}}>{isCreator?"You scheduled this":`Scheduled by ${m.creatorName}`}</div>
+                <div style={{fontSize:12,color:"var(--muted)",marginTop:2}}>{isCreator?`You scheduled this`:`Scheduled by ${m.creatorName}`}</div>
               </div>
               {isCreator && <button onClick={() => cancelMeeting(m.id)} style={{background:"none",border:"none",color:"rgba(255,68,85,0.6)",cursor:"pointer",fontSize:18,padding:"0 4px"}}>✕</button>}
             </div>
@@ -7515,14 +7518,18 @@ function MeetPage({ currentUser, onCallActive }) {
                 ))}
               </div>
             )}
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
               {joinable && <button className="btn btn-primary" onClick={() => joinMeeting(m)} style={{fontSize:12,padding:"6px 16px"}}>{started?"Join Call":"Join Early"}</button>}
-              {!isCreator && m.myStatus==="invited" && <>
+              {!isCreator && m.myStatus==="invited" && !declining && <>
                 <button className="btn" onClick={() => rsvp(m.id,"accepted")} style={{fontSize:12,padding:"6px 14px",borderColor:"rgba(136,255,0,0.3)",color:"var(--accent)"}}>Accept</button>
-                <button className="btn" onClick={() => rsvp(m.id,"declined")} style={{fontSize:12,padding:"6px 14px",color:"rgba(255,68,85,0.7)",borderColor:"rgba(255,68,85,0.2)"}}>Decline</button>
+                <button className="btn" onClick={() => setConfirmDeclineId(m.id)} style={{fontSize:12,padding:"6px 14px",color:"rgba(255,68,85,0.7)",borderColor:"rgba(255,68,85,0.2)"}}>Decline</button>
+              </>}
+              {declining && <>
+                <span style={{fontSize:12,color:"var(--muted)"}}>Are you sure?</span>
+                <button className="btn" onClick={async () => { await rsvp(m.id,"declined"); setConfirmDeclineId(null); setMeetings(prev => prev.filter(x => x.id !== m.id)); }} style={{fontSize:12,padding:"6px 14px",color:"rgba(255,68,85,0.7)",borderColor:"rgba(255,68,85,0.2)"}}>Yes, Decline</button>
+                <button className="btn" onClick={() => setConfirmDeclineId(null)} style={{fontSize:12,padding:"6px 14px"}}>Cancel</button>
               </>}
               {m.myStatus==="accepted"&&!joinable&&<div style={{fontSize:12,color:"var(--accent)",padding:"6px 0"}}>✓ Accepted</div>}
-              {m.myStatus==="declined"&&<div style={{fontSize:12,color:"rgba(255,68,85,0.6)",padding:"6px 0"}}>Declined</div>}
             </div>
           </div>
         );
