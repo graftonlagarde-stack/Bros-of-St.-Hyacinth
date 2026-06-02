@@ -3366,13 +3366,12 @@ const css = `
 const fmtTime = (s) => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
 
 // ─── FIGURE BACKDROP ──────────────────────────────────────────────────────────
-// Place the FBX file in /public/ of the CRA project.
 const BACKDROP_MODELS = {
-  boards:    "/Talking_On_A_Cell_Phone.fbx",
-  meet:      "/Talking.fbx",
+  boards:    "/Talking_On_A_Cell_Phone.glb",
+  meet:      "/Talking.glb",
   workout:   null,
-  audio:     "/Talking_On_A_Cell_Phone.fbx",
-  topcharts: "/Warming_Up.fbx",
+  audio:     "/Talking_On_A_Cell_Phone.glb",
+  topcharts: "/Warming_Up.glb",
 };
 
 function FigureBackdrop({ variant = "workout", visible = false, isMobile = false }) {
@@ -3398,8 +3397,8 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
 
     Promise.all([
       import("three"),
-      import("three/examples/jsm/loaders/FBXLoader"),
-    ]).then(([THREE, { FBXLoader }]) => {
+      import("three/examples/jsm/loaders/GLTFLoader"),
+    ]).then(([THREE, { GLTFLoader }]) => {
       if (cancelled) return;
       const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
       const h = isMobile ? window.innerHeight : (window.innerHeight - 70);
@@ -3415,7 +3414,7 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
       renderer.setPixelRatio(1);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
-      el.appendChild(renderer.domElement);
+      renderer.domElement.style.cssText="position:absolute;top:0;left:0;"; el.appendChild(renderer.domElement);
       rendererInst = renderer;
 
       const wireMat = new THREE.MeshBasicMaterial({
@@ -3427,7 +3426,9 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
       let mixer = null;
       const clock = new THREE.Clock();
 
-      new FBXLoader().load(fbxFile, (obj) => {
+      new GLTFLoader().load(fbxFile, (gltf) => {
+        const obj = gltf.scene;
+        obj.animations = gltf.animations;
         if (cancelled) return;
         obj.traverse(c => {
           if (c.isMesh) { c.material = wireMat; c.castShadow = c.receiveShadow = false; }
@@ -3852,9 +3853,9 @@ function RuleBackdrop({ visible = false, isMobile = false }) {
 
     Promise.all([
       import("three"),
-      import("three/examples/jsm/loaders/FBXLoader"),
+      import("three/examples/jsm/loaders/GLTFLoader"),
       import("three/examples/jsm/environments/RoomEnvironment"),
-    ]).then(([THREE, { FBXLoader }, { RoomEnvironment }]) => {
+    ]).then(([THREE, { GLTFLoader }, { RoomEnvironment }]) => {
       if (cancelled) return;
 
       const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
@@ -3869,7 +3870,7 @@ function RuleBackdrop({ visible = false, isMobile = false }) {
       renderer.setPixelRatio(1);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
-      el.appendChild(renderer.domElement);
+      renderer.domElement.style.cssText="position:absolute;top:0;left:0;"; el.appendChild(renderer.domElement);
       rendererInst = renderer;
 
       const pmrem  = new THREE.PMREMGenerator(renderer);
@@ -4057,7 +4058,8 @@ function RuleBackdrop({ visible = false, isMobile = false }) {
         side:             THREE.FrontSide,
       });
 
-      new FBXLoader().load("/Mary_Statue.fbx", (obj) => {
+      new GLTFLoader().load("/Mary_Statue.glb", (gltf) => {
+        const obj = gltf.scene;
         if (cancelled) return;
         obj.traverse(c => {
           if (c.isMesh) { c.material = glassMat; c.castShadow = c.receiveShadow = false; }
@@ -4174,7 +4176,7 @@ function RuleBackdrop({ visible = false, isMobile = false }) {
           renderer.render(scene, camera);
         };
         animate(0);
-      }, undefined, e => console.warn("RuleBackdrop FBX error:", e));
+      }, undefined, e => console.warn("RuleBackdrop GLB error:", e));
     }).catch(e => console.warn("RuleBackdrop import error:", e));
 
     return () => {
@@ -4232,8 +4234,8 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
 
     Promise.all([
       import("three"),
-      import("three/examples/jsm/loaders/FBXLoader"),
-    ]).then(([THREE, { FBXLoader }]) => {
+      import("three/examples/jsm/loaders/GLTFLoader"),
+    ]).then(([THREE, { GLTFLoader }]) => {
       if (cancelled) return;
       const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
       const h = isMobile ? window.innerHeight : (window.innerHeight - 70);
@@ -4317,7 +4319,9 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
       let mixer = null;
       const clock = new THREE.Clock();
 
-      new FBXLoader().load("/Praying.fbx", (obj) => {
+      new GLTFLoader().load("/Praying.glb", (gltf) => {
+        const obj = gltf.scene;
+        obj.animations = gltf.animations;
         if (cancelled) return;
         obj.traverse(c => {
           if (c.isMesh) { c.material = wireMat; c.castShadow = c.receiveShadow = false; }
@@ -4427,9 +4431,10 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
 
           const breathBones = [];
           obj.traverse(c => {
-            if (c.isBone && (c.name.toLowerCase().includes("spine") ||
-                             c.name.toLowerCase().includes("chest") ||
-                             c.name.toLowerCase().includes("neck"))) {
+            if (c.isBone && (c.name === "mixamorig:Spine" ||
+                             c.name === "mixamorig:Spine1" ||
+                             c.name === "mixamorig:Spine2" ||
+                             c.name === "mixamorig:Neck")) {
               breathBones.push({ bone: c, baseScale: c.scale.clone() });
             }
           });
@@ -4439,11 +4444,13 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           obj.traverse(c => {
             if (!c.isBone) return;
             const n = c.name.toLowerCase();
-            const isUpper = n.includes("spine") || n.includes("chest") ||
-                            n.includes("neck")  || n.includes("head")  ||
-                            n.includes("shoulder") || n.includes("arm") ||
-                            n.includes("forearm")  || n.includes("hand") ||
-                            n.includes("clavicle");
+            const isUpper = n === "mixamorig:spine"  || n === "mixamorig:spine1" ||
+                            n === "mixamorig:spine2" || n === "mixamorig:neck"   ||
+                            n === "mixamorig:head"   || n === "mixamorig:leftshoulder" ||
+                            n === "mixamorig:rightshoulder" || n === "mixamorig:leftarm" ||
+                            n === "mixamorig:rightarm" || n === "mixamorig:leftforearm" ||
+                            n === "mixamorig:rightforearm" || n === "mixamorig:lefthand" ||
+                            n === "mixamorig:righthand";
             if (isUpper) {
               // Each bone gets unique phase offsets for organic, non-repeating feel
               idleBones.push({
@@ -4695,8 +4702,8 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
 
     Promise.all([
       import("three"),
-      import("three/examples/jsm/loaders/FBXLoader"),
-    ]).then(([THREE, { FBXLoader }]) => {
+      import("three/examples/jsm/loaders/GLTFLoader"),
+    ]).then(([THREE, { GLTFLoader }]) => {
       if (cancelled) return;
       const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
       const h = isMobile ? window.innerHeight : window.innerHeight; // full height — prevents figure clipping at bottom
@@ -4710,7 +4717,7 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
       renderer.setPixelRatio(1);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
-      el.appendChild(renderer.domElement);
+      renderer.domElement.style.cssText="position:absolute;top:0;left:0;"; el.appendChild(renderer.domElement);
       rendererInst = renderer;
 
       const wireMat = new THREE.MeshBasicMaterial({
@@ -4744,10 +4751,12 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
 
       // Preload both FBX files simultaneously so loop is ready instantly
       Promise.all([
-        new Promise((res, rej) => new FBXLoader().load("/Idle_To_Push_Up.fbx", res, undefined, rej)),
-        new Promise((res, rej) => new FBXLoader().load("/Push_Up.fbx",         res, undefined, rej)),
-      ]).then(([introObj, loopObj]) => {
+        new Promise((res, rej) => new GLTFLoader().load("/Idle_To_Push_Up.glb", res, undefined, rej)),
+        new Promise((res, rej) => new GLTFLoader().load("/Push_Up.glb",         res, undefined, rej)),
+      ]).then(([introGltf, loopGltf]) => {
         if (cancelled) return;
+        const introObj = introGltf.scene; introObj.animations = introGltf.animations;
+        const loopObj  = loopGltf.scene;  loopObj.animations  = loopGltf.animations;
 
         const { savedScale, savedPos } = applyTransform(THREE, introObj);
         applyTransform(THREE, loopObj);
@@ -4926,10 +4935,10 @@ function RankCard({ username, exercise, myPr, communityPrs = [] }) {
 
   const leaderboard = useMemo(() => {
     const entries = [];
-    if (myPr != null && myPr > 0) entries.push({ name: username, value: myPr, isMe: true });
+    if (myPr != null && myPr > 0) entries.push({ name: username, value: myPr, isMe: true, avatarUrl: null });
     communityPrs.forEach(u => {
       const v = u.prs?.[exercise];
-      if (v != null && v > 0) entries.push({ name: u.name, value: v, isMe: false });
+      if (v != null && v > 0) entries.push({ name: u.name, value: v, isMe: false, avatarUrl: u.avatarUrl || null });
     });
     return entries.sort((a, b) => b.value - a.value);
   }, [username, exercise, myPr, communityPrs]);
@@ -5896,10 +5905,10 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
   const buildLeaderboard = (exercise, communityData, myPrMap) => {
     const entries = [];
     const myVal = myPrMap?.[exercise];
-    if (myVal != null && myVal > 0) entries.push({ name: username, weight: myVal, isMe: true });
+    if (myVal != null && myVal > 0) entries.push({ name: username, weight: myVal, isMe: true, avatarUrl: null });
     (communityData || []).forEach(u => {
       const v = u.prs?.[exercise];
-      if (v != null && v > 0) entries.push({ name: u.name, weight: v, isMe: false });
+      if (v != null && v > 0) entries.push({ name: u.name, weight: v, isMe: false, avatarUrl: u.avatarUrl || null });
     });
     return entries.sort((a, b) => b.weight - a.weight);
   };
@@ -6019,9 +6028,16 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
                     <div style={{fontSize:22,width:30,textAlign:"center"}}>
                       {i < 3 ? <span style={{fontFamily:"'Orbitron',sans-serif",fontWeight:900,fontSize:13,color:medalColors[i],textShadow:`0 0 8px ${medalColors[i]}99`,letterSpacing:1}}>{medalLabels[i]}</span> : <span style={{color:"var(--muted)",fontWeight:700,fontSize:13,fontFamily:"'Orbitron',sans-serif"}}>#{i+1}</span>}
                     </div>
-                    <div className="avatar sm" style={{background: entry.isMe ? "var(--accent)" : "var(--surface)"}}>
-                      {initials(entry.name)}
-                    </div>
+                    {entry.avatarUrl
+                      ? <div className="avatar-photo sm" style={{width:45,height:45,flexShrink:0}}>
+                          <img src={entry.avatarUrl} alt={entry.name} crossOrigin="anonymous" />
+                          <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"conic-gradient(from 198deg at 34% 24%, rgba(255,255,255,0) 0deg, rgba(255,255,255,0.7) 22deg, rgba(255,255,255,0) 44deg, rgba(255,255,255,0) 360deg)",WebkitMaskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",maskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",pointerEvents:"none",zIndex:3}} />
+                          <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 11% 8% at 31% 18%,rgba(255,255,255,1) 0%,transparent 100%)",pointerEvents:"none",zIndex:3}} />
+                        </div>
+                      : <div className="avatar sm" style={{background: entry.isMe ? "var(--accent)" : "var(--surface)"}}>
+                          {initials(entry.name)}
+                        </div>
+                    }
                     <div style={{flex:1}}>
                       <div style={{fontWeight:700,fontSize:14,color: entry.isMe ? "var(--accent)" : "var(--text)"}}>
                         {entry.name}{entry.isMe ? " (You)" : ""}

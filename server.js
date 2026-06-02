@@ -1150,7 +1150,7 @@ app.get("/api/community/prs", requireAuth, async (req, res) => {
       );
       const prMap = {};
       for (const pr of prs) prMap[pr.exercise] = Number(pr.value);
-      return { name: displayName(u), prs: prMap };
+      return { name: displayName(u), avatarUrl: u.avatar_url || null, prs: prMap };
     }));
     res.json(result);
   } catch (err) {
@@ -2102,7 +2102,7 @@ app.get("/api/chapters/:id/community-users", requireAuth, async (req, res) => {
       );
       const prMap = {};
       for (const pr of prs) prMap[pr.exercise] = Number(pr.value);
-      return { name: displayName(u), prs: prMap };
+      return { name: displayName(u), avatarUrl: u.avatar_url || null, prs: prMap };
     }));
     return res.json(result);
   } catch (err) {
