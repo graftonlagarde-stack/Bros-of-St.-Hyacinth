@@ -7882,7 +7882,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
   );
 
   const SPHERE_OVERLAY = <>
-    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(circle at 50% 50%,transparent 70%,rgba(0,0,0,0.15) 82%,rgba(0,0,0,0.55) 100%)",pointerEvents:"none"}} />
+    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(circle at 50% 50%,transparent 55%,rgba(0,0,0,0.3) 72%,rgba(0,0,0,0.7) 100%)",pointerEvents:"none"}} />
     <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 14% 10% at 34% 22%,rgba(255,255,255,1) 0%,transparent 100%),radial-gradient(ellipse 30% 22% at 33% 26%,rgba(220,240,255,0.42) 0%,transparent 70%),radial-gradient(ellipse 60% 18% at 50% 100%,rgba(0,0,0,0.38) 0%,transparent 65%)",pointerEvents:"none"}} />
   </>;
 
