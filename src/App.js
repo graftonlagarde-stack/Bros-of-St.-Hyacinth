@@ -8784,8 +8784,8 @@ export default function App() {
           </div>
         </div>
         <div ref={mainRef} className={`main${isMobile ? (navExpanded ? " nav-open" : " nav-closed") : ""}${isMobile && page === "boards" ? " chat-active" : ""}${inCall ? " in-call" : ""}`} style={{display:"flex", flexDirection:"column"}}>
-          {page === "workout" && <div><WorkoutPage username={username} /></div>}
-          {page === "topcharts" && <div><TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
+          {page === "workout" && <WorkoutPage username={username} />}
+          {page === "topcharts" && <TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} />}
           {page === "boards" && <div><BoardPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
           <div style={{
             visibility: page === "meet" ? "visible" : "hidden",
