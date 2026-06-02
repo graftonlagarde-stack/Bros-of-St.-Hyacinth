@@ -8143,7 +8143,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const glow = `0 0 ${glowSize1}px rgba(136,255,0,0.9), 0 0 ${glowSize2}px rgba(136,255,0,0.5), 0 0 ${glowSize3}px rgba(136,255,0,0.2)`;
 
   return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
+    <div style={{display:"flex",flexDirection:"column-reverse",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
       <div style={{position:"relative",width:svgSize,height:svgSize,display:"flex",alignItems:"center",justifyContent:"center"}}>
         {/* Waveform ring — no static circle, just the live waveform layers */}
         <svg width={svgSize} height={svgSize} style={{position:"absolute",inset:0,pointerEvents:"none",overflow:"visible"}}>
