@@ -3331,6 +3331,7 @@ const fmtTime = (s) => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(
 // Place the FBX file in /public/ of the CRA project.
 const BACKDROP_MODELS = {
   boards:    "/Talking_On_A_Cell_Phone.fbx",
+  meet:      "/Talking.fbx",
   workout:   null,
   audio:     "/Talking_On_A_Cell_Phone.fbx",
   topcharts: "/Warming_Up.fbx",
@@ -8638,6 +8639,7 @@ export default function App() {
           {page === "profile" && <ProfilePage user={user} onDeleted={() => { api.clearToken(); setUser(null); }} onLogout={() => { handleLogout(); setPage("workout"); }} onAvatarUpdate={(url) => setUser(u => ({ ...u, avatarUrl: url }))} />}
         </div>
         <FigureBackdrop variant="boards"    visible={page === "boards"}    isMobile={isMobile} />
+        <FigureBackdrop variant="meet"      visible={page === "meet"}      isMobile={isMobile} />
         <AudioFigureBackdrop               visible={page === "audio"}     isMobile={isMobile} />
         <FigureBackdrop variant="topcharts" visible={page === "topcharts"} isMobile={isMobile} />
         <RuleBackdrop visible={page === "rule"} isMobile={isMobile} />
