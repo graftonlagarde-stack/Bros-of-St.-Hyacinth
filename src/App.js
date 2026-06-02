@@ -2598,9 +2598,9 @@ const css = `
     border-radius: 50%;
     background: radial-gradient(
       circle at 50% 50%,
-      transparent 70%,
-      rgba(0,0,0,0.15) 82%,
-      rgba(0,0,0,0.55) 100%
+      transparent 55%,
+      rgba(0,0,0,0.3) 72%,
+      rgba(0,0,0,0.7) 100%
     );
     pointer-events: none;
     z-index: 1;
