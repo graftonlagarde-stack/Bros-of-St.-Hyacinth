@@ -1413,8 +1413,13 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
           <div style={{ width:48, flexShrink:0 }}>
             {isLastInGroup && (
               msg.avatarUrl
-                ? <div className="avatar-photo sm">
+                ? <div className="avatar-photo sm" style={{position:"relative"}}>
                     <img src={msg.avatarUrl} alt={msg.author} crossOrigin="anonymous" />
+                    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"conic-gradient(from 198deg at 34% 24%, rgba(255,255,255,0) 0deg, rgba(255,255,255,0.7) 22deg, rgba(255,255,255,0) 44deg, rgba(255,255,255,0) 360deg)",WebkitMaskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",maskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",pointerEvents:"none",zIndex:3}} />
+                    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 40% 28% at 33% 22%,rgba(255,255,255,0.22) 0%,transparent 62%)",pointerEvents:"none",zIndex:3}} />
+                    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 11% 8% at 31% 18%,rgba(255,255,255,1) 0%,transparent 100%)",pointerEvents:"none",zIndex:3}} />
+                    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 6% 4% at 44% 29%,rgba(200,230,255,0.6) 0%,transparent 100%)",pointerEvents:"none",zIndex:3}} />
+                    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 60% 18% at 50% 100%,rgba(0,0,0,0.38) 0%,transparent 65%)",pointerEvents:"none",zIndex:3}} />
                   </div>
                 : <div className="avatar sm" style={{ background:"linear-gradient(135deg,#001a10,#002e1a)", color:"#88ff00" }}>
                     {initials(msg.author)}
@@ -2612,27 +2617,12 @@ const css = `
     inset: 0;
     border-radius: 50%;
     background:
-      /* Hard white core — tight */
-      radial-gradient(
-        ellipse 14% 10% at 34% 22%,
-        rgba(255,255,255,1.0) 0%,
-        rgba(255,255,255,0.0) 100%
-      ),
-      /* Cool-white penumbra — tight falloff */
-      radial-gradient(
-        ellipse 30% 22% at 33% 26%,
-        rgba(220,240,255,0.42) 0%,
-        transparent 70%
-      ),
-      /* Bottom shadow — tight to the bottom rim only */
-      radial-gradient(
-        ellipse 60% 18% at 50% 100%,
-        rgba(0,0,0,0.38) 0%,
-        transparent 65%
-      );
+      linear-gradient(155deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.06) 25%, transparent 42%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), inset 1px 0 0 rgba(255,255,255,0.1);
     pointer-events: none;
     z-index: 2;
   }
+  /* Additional specular layers via a third pseudo — use a wrapper div instead */
   .avatar-photo.sm { width: 45px; height: 45px; }
   .avatar-photo.lg { width: 48px; height: 48px; }
 
@@ -6813,8 +6803,13 @@ function ProfilePage({ user, onDeleted, onLogout, onAvatarUpdate }) {
         {sectionTitle("Account")}
         <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:20}}>
           {user.avatarUrl
-            ? <div className="avatar-photo" style={{width:52,height:52}}>
+            ? <div className="avatar-photo" style={{width:52,height:52,position:"relative"}}>
                 <img src={user.avatarUrl} alt={user.displayName} crossOrigin="anonymous" />
+                <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"conic-gradient(from 198deg at 34% 24%, rgba(255,255,255,0) 0deg, rgba(255,255,255,0.7) 22deg, rgba(255,255,255,0) 44deg, rgba(255,255,255,0) 360deg)",WebkitMaskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",maskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",pointerEvents:"none",zIndex:3}} />
+                <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 40% 28% at 33% 22%,rgba(255,255,255,0.22) 0%,transparent 62%)",pointerEvents:"none",zIndex:3}} />
+                <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 11% 8% at 31% 18%,rgba(255,255,255,1) 0%,transparent 100%)",pointerEvents:"none",zIndex:3}} />
+                <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 6% 4% at 44% 29%,rgba(200,230,255,0.6) 0%,transparent 100%)",pointerEvents:"none",zIndex:3}} />
+                <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 60% 18% at 50% 100%,rgba(0,0,0,0.38) 0%,transparent 65%)",pointerEvents:"none",zIndex:3}} />
               </div>
             : <div className="avatar" style={{width:52,height:52,fontSize:18}}>{initials(user.displayName)}</div>
           }
@@ -7883,7 +7878,13 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
 
   const SPHERE_OVERLAY = <>
     <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(circle at 50% 50%,transparent 50%,rgba(0,0,0,0.4) 68%,rgba(0,0,0,0.85) 100%)",pointerEvents:"none"}} />
-    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 14% 10% at 34% 22%,rgba(255,255,255,1) 0%,transparent 100%),radial-gradient(ellipse 30% 22% at 33% 26%,rgba(220,240,255,0.42) 0%,transparent 70%),radial-gradient(ellipse 60% 18% at 50% 100%,rgba(0,0,0,0.38) 0%,transparent 65%)",pointerEvents:"none"}} />
+    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"linear-gradient(155deg,rgba(255,255,255,0.28) 0%,rgba(255,255,255,0.06) 25%,transparent 42%)",pointerEvents:"none"}} />
+    <div style={{position:"absolute",inset:0,borderRadius:"50%",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.35),inset 1px 0 0 rgba(255,255,255,0.1)",pointerEvents:"none"}} />
+    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"conic-gradient(from 198deg at 34% 24%, rgba(255,255,255,0) 0deg, rgba(255,255,255,0.7) 22deg, rgba(255,255,255,0) 44deg, rgba(255,255,255,0) 360deg)",WebkitMaskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",maskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",pointerEvents:"none"}} />
+    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 40% 28% at 33% 22%,rgba(255,255,255,0.22) 0%,transparent 62%)",pointerEvents:"none"}} />
+    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 11% 8% at 31% 18%,rgba(255,255,255,1) 0%,transparent 100%)",pointerEvents:"none"}} />
+    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 6% 4% at 44% 29%,rgba(200,230,255,0.6) 0%,transparent 100%)",pointerEvents:"none"}} />
+    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 60% 18% at 50% 100%,rgba(0,0,0,0.38) 0%,transparent 65%)",pointerEvents:"none"}} />
   </>;
 
   return (
