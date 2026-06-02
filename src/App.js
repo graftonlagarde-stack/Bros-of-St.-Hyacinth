@@ -6074,7 +6074,7 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
                     {top ? (
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         {top.avatarUrl
-                          ? <div className="avatar-photo sm" style={{width:36,height:36,flexShrink:0}}>
+                          ? <div className="avatar-photo sm" style={{width:45,height:45,flexShrink:0}}>
                               <img src={top.avatarUrl} alt={top.name} crossOrigin="anonymous" />
                             </div>
                           : <div className="avatar sm" style={{background: top.isMe ? "var(--accent)" : "var(--surface2)"}}>
@@ -8787,12 +8787,14 @@ export default function App() {
           {page === "workout" && <div><WorkoutPage username={username} /></div>}
           {page === "topcharts" && <div><TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
           {page === "boards" && <div><BoardPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
-          {page === "meet" && <MeetPage currentUser={user} onCallActive={setInCall} />}
-          {page !== "meet" && inCall && (
-            <div style={{position:"absolute",top:0,left:0,width:"100%",height:0,overflow:"hidden",visibility:"hidden",pointerEvents:"none"}}>
-              <MeetPage currentUser={user} onCallActive={setInCall} />
-            </div>
-          )}
+          <div style={{
+            visibility: page === "meet" ? "visible" : "hidden",
+            pointerEvents: page === "meet" ? "auto" : "none",
+            position: page === "meet" ? "static" : "absolute",
+            width: "100%", height: "100%",
+          }}>
+            {(page === "meet" || inCall) && <MeetPage currentUser={user} onCallActive={setInCall} />}
+          </div>
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
           {page === "rule" && <RulePage user={user} />}
           {page === "profile" && <ProfilePage user={user} onDeleted={() => { api.clearToken(); setUser(null); }} onLogout={() => { handleLogout(); setPage("workout"); }} onAvatarUpdate={(url) => setUser(u => ({ ...u, avatarUrl: url }))} />}
