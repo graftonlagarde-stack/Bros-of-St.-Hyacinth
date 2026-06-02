@@ -3414,7 +3414,7 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
       renderer.setPixelRatio(1);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
-      renderer.domElement.style.cssText="position:absolute;top:0;left:0;"; el.appendChild(renderer.domElement);
+      renderer.domElement.style.cssText="position:absolute;top:0;left:0;pointer-events:none;touch-action:none;"; el.appendChild(renderer.domElement);
       rendererInst = renderer;
 
       const wireMat = new THREE.MeshBasicMaterial({
@@ -3870,7 +3870,7 @@ function RuleBackdrop({ visible = false, isMobile = false }) {
       renderer.setPixelRatio(1);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
-      renderer.domElement.style.cssText="position:absolute;top:0;left:0;"; el.appendChild(renderer.domElement);
+      renderer.domElement.style.cssText="position:absolute;top:0;left:0;pointer-events:none;touch-action:none;"; el.appendChild(renderer.domElement);
       rendererInst = renderer;
 
       const pmrem  = new THREE.PMREMGenerator(renderer);
@@ -4717,7 +4717,7 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
       renderer.setPixelRatio(1);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
-      renderer.domElement.style.cssText="position:absolute;top:0;left:0;"; el.appendChild(renderer.domElement);
+      renderer.domElement.style.cssText="position:absolute;top:0;left:0;pointer-events:none;touch-action:none;"; el.appendChild(renderer.domElement);
       rendererInst = renderer;
 
       const wireMat = new THREE.MeshBasicMaterial({
@@ -6073,9 +6073,14 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
                   <td>
                     {top ? (
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <div className="avatar sm" style={{background: top.isMe ? "var(--accent)" : "var(--surface2)"}}>
-                          {initials(top.name)}
-                        </div>
+                        {top.avatarUrl
+                          ? <div className="avatar-photo sm" style={{width:36,height:36,flexShrink:0}}>
+                              <img src={top.avatarUrl} alt={top.name} crossOrigin="anonymous" />
+                            </div>
+                          : <div className="avatar sm" style={{background: top.isMe ? "var(--accent)" : "var(--surface2)"}}>
+                              {initials(top.name)}
+                            </div>
+                        }
                         <span style={{fontWeight:600,color: top.isMe ? "var(--accent)" : "var(--text)"}}>{top.name}{top.isMe?" (You)":""}</span>
                       </div>
                     ) : <span style={{color:"var(--muted)"}}>—</span>}
@@ -8788,6 +8793,7 @@ export default function App() {
             position: page === "meet" ? "static" : "absolute",
             width: "100%",
             height: page === "meet" ? "100%" : "0",
+            overflow: page === "meet" ? "visible" : "hidden",
           }}>
             {(page === "meet" || inCall) && <MeetPage currentUser={user} onCallActive={setInCall} />}
           </div>
