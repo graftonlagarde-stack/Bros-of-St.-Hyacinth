@@ -7310,18 +7310,21 @@ function MeetPage({ currentUser, onCallActive }) {
   // Create form state
   const [title,       setTitle]       = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
-  const [inviteMode,  setInviteMode]  = useState("all");
   const [allUsers,    setAllUsers]    = useState([]);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [chapterUsers,setChapterUsers]= useState([]);
+  const [myMembership,setMyMembership]= useState(null);
   const [creating,    setCreating]    = useState(false);
+  const [search,      setSearch]      = useState("");
 
   useEffect(() => {
     api.getMeetings().then(setMeetings).catch(() => {}).finally(() => setLoading(false));
     api.get("/api/users").then(u => setAllUsers(u || [])).catch(() => {});
     api.getMyMembership().then(m => {
-      if (m?.status === "approved")
+      if (m?.status === "approved") {
+        setMyMembership(m);
         api.getChapterCommunityUsers(m.chapter_id).then(u => setChapterUsers(u || [])).catch(() => {});
+      }
     }).catch(() => {});
   }, []);
 
@@ -7364,13 +7367,10 @@ function MeetPage({ currentUser, onCallActive }) {
     if (!title.trim() || !scheduledAt) return;
     setCreating(true);
     try {
-      let inviteeIds = [];
-      if (inviteMode === "all")          inviteeIds = allUsers.map(u => u.id).filter(id => id !== currentUser.id);
-      else if (inviteMode === "chapter") inviteeIds = chapterUsers.map(u => u.userId || u.id).filter(id => id !== currentUser.id);
-      else                               inviteeIds = [...selectedIds];
+      let inviteeIds = [...selectedIds];
       const data = await api.createMeeting({ title: title.trim(), scheduledAt: new Date(scheduledAt).getTime(), inviteeIds });
       setMeetings(prev => [...prev, data.meeting].sort((a,b) => a.scheduledAt - b.scheduledAt));
-      setTitle(""); setScheduledAt(""); setSelectedIds(new Set()); setView("list");
+      setTitle(""); setScheduledAt(""); setSelectedIds(new Set()); setSearch(""); setView("list");
     } catch (err) { console.warn("createMeeting:", err); }
     finally { setCreating(false); }
   };
@@ -7433,14 +7433,36 @@ function MeetPage({ currentUser, onCallActive }) {
         <div className="form-label" style={{marginBottom:6}}>Date & Time</div>
         <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} style={{width:"100%",boxSizing:"border-box",marginBottom:16,background:"var(--surface2)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:4,padding:"8px 10px",fontSize:14}} />
         <div className="form-label" style={{marginBottom:8}}>Invite</div>
-        <div className="tab-row" style={{marginBottom:14}}>
-          {[["all","All Brothers"],["chapter","My Chapter"],["specific","Specific"]].map(([v,l]) => (
-            <div key={v} className={`tab ${inviteMode===v?"active":""}`} onClick={() => { setInviteMode(v); setSelectedIds(new Set()); }}>{l}</div>
-          ))}
+        {/* Quick-select buttons */}
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+          {currentUser.role === "arch_admin" && (
+            <button className="btn" onClick={() => setSelectedIds(new Set(allUsers.filter(u => u.id !== currentUser.id).map(u => u.id)))}
+              style={{fontSize:11,padding:"4px 12px"}}>All Brothers</button>
+          )}
+          {myMembership && chapterUsers.length > 0 && (
+            <button className="btn" onClick={() => {
+              const ids = new Set(selectedIds);
+              chapterUsers.filter(u => (u.userId || u.id) !== currentUser.id).forEach(u => ids.add(u.userId || u.id));
+              setSelectedIds(ids);
+            }} style={{fontSize:11,padding:"4px 12px"}}>{myMembership.chapter_name || "My Chapter"}</button>
+          )}
+          {selectedIds.size > 0 && (
+            <button className="btn" onClick={() => setSelectedIds(new Set())}
+              style={{fontSize:11,padding:"4px 12px",color:"rgba(255,68,85,0.7)",borderColor:"rgba(255,68,85,0.2)"}}>Clear</button>
+          )}
         </div>
-        {inviteMode === "specific" && (
-          <div style={{maxHeight:200,overflowY:"auto",border:"1px solid var(--border)",borderRadius:6,padding:8,marginBottom:16}}>
-            {allUsers.filter(u => u.id !== currentUser.id).map(u => (
+        {/* Search */}
+        <input
+          value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name…"
+          style={{width:"100%",boxSizing:"border-box",marginBottom:8,fontSize:13,padding:"6px 10px"}}
+        />
+        {/* User list */}
+        <div style={{maxHeight:200,overflowY:"auto",border:"1px solid var(--border)",borderRadius:6,padding:8,marginBottom:16}}>
+          {allUsers
+            .filter(u => u.id !== currentUser.id)
+            .filter(u => !search.trim() || u.displayName.toLowerCase().includes(search.trim().toLowerCase()))
+            .map(u => (
               <div key={u.id} onClick={() => setSelectedIds(prev => { const n = new Set(prev); n.has(u.id) ? n.delete(u.id) : n.add(u.id); return n; })}
                 style={{display:"flex",alignItems:"center",gap:10,padding:"8px 4px",cursor:"pointer",borderBottom:"1px solid rgba(136,255,0,0.05)"}}>
                 <div style={{width:18,height:18,borderRadius:3,border:"1px solid var(--border)",background:selectedIds.has(u.id)?"var(--accent)":"transparent",flexShrink:0}} />
@@ -7448,8 +7470,7 @@ function MeetPage({ currentUser, onCallActive }) {
                 <span style={{fontSize:14}}>{u.displayName}</span>
               </div>
             ))}
-          </div>
-        )}
+        </div>
         <div style={{display:"flex",gap:8}}>
           <button className="btn btn-primary" onClick={createMeeting} disabled={creating||!title.trim()||!scheduledAt} style={{flex:1}}>{creating?"Scheduling…":"Schedule Call"}</button>
           <button className="btn" onClick={() => setView("list")} style={{padding:"0 16px"}}>Cancel</button>
