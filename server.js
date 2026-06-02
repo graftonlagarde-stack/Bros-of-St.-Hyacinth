@@ -24,8 +24,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 require("dotenv").config();
-const express  = require("express");
-const cors     = require("cors");
+const express   = require("express");
+const cors      = require("cors");
+const rateLimit = require("express-rate-limit");
 const path     = require("path");
 const fs       = require("fs");
 const bcrypt   = require("bcryptjs");
@@ -516,6 +517,18 @@ async function initDb() {
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "2mb" }));
 
+// Trust Railway's proxy so rate limiting uses the real client IP
+app.set("trust proxy", 1);
+
+// Rate limiter for auth routes — 10 attempts per 15 minutes per IP
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: "Too many attempts. Please try again in 15 minutes." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Serve /public folder (FBX models, audio files, etc.)
 const publicDir = path.join(__dirname, "public");
 if (fs.existsSync(publicDir)) {
@@ -614,7 +627,7 @@ const shapeMessage = (row, reactionsMap) => ({
 // AUTH ROUTES
 // ═════════════════════════════════════════════════════════════════════════════
 
-app.post("/api/auth/register", async (req, res) => {
+app.post("/api/auth/register", authLimiter, async (req, res) => {
   try {
     const { firstName, lastName, email, password, turnstileToken } = req.body;
     if (!firstName?.trim() || !lastName?.trim() || !email?.trim() || !password)
@@ -755,7 +768,7 @@ app.post("/api/auth/resend-verification", async (req, res) => {
   }
 });
 
-app.post("/api/auth/login", async (req, res) => {
+app.post("/api/auth/login", authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password)
@@ -821,7 +834,7 @@ app.delete("/api/auth/account", requireAuth, async (req, res) => {
 
 // POST /api/auth/forgot-password — send a reset link via Resend API (no SMTP needed)
 // Required env var: RESEND_API_KEY (from resend.com)
-app.post("/api/auth/forgot-password", async (req, res) => {
+app.post("/api/auth/forgot-password", authLimiter, async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: "Email is required." });
   try {
