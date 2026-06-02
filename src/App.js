@@ -8702,7 +8702,7 @@ export default function App() {
           {page === "profile" && <ProfilePage user={user} onDeleted={() => { api.clearToken(); setUser(null); }} onLogout={() => { handleLogout(); setPage("workout"); }} onAvatarUpdate={(url) => setUser(u => ({ ...u, avatarUrl: url }))} />}
         </div>
         <FigureBackdrop variant="boards"    visible={page === "boards"}    isMobile={isMobile} />
-        <FigureBackdrop variant="meet"      visible={page === "meet"}      isMobile={isMobile} />
+        <FigureBackdrop variant="meet"      visible={page === "meet" && !inCall}      isMobile={isMobile} />
         <AudioFigureBackdrop               visible={page === "audio"}     isMobile={isMobile} />
         <FigureBackdrop variant="topcharts" visible={page === "topcharts"} isMobile={isMobile} />
         <RuleBackdrop visible={page === "rule"} isMobile={isMobile} />
