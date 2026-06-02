@@ -243,7 +243,18 @@ async function initDb() {
       role        TEXT NOT NULL DEFAULT 'user',
       avatar_url        TEXT,
       avatar_public_id  TEXT,
+      email_verified    BOOLEAN NOT NULL DEFAULT false,
       created_at  BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
+    );
+
+    -- Add email_verified to existing deployments
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT false;
+
+    CREATE TABLE IF NOT EXISTS email_verifications (
+      id         SERIAL PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token      TEXT NOT NULL UNIQUE,
+      expires_at BIGINT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS lift_logs (
@@ -617,17 +628,112 @@ app.post("/api/auth/register", async (req, res) => {
 
     const hash = await bcrypt.hash(password, 12);
     const { rows } = await db.query(
-      "INSERT INTO users (first_name, last_name, email, password) VALUES ($1,$2,$3,$4) RETURNING *",
+      "INSERT INTO users (first_name, last_name, email, password, email_verified) VALUES ($1,$2,$3,$4,false) RETURNING *",
       [firstName.trim(), lastName.trim(), email.trim().toLowerCase(), hash]
     );
-    const user  = rows[0];
-    const token = signToken(user.id);
-    return res.status(201).json({
-      token,
-      user: shapeUser(user),
-    });
+    const user = rows[0];
+
+    // Generate verification token, expires in 24 hours
+    const token     = require("crypto").randomBytes(32).toString("hex");
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+    await db.query("DELETE FROM email_verifications WHERE user_id = $1", [user.id]);
+    await db.query(
+      "INSERT INTO email_verifications (user_id, token, expires_at) VALUES ($1, $2, $3)",
+      [user.id, token, expiresAt]
+    );
+
+    const appUrl    = process.env.APP_URL || "https://bros-of-st-hyacinth.vercel.app";
+    const verifyUrl = `${appUrl}?verify=${token}`;
+
+    if (process.env.RESEND_API_KEY) {
+      try {
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
+            "Content-Type":  "application/json",
+          },
+          body: JSON.stringify({
+            from:    process.env.RESEND_FROM || "Bros of St. Hyacinth <onboarding@resend.dev>",
+            to:      [email.trim()],
+            subject: "Verify your email — Bros of St. Hyacinth",
+            text:    `Welcome to Bros of St. Hyacinth, ${firstName.trim()}!\n\nPlease verify your email address by clicking the link below (expires in 24 hours):\n\n${verifyUrl}\n\nIf you did not create this account, you can safely ignore this email.`,
+            html:    `<p>Welcome to Bros of St. Hyacinth, ${firstName.trim()}!</p>
+                      <p>Please verify your email address by clicking the link below (expires in 24 hours):</p>
+                      <p><a href="${verifyUrl}">${verifyUrl}</a></p>
+                      <p>If you did not create this account, you can safely ignore this email.</p>`,
+          }),
+        });
+      } catch (mailErr) {
+        console.error("register: email send error:", mailErr.message);
+      }
+    } else {
+      console.warn("register: RESEND_API_KEY not set — verify URL:", verifyUrl);
+    }
+
+    return res.status(201).json({ pending: true, email: email.trim().toLowerCase() });
   } catch (err) {
     console.error("register:", err);
+    return res.status(500).json({ error: "Server error." });
+  }
+});
+
+app.get("/api/auth/verify-email", async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).json({ error: "Token is required." });
+  try {
+    const { rows } = await db.query(
+      "SELECT user_id, expires_at FROM email_verifications WHERE token = $1", [token]
+    );
+    if (!rows.length) return res.status(400).json({ error: "Invalid or expired verification link." });
+    if (Date.now() > rows[0].expires_at) {
+      await db.query("DELETE FROM email_verifications WHERE token = $1", [token]);
+      return res.status(400).json({ error: "This verification link has expired. Please register again." });
+    }
+    const userId = rows[0].user_id;
+    await db.query("UPDATE users SET email_verified = true WHERE id = $1", [userId]);
+    await db.query("DELETE FROM email_verifications WHERE token = $1", [token]);
+    const { rows: userRows } = await db.query("SELECT * FROM users WHERE id = $1", [userId]);
+    const user = userRows[0];
+    const jwt  = signToken(user.id);
+    return res.json({ token: jwt, user: shapeUser(user) });
+  } catch (err) {
+    console.error("verify-email:", err);
+    return res.status(500).json({ error: "Server error." });
+  }
+});
+
+app.post("/api/auth/resend-verification", async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: "Email is required." });
+  try {
+    const { rows } = await db.query(
+      "SELECT id, first_name, email_verified FROM users WHERE LOWER(email) = LOWER($1)", [email]
+    );
+    if (!rows.length || rows[0].email_verified) return res.json({ ok: true }); // silent
+    const userId = rows[0].id;
+    const token     = require("crypto").randomBytes(32).toString("hex");
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+    await db.query("DELETE FROM email_verifications WHERE user_id = $1", [userId]);
+    await db.query("INSERT INTO email_verifications (user_id, token, expires_at) VALUES ($1,$2,$3)", [userId, token, expiresAt]);
+    const appUrl    = process.env.APP_URL || "https://bros-of-st-hyacinth.vercel.app";
+    const verifyUrl = `${appUrl}?verify=${token}`;
+    if (process.env.RESEND_API_KEY) {
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from:    process.env.RESEND_FROM || "Bros of St. Hyacinth <onboarding@resend.dev>",
+          to:      [email],
+          subject: "Verify your email — Bros of St. Hyacinth",
+          text:    `Here is your new verification link (expires in 24 hours):\n\n${verifyUrl}`,
+          html:    `<p>Here is your new verification link (expires in 24 hours):</p><p><a href="${verifyUrl}">${verifyUrl}</a></p>`,
+        }),
+      });
+    }
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("resend-verification:", err);
     return res.status(500).json({ error: "Server error." });
   }
 });
@@ -646,6 +752,9 @@ app.post("/api/auth/login", async (req, res) => {
 
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(401).json({ error: "Incorrect email or password." });
+
+    if (!user.email_verified)
+      return res.status(403).json({ error: "Please verify your email before logging in.", unverified: true, email: user.email });
 
     const token = signToken(user.id);
     return res.json({

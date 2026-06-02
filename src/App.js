@@ -175,8 +175,10 @@ const api = {
   login:    (body) => api.post("/api/auth/login",    body),
   me:       ()     => api.get("/api/auth/me"),
   deleteAccount: (body) => api.delete("/api/auth/account", body),
-  forgotPassword: (body) => api.post("/api/auth/forgot-password", body),
-  resetPassword:  (body) => api.post("/api/auth/reset-password",  body),
+  forgotPassword:      (body) => api.post("/api/auth/forgot-password",      body),
+  resetPassword:       (body) => api.post("/api/auth/reset-password",       body),
+  resendVerification:  (body) => api.post("/api/auth/resend-verification",  body),
+  verifyEmail: (token) => fetch(`${API_BASE}/api/auth/verify-email?token=${token}`).then(r => r.json()),
 
   // Lift logs
   // Workout (new session-based)
@@ -6246,6 +6248,7 @@ function AuthScreen({ onAuth }) {
   const [mode, setMode]           = useState(() => {
     // If URL has ?reset=TOKEN, go straight to reset mode
     const params = new URLSearchParams(window.location.search);
+    if (params.get("verify")) return "verifying";
     return params.get("reset") ? "reset" : "welcome";
   });
   const [firstName, setFirstName] = useState("");
@@ -6257,10 +6260,26 @@ function AuthScreen({ onAuth }) {
   const [error, setError]         = useState("");
   const [loading, setLoading]     = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState(""); // set after register
+  const [resendSent, setResendSent] = useState(false);
+
+  // Handle ?verify=token on load
+  useEffect(() => {
+    if (mode !== "verifying") return;
+    const token = new URLSearchParams(window.location.search).get("verify");
+    if (!token) { setMode("login"); return; }
+    api.verifyEmail(token).then(data => {
+      window.history.replaceState({}, "", window.location.pathname);
+      if (data.error) { setError(data.error); setMode("login"); return; }
+      api.setToken(data.token);
+      onAuth(data.user);
+    }).catch(() => { setError("Verification failed. Please try again."); setMode("login"); });
+  }, []);
 
   const reset = () => {
     setFirstName(""); setLastName(""); setEmail("");
     setPassword(""); setConfirm(""); setRobotCheck(false); setError(""); setForgotSent(false);
+    setResendSent(false);
   };
 
   const switchMode = (m) => { reset(); setMode(m); };
@@ -6304,9 +6323,15 @@ function AuthScreen({ onAuth }) {
     if (!email.trim() || !password) { setError("Please enter your email and password."); return; }
     setLoading(true);
     try {
-      const { token, user } = await api.login({ email, password });
-      api.setToken(token);
-      onAuth(user);
+      const data = await api.login({ email, password });
+      if (data.unverified) {
+        setPendingEmail(data.email || email.trim());
+        setMode("pending");
+        return;
+      }
+      if (data.error) { setError(data.error); return; }
+      api.setToken(data.token);
+      onAuth(data.user);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -6323,14 +6348,23 @@ function AuthScreen({ onAuth }) {
     if (!robotCheck) { setError("Please confirm you are not a robot."); return; }
     setLoading(true);
     try {
-      const { token, user } = await api.register({ firstName, lastName, email, password });
-      api.setToken(token);
-      onAuth(user);
+      const data = await api.register({ firstName, lastName, email, password });
+      if (data.error) { setError(data.error); return; }
+      setPendingEmail(data.email || email.trim());
+      setMode("pending");
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleResend = async () => {
+    setResendSent(false);
+    try {
+      await api.resendVerification({ email: pendingEmail });
+      setResendSent(true);
+    } catch(e) {}
   };
 
   return (
@@ -6349,6 +6383,34 @@ function AuthScreen({ onAuth }) {
             Your Fitness Community
           </div>
         </div>
+
+        {/* VERIFYING */}
+        {mode === "verifying" && (
+          <AuthCard>
+            <AuthTitle text="Verifying" />
+            <div style={{color:"var(--muted)",fontSize:13,textAlign:"center",letterSpacing:1}}>
+              {error || "Verifying your email address…"}
+            </div>
+          </AuthCard>
+        )}
+
+        {/* PENDING VERIFICATION */}
+        {mode === "pending" && (
+          <AuthCard>
+            <AuthTitle text="Check Your Email" />
+            <div style={{color:"var(--muted)",fontSize:13,marginBottom:20,textAlign:"center",lineHeight:1.7}}>
+              We sent a verification link to<br/>
+              <span style={{color:"var(--accent)",fontFamily:"'Orbitron',sans-serif",fontSize:12}}>{pendingEmail}</span>
+              <br/><br/>
+              Click the link in the email to activate your account.
+            </div>
+            {resendSent
+              ? <div style={{color:"var(--accent)",fontSize:12,textAlign:"center",marginBottom:12}}>✓ Verification email resent.</div>
+              : <button className="btn" style={{width:"100%",justifyContent:"center",marginBottom:10}} onClick={handleResend}>Resend Email</button>
+            }
+            <button className="btn" style={{width:"100%",justifyContent:"center"}} onClick={() => switchMode("login")}>Back to Login</button>
+          </AuthCard>
+        )}
 
         {/* WELCOME */}
         {mode === "welcome" && (
