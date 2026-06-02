@@ -616,11 +616,28 @@ const shapeMessage = (row, reactionsMap) => ({
 
 app.post("/api/auth/register", async (req, res) => {
   try {
-    const { firstName, lastName, email, password } = req.body;
+    const { firstName, lastName, email, password, turnstileToken } = req.body;
     if (!firstName?.trim() || !lastName?.trim() || !email?.trim() || !password)
       return res.status(400).json({ error: "All fields are required." });
     if (password.length < 8)
       return res.status(400).json({ error: "Password must be at least 8 characters." });
+
+    // Verify Turnstile token
+    if (!turnstileToken)
+      return res.status(400).json({ error: "Please complete the CAPTCHA." });
+    if (process.env.TURNSTILE_SECRET_KEY) {
+      const tsRes = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          secret: process.env.TURNSTILE_SECRET_KEY,
+          response: turnstileToken,
+        }),
+      });
+      const tsData = await tsRes.json();
+      if (!tsData.success)
+        return res.status(400).json({ error: "CAPTCHA verification failed. Please try again." });
+    }
 
     const existing = await db.query("SELECT id FROM users WHERE LOWER(email) = LOWER($1)", [email.trim()]);
     if (existing.rows.length)

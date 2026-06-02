@@ -6256,14 +6256,42 @@ function AuthScreen({ onAuth }) {
   const [email, setEmail]         = useState("");
   const [password, setPassword]   = useState("");
   const [confirm, setConfirm]     = useState("");
-  const [robotCheck, setRobotCheck] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const turnstileRef = useRef(null);
   const [error, setError]         = useState("");
   const [loading, setLoading]     = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
   const [pendingEmail, setPendingEmail] = useState(""); // set after register
   const [resendSent, setResendSent] = useState(false);
 
-  // Handle ?verify=token on load
+  // Load Turnstile script when register mode is active
+  useEffect(() => {
+    if (mode !== "register") return;
+    if (document.getElementById("turnstile-script")) return;
+    const s = document.createElement("script");
+    s.id = "turnstile-script";
+    s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+    s.async = true;
+    document.head.appendChild(s);
+  }, [mode]);
+
+  // Render Turnstile widget when ref is available and script is loaded
+  useEffect(() => {
+    if (mode !== "register" || !turnstileRef.current) return;
+    const render = () => {
+      if (!window.turnstile || turnstileRef.current?.childElementCount > 0) return;
+      window.turnstile.render(turnstileRef.current, {
+        sitekey: "0x4AAAAAABDdrJR1dx0gV2fwB",
+        theme: "dark",
+        callback: (token) => setTurnstileToken(token),
+        "expired-callback": () => setTurnstileToken(""),
+        "error-callback": () => setTurnstileToken(""),
+      });
+    };
+    // Script may not be loaded yet — poll briefly
+    const id = setInterval(() => { if (window.turnstile) { render(); clearInterval(id); } }, 200);
+    return () => clearInterval(id);
+  }, [mode, turnstileRef.current]);
   useEffect(() => {
     if (mode !== "verifying") return;
     const token = new URLSearchParams(window.location.search).get("verify");
@@ -6278,8 +6306,9 @@ function AuthScreen({ onAuth }) {
 
   const reset = () => {
     setFirstName(""); setLastName(""); setEmail("");
-    setPassword(""); setConfirm(""); setRobotCheck(false); setError(""); setForgotSent(false);
+    setPassword(""); setConfirm(""); setTurnstileToken(""); setError(""); setForgotSent(false);
     setResendSent(false);
+    if (window.turnstile && turnstileRef.current) window.turnstile.reset(turnstileRef.current);
   };
 
   const switchMode = (m) => { reset(); setMode(m); };
@@ -6345,10 +6374,10 @@ function AuthScreen({ onAuth }) {
     if (!email.trim()) { setError("Please enter your email address."); return; }
     if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
     if (password !== confirm) { setError("Passwords do not match."); return; }
-    if (!robotCheck) { setError("Please confirm you are not a robot."); return; }
+    if (!turnstileToken) { setError("Please complete the CAPTCHA."); return; }
     setLoading(true);
     try {
-      const data = await api.register({ firstName, lastName, email, password });
+      const data = await api.register({ firstName, lastName, email, password, turnstileToken });
       if (data.error) { setError(data.error); return; }
       setPendingEmail(data.email || email.trim());
       setMode("pending");
@@ -6504,23 +6533,8 @@ function AuthScreen({ onAuth }) {
             <AuthField label="Password (min. 8 characters)" type="password" value={password} onChange={setPassword} />
             <AuthField label="Confirm Password" type="password" value={confirm} onChange={setConfirm} />
 
-            {/* I am not a robot */}
-            <div style={{
-              display:"flex", alignItems:"center", gap:12, marginBottom:18,
-              background:"rgba(136,255,0,0.04)", border:"1px solid rgba(136,255,0,0.15)",
-              borderRadius:4, padding:"12px 16px", cursor:"pointer",
-            }} onClick={() => setRobotCheck(v => !v)}>
-              <div style={{
-                width:22, height:22, borderRadius:4, flexShrink:0,
-                border:`2px solid ${robotCheck ? "var(--accent)" : "var(--border)"}`,
-                background: robotCheck ? "rgba(136,255,0,0.15)" : "transparent",
-                display:"flex", alignItems:"center", justifyContent:"center",
-                transition:"all 0.15s",
-              }}>
-                {robotCheck && <span style={{color:"var(--accent)",fontSize:14,lineHeight:1}}>✓</span>}
-              </div>
-              <div style={{fontSize:13, color:"var(--text)"}}>I am not a robot</div>
-            </div>
+            {/* Cloudflare Turnstile CAPTCHA */}
+            <div ref={turnstileRef} style={{marginBottom:18}} />
 
             {error && <div style={{color:"#ff4455",fontSize:12,marginBottom:12,fontWeight:600}}>{error}</div>}
             <button className="btn btn-primary" style={{width:"100%",justifyContent:"center",padding:"13px 20px",marginBottom:10}}
