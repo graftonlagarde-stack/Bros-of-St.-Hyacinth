@@ -8142,9 +8142,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
   const glowSize1 = Math.round(size * 0.2);
   const glowSize2 = Math.round(size * 0.6);
   const glowSize3 = Math.round(size * 1.0);
-  const glow = isSpeaking
-    ? `0 0 ${glowSize1}px rgba(136,255,0,0.9), 0 0 ${glowSize2}px rgba(136,255,0,0.5), 0 0 ${glowSize3}px rgba(136,255,0,0.2)`
-    : `0 0 ${glowSize1}px rgba(136,255,0,0.5), 0 0 ${glowSize2}px rgba(136,255,0,0.2), 0 0 ${glowSize3}px rgba(136,255,0,0.07)`;
+  const glow = `0 0 ${glowSize1}px rgba(136,255,0,0.9), 0 0 ${glowSize2}px rgba(136,255,0,0.5), 0 0 ${glowSize3}px rgba(136,255,0,0.2)`;
 
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,width:size,alignSelf:"center"}}>
@@ -8193,7 +8191,7 @@ function ParticipantBubble({ participant, size, isSpeaking, sphereOverlay, video
         </div>
       </div>
       <div style={{fontSize:10,fontFamily:"'Orbitron',sans-serif",letterSpacing:1,
-        color:isSpeaking?"var(--accent)":"var(--muted)",transition:"color 0.3s ease",
+        color:"var(--accent)",transition:"color 0.3s ease",
         textAlign:"center",maxWidth:size,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
         {name.split(" ")[0].toUpperCase()}
       </div>
