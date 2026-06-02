@@ -7485,7 +7485,7 @@ function MeetPage({ currentUser, onCallActive }) {
     <div style={{opacity,transition:"opacity 0.35s ease"}}>
     <div className="page">
       <div className="page-title">MEET</div>
-      <div className="page-sub">&ldquo;Where two or three are gathered in my name, there am I among them.&rdquo; &mdash; Matthew 18:20</div>
+      <div className="page-sub">&ldquo;For where there are two or three gathered together in my name, there am I in the midst of them.&rdquo; &mdash; Matthew 18:20</div>
       <button className="btn btn-primary" onClick={() => setView("create")} style={{marginBottom:20,width:"100%",fontSize:13,padding:"10px 0"}}>+ Schedule a Call</button>
       {joinError && <div style={{color:"rgba(255,68,85,0.8)",fontSize:13,marginBottom:12,padding:"8px 12px",border:"1px solid rgba(255,68,85,0.2)",borderRadius:4}}>{joinError}</div>}
       {loading && <div style={{color:"var(--muted)",textAlign:"center",padding:32,fontFamily:"'Orbitron',sans-serif",letterSpacing:2,fontSize:12}}>LOADING…</div>}
