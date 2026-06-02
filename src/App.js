@@ -2925,6 +2925,7 @@ const css = `
     color: rgba(0,255,140,0.6); font-family: 'Orbitron', sans-serif; letter-spacing: 0.5px;
     position: relative; z-index: 1;
     filter: drop-shadow(0 0 4px rgba(0,255,140,0.6));
+    pointer-events: all;
   }
   .progress-bar {
     flex: 1; height: 44px;
@@ -5822,7 +5823,7 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack, navExpand
         </div>
 
         {/* Speed selector — bounded by timestamp widths */}
-        <div style={{display:"flex", alignItems:"center", paddingLeft:44, paddingRight:44}}>
+        <div style={{display:"flex", alignItems:"center", paddingLeft:44, paddingRight:44, pointerEvents:"all"}}>
           <div style={{flex:1, display:"flex", justifyContent:"space-between"}}>
             {SPEEDS.map(s => (
               <button key={s} onClick={() => setSpeed(s)} disabled={noSrc}
