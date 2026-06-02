@@ -1423,6 +1423,11 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
                   </div>
                 : <div className="avatar sm" style={{ background:"linear-gradient(135deg,#001a10,#002e1a)", color:"#88ff00" }}>
                     {initials(msg.author)}
+                    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"conic-gradient(from 198deg at 34% 24%, rgba(255,255,255,0) 0deg, rgba(255,255,255,0.7) 22deg, rgba(255,255,255,0) 44deg, rgba(255,255,255,0) 360deg)",WebkitMaskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",maskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",pointerEvents:"none",zIndex:3}} />
+                    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 40% 28% at 33% 22%,rgba(255,255,255,0.22) 0%,transparent 62%)",pointerEvents:"none",zIndex:3}} />
+                    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 11% 8% at 31% 18%,rgba(255,255,255,1) 0%,transparent 100%)",pointerEvents:"none",zIndex:3}} />
+                    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 6% 4% at 44% 29%,rgba(200,230,255,0.6) 0%,transparent 100%)",pointerEvents:"none",zIndex:3}} />
+                    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 60% 18% at 50% 100%,rgba(0,0,0,0.38) 0%,transparent 65%)",pointerEvents:"none",zIndex:3}} />
                   </div>
             )}
           </div>
@@ -2562,17 +2567,47 @@ const css = `
   }
 
   .avatar {
-    width: 36px; height: 36px; border-radius: 2px;
+    width: 36px; height: 36px; border-radius: 50%;
     background: linear-gradient(135deg, #001a0e, #002d18);
     color: var(--accent); display: flex; align-items: center; justify-content: center;
     font-weight: 900; font-size: 11px; font-family: 'Orbitron', sans-serif;
-    flex-shrink: 0;
-    border: 1px solid rgba(136,255,0,0.2);
-    box-shadow: inset 0 0 16px rgba(136,255,0,0.06), 0 0 10px rgba(136,255,0,0.12);
+    flex-shrink: 0; position: relative; overflow: hidden;
+    border: 1px solid rgba(136,255,0,0.35);
+    box-shadow:
+      0 0 0 1px rgba(0,0,0,0.55),
+      0 10px 20px rgba(0,0,0,0.85),
+      0 20px 40px rgba(0,0,0,0.45),
+      0 0 14px rgba(136,255,0,0.3),
+      0 0 32px rgba(136,255,0,0.12);
+    filter: drop-shadow(0 0 6px rgba(136,255,0,0.5)) drop-shadow(0 0 18px rgba(136,255,0,0.25));
     animation: energyBeat 5s ease-in-out infinite;
   }
   .avatar.sm { width: 45px; height: 45px; font-size: 12px; }
   .avatar.lg { width: 48px; height: 48px; font-size: 14px; }
+  .avatar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(
+      circle at 50% 50%,
+      transparent 50%,
+      rgba(0,0,0,0.4) 68%,
+      rgba(0,0,0,0.85) 100%
+    );
+    pointer-events: none;
+    z-index: 1;
+  }
+  .avatar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: linear-gradient(155deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.06) 25%, transparent 42%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), inset 1px 0 0 rgba(255,255,255,0.1);
+    pointer-events: none;
+    z-index: 2;
+  }
 
   /* Avatar with photo — circular with PS Vita-style glass sphere effect */
   .avatar-photo {
