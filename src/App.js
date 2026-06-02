@@ -6281,7 +6281,7 @@ function AuthScreen({ onAuth }) {
     const render = () => {
       if (!window.turnstile || turnstileRef.current?.childElementCount > 0) return;
       window.turnstile.render(turnstileRef.current, {
-        sitekey: "0x4AAAAAABDdrJR1dx0gV2fwB",
+        sitekey: "0x4AAAAAADdrJR1dx0gV2fwB",
         theme: "dark",
         callback: (token) => setTurnstileToken(token),
         "expired-callback": () => setTurnstileToken(""),
