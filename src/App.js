@@ -5209,7 +5209,7 @@ function WorkoutPage({ username }) {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="page">
+    <div className="page" style={{contain:"layout"}}>
       <div className="page-title">WORKOUT <span className="accentText">TRACKER</span></div>
       <div className="page-sub">&ldquo;The Lord is my strength and my praise: and he is become my salvation.&rdquo; &mdash; Psalms 117:14</div>
 
@@ -5929,7 +5929,7 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
   const isMobile = useIsMobile();
 
   return (
-    <div className="page" style={{position:"relative"}}>
+    <div className="page" style={{position:"relative",contain:"layout"}}>
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:4}}>
         <div className="page-title" style={{marginBottom:0}}>TOP <span className="accentText">CHARTS</span></div>
         {membership && !isMobile && (
