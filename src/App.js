@@ -2582,14 +2582,12 @@ const css = `
     flex-shrink: 0;
     border: 1px solid rgba(136,255,0,0.35);
     box-shadow:
-      /* Tight ambient occlusion ring */
       0 0 0 1px rgba(0,0,0,0.55),
-      /* Deep cast shadow — the primary 3D cue, image floats above surface */
       0 10px 20px rgba(0,0,0,0.85),
       0 20px 40px rgba(0,0,0,0.45),
-      /* Accent glow */
       0 0 14px rgba(136,255,0,0.3),
       0 0 32px rgba(136,255,0,0.12);
+    filter: drop-shadow(0 0 6px rgba(136,255,0,0.5)) drop-shadow(0 0 18px rgba(136,255,0,0.25));
     animation: energyBeat 5s ease-in-out infinite;
   }
   .avatar-photo img {
