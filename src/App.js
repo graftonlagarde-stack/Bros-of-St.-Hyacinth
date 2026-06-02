@@ -8787,16 +8787,12 @@ export default function App() {
           {page === "workout" && <div><WorkoutPage username={username} /></div>}
           {page === "topcharts" && <div><TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
           {page === "boards" && <div><BoardPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
-          <div style={{
-            visibility: page === "meet" ? "visible" : "hidden",
-            pointerEvents: page === "meet" ? "auto" : "none",
-            position: page === "meet" ? "static" : "absolute",
-            width: "100%",
-            height: page === "meet" ? "100%" : "0",
-            overflow: page === "meet" ? "visible" : "hidden",
-          }}>
-            {(page === "meet" || inCall) && <MeetPage currentUser={user} onCallActive={setInCall} />}
-          </div>
+          {page === "meet" && <MeetPage currentUser={user} onCallActive={setInCall} />}
+          {page !== "meet" && inCall && (
+            <div style={{position:"absolute",top:0,left:0,width:"100%",height:0,overflow:"hidden",visibility:"hidden",pointerEvents:"none"}}>
+              <MeetPage currentUser={user} onCallActive={setInCall} />
+            </div>
+          )}
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
           {page === "rule" && <RulePage user={user} />}
           {page === "profile" && <ProfilePage user={user} onDeleted={() => { api.clearToken(); setUser(null); }} onLogout={() => { handleLogout(); setPage("workout"); }} onAvatarUpdate={(url) => setUser(u => ({ ...u, avatarUrl: url }))} />}
