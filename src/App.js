@@ -3414,7 +3414,7 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
       renderer.setPixelRatio(1);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
-      renderer.domElement.style.cssText="position:absolute;top:0;left:0;pointer-events:none;touch-action:none;"; el.appendChild(renderer.domElement);
+      el.appendChild(renderer.domElement);
       rendererInst = renderer;
 
       const wireMat = new THREE.MeshBasicMaterial({
@@ -3870,7 +3870,7 @@ function RuleBackdrop({ visible = false, isMobile = false }) {
       renderer.setPixelRatio(1);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
-      renderer.domElement.style.cssText="position:absolute;top:0;left:0;pointer-events:none;touch-action:none;"; el.appendChild(renderer.domElement);
+      el.appendChild(renderer.domElement);
       rendererInst = renderer;
 
       const pmrem  = new THREE.PMREMGenerator(renderer);
@@ -4717,7 +4717,7 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
       renderer.setPixelRatio(1);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
-      renderer.domElement.style.cssText="position:absolute;top:0;left:0;pointer-events:none;touch-action:none;"; el.appendChild(renderer.domElement);
+      el.appendChild(renderer.domElement);
       rendererInst = renderer;
 
       const wireMat = new THREE.MeshBasicMaterial({
