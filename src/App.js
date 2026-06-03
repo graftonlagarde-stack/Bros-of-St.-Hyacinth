@@ -8784,17 +8784,19 @@ export default function App() {
           </div>
         </div>
         <div ref={mainRef} className={`main${isMobile ? (navExpanded ? " nav-open" : " nav-closed") : ""}${isMobile && page === "boards" ? " chat-active" : ""}${inCall ? " in-call" : ""}`} style={{display:"flex", flexDirection:"column"}}>
-          {page === "workout" && <WorkoutPage username={username} />}
-          {page === "topcharts" && <TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} />}
+          {page === "workout" && <div><WorkoutPage username={username} /></div>}
+          {page === "topcharts" && <div><TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
           {page === "boards" && <div><BoardPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
-          <div style={{
-            visibility: page === "meet" ? "visible" : "hidden",
-            pointerEvents: page === "meet" ? "auto" : "none",
-            position: page === "meet" ? "static" : "absolute",
-            width: "100%", height: "100%",
-          }}>
-            {(page === "meet" || inCall) && <MeetPage currentUser={user} onCallActive={setInCall} />}
-          </div>
+          {(page === "meet" || inCall) && (
+            <div style={{
+              visibility: page === "meet" ? "visible" : "hidden",
+              pointerEvents: page === "meet" ? "auto" : "none",
+              position: page === "meet" ? "static" : "absolute",
+              width: "100%", height: "100%",
+            }}>
+              <MeetPage currentUser={user} onCallActive={setInCall} />
+            </div>
+          )}
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
           {page === "rule" && <RulePage user={user} />}
           {page === "profile" && <ProfilePage user={user} onDeleted={() => { api.clearToken(); setUser(null); }} onLogout={() => { handleLogout(); setPage("workout"); }} onAvatarUpdate={(url) => setUser(u => ({ ...u, avatarUrl: url }))} />}
