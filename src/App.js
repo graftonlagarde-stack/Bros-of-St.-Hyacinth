@@ -6162,9 +6162,14 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
                           ? <span style={{fontFamily:"'Orbitron',sans-serif",fontWeight:900,fontSize:13,color:medalColors[i],textShadow:`0 0 8px ${medalColors[i]}99`,letterSpacing:1}}>{medalLabels[i]}</span>
                           : <span style={{color:"var(--muted)",fontWeight:700,fontSize:13,fontFamily:"'Orbitron',sans-serif"}}>#{i+1}</span>}
                       </div>
-                      <div className="avatar sm" style={{background: entry.isMe ? "var(--accent)" : "var(--surface)"}}>
-                        {initials(entry.name)}
-                      </div>
+                      {entry.avatarUrl
+                        ? <div className="avatar-photo sm" style={{width:45,height:45,flexShrink:0}}>
+                            <img src={entry.avatarUrl} alt={entry.name} crossOrigin="anonymous" />
+                          </div>
+                        : <div className="avatar sm" style={{background: entry.isMe ? "var(--accent)" : "var(--surface)"}}>
+                            {initials(entry.name)}
+                          </div>
+                      }
                       <div style={{flex:1}}>
                         <div style={{fontWeight:700,fontSize:14,color: entry.isMe ? "var(--accent)" : "var(--text)"}}>
                           {entry.name}{entry.isMe ? " (You)" : ""}
@@ -6200,9 +6205,14 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
                     <td>
                       {top ? (
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
-                          <div className="avatar sm" style={{background: top.isMe ? "var(--accent)" : "var(--surface2)"}}>
-                            {initials(top.name)}
-                          </div>
+                          {top.avatarUrl
+                            ? <div className="avatar-photo sm" style={{width:45,height:45,flexShrink:0}}>
+                                <img src={top.avatarUrl} alt={top.name} crossOrigin="anonymous" />
+                              </div>
+                            : <div className="avatar sm" style={{background: top.isMe ? "var(--accent)" : "var(--surface2)"}}>
+                                {initials(top.name)}
+                              </div>
+                          }
                           <span style={{fontWeight:600,color: top.isMe ? "var(--accent)" : "var(--text)"}}>{top.name}{top.isMe?" (You)":""}</span>
                         </div>
                       ) : <span style={{color:"var(--muted)"}}>—</span>}
@@ -8592,6 +8602,7 @@ export default function App() {
     if (!navExpanded) setNavExpanded(false);
     if (id === "boards") clearBadge(["global-chat", "reaction"]);
     if (id === "meet")   clearBadge(["meeting"]);
+    if (id === "profile") clearBadge(["chapter-chat"]);
   };
 
   // Clear notification badge for specific types when user views the relevant page
