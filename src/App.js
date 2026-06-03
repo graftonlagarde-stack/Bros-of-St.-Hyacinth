@@ -3414,7 +3414,7 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
       renderer.setPixelRatio(1);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
-      el.appendChild(renderer.domElement);
+      renderer.domElement.style.cssText="position:absolute;top:0;left:0;"; el.appendChild(renderer.domElement);
       rendererInst = renderer;
 
       const wireMat = new THREE.MeshBasicMaterial({
@@ -3870,7 +3870,7 @@ function RuleBackdrop({ visible = false, isMobile = false }) {
       renderer.setPixelRatio(1);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
-      el.appendChild(renderer.domElement);
+      renderer.domElement.style.cssText="position:absolute;top:0;left:0;"; el.appendChild(renderer.domElement);
       rendererInst = renderer;
 
       const pmrem  = new THREE.PMREMGenerator(renderer);
@@ -4717,7 +4717,7 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
       renderer.setPixelRatio(1);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
-      el.appendChild(renderer.domElement);
+      renderer.domElement.style.cssText="position:absolute;top:0;left:0;"; el.appendChild(renderer.domElement);
       rendererInst = renderer;
 
       const wireMat = new THREE.MeshBasicMaterial({
@@ -5209,7 +5209,7 @@ function WorkoutPage({ username }) {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="page" style={{contain:"layout"}}>
+    <div className="page">
       <div className="page-title">WORKOUT <span className="accentText">TRACKER</span></div>
       <div className="page-sub">&ldquo;The Lord is my strength and my praise: and he is become my salvation.&rdquo; &mdash; Psalms 117:14</div>
 
@@ -5929,7 +5929,7 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
   const isMobile = useIsMobile();
 
   return (
-    <div className="page" style={{position:"relative",contain:"layout"}}>
+    <div className="page" style={{position:"relative"}}>
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:4}}>
         <div className="page-title" style={{marginBottom:0}}>TOP <span className="accentText">CHARTS</span></div>
         {membership && !isMobile && (
