@@ -8784,15 +8784,14 @@ export default function App() {
           </div>
         </div>
         <div ref={mainRef} className={`main${isMobile ? (navExpanded ? " nav-open" : " nav-closed") : ""}${isMobile && page === "boards" ? " chat-active" : ""}${inCall ? " in-call" : ""}`} style={{display:"flex", flexDirection:"column"}}>
-          {page === "workout" && <div><WorkoutPage username={username} /></div>}
-          {page === "topcharts" && <div><TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
+          {page === "workout" && <WorkoutPage username={username} />}
+          {page === "topcharts" && <TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} />}
           {page === "boards" && <div><BoardPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
           <div style={{
             visibility: page === "meet" ? "visible" : "hidden",
             pointerEvents: page === "meet" ? "auto" : "none",
             position: page === "meet" ? "static" : "absolute",
             width: "100%", height: "100%",
-            overflow: page === "meet" ? "visible" : "hidden",
           }}>
             {(page === "meet" || inCall) && <MeetPage currentUser={user} onCallActive={setInCall} />}
           </div>
