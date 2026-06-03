@@ -8792,6 +8792,7 @@ export default function App() {
             pointerEvents: page === "meet" ? "auto" : "none",
             position: page === "meet" ? "static" : "absolute",
             width: "100%", height: "100%",
+            overflow: page === "meet" ? "visible" : "hidden",
           }}>
             {(page === "meet" || inCall) && <MeetPage currentUser={user} onCallActive={setInCall} />}
           </div>
