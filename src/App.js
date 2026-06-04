@@ -4350,7 +4350,8 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           const fps  = 30;
           mixer = new THREE.AnimationMixer(obj);
 
-          // Intro: play the full clip once at 0.5x speed, then transition to bounce
+          // Intro: play frames 0–45 once at 0.4x speed
+          // Play the full intro animation once at half speed, then transition to bounce phase
           const introAction = mixer.clipAction(clip);
           introAction.setLoop(THREE.LoopOnce, 1);
           introAction.clampWhenFinished = true;
