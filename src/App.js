@@ -4350,9 +4350,8 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           const fps  = 30;
           mixer = new THREE.AnimationMixer(obj);
 
-          // Intro: play frames 0–45 once at 0.4x speed
-          const intro = THREE.AnimationUtils.subclip(clip, "intro", 0, 45, fps);
-          const introAction = mixer.clipAction(intro);
+          // Intro: play the full clip once at 0.5x speed, then transition to bounce
+          const introAction = mixer.clipAction(clip);
           introAction.setLoop(THREE.LoopOnce, 1);
           introAction.clampWhenFinished = true;
           introAction.timeScale = 0.5;
@@ -4484,8 +4483,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           // Restart function: resets mixer and all phase state to beginning
           const restartAnimation = () => {
             mixer.stopAllAction();
-            const restartIntro = THREE.AnimationUtils.subclip(clip, "intro", 0, 45, fps);
-            const restartAction = mixer.clipAction(restartIntro);
+            const restartAction = mixer.clipAction(clip);
             restartAction.setLoop(THREE.LoopOnce, 1);
             restartAction.clampWhenFinished = true;
             restartAction.timeScale = 0.5;
