@@ -4351,8 +4351,8 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           mixer = new THREE.AnimationMixer(obj);
 
           // Intro: play frames 0–45 once at 0.4x speed
-          // Play the full intro animation once at half speed, then transition to bounce phase
-          const introAction = mixer.clipAction(clip);
+          const intro = THREE.AnimationUtils.subclip(clip, "intro", 0, 45, fps);
+          const introAction = mixer.clipAction(intro);
           introAction.setLoop(THREE.LoopOnce, 1);
           introAction.clampWhenFinished = true;
           introAction.timeScale = 0.5;
@@ -4362,6 +4362,25 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           let phase = "intro";
           let breathTime = 0;
           let bounceTime = 0;
+
+          const triggerBounce = () => {
+            if (phase !== "intro") return;
+            phase = "bounce";
+            vel   = kickVel;
+            disp  = 0;
+            bounceTime = 0;
+            footBones.forEach(fb => {
+              fb.bone.updateWorldMatrix(true, false);
+              fb.worldPos = new THREE.Vector3();
+              fb.bone.getWorldPosition(fb.worldPos);
+            });
+            footPositionsLocked = true;
+            leanBones.forEach(lb => { lb.baseRot = lb.bone.quaternion.clone(); });
+            armBones.forEach(ab => {
+              ab.baseRot = ab.bone.quaternion.clone();
+              ab.dispX = 0; ab.dispY = 0; ab.velX = 0; ab.velY = 0;
+            });
+          };
 
           // Physics bounce — upward kick, 1.5x faster than before
           const restY     = obj.position.y;
@@ -4408,26 +4427,8 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           // Estimate bounce duration for normalizing t (stiffness/damping gives ~settle time)
           const bounceDuration = 1.2; // seconds estimate
 
-          mixer.addEventListener("finished", () => {
-            if (phase === "intro") {
-              phase = "bounce";
-              vel   = kickVel;
-              disp  = 0;
-              bounceTime = 0;
-              footBones.forEach(fb => {
-                fb.bone.updateWorldMatrix(true, false);
-                fb.worldPos = new THREE.Vector3();
-                fb.bone.getWorldPosition(fb.worldPos);
-              });
-              footPositionsLocked = true;
-              // Snapshot base rotations at frame 45
-              leanBones.forEach(lb => { lb.baseRot = lb.bone.quaternion.clone(); });
-              armBones.forEach(ab => {
-                ab.baseRot = ab.bone.quaternion.clone();
-                ab.dispX = 0; ab.dispY = 0; ab.velX = 0; ab.velY = 0;
-              });
-            }
-          });
+          // introDuration: subclip is 45 frames at 30fps = 1.5s, played at 0.5x = 3s wall time
+          const introDuration = (45 / fps) / 0.5;
 
           const breathBones = [];
           obj.traverse(c => {
@@ -4484,13 +4485,15 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           // Restart function: resets mixer and all phase state to beginning
           const restartAnimation = () => {
             mixer.stopAllAction();
-            const restartAction = mixer.clipAction(clip);
+            const restartIntro = THREE.AnimationUtils.subclip(clip, "intro", 0, 45, fps);
+            const restartAction = mixer.clipAction(restartIntro);
             restartAction.setLoop(THREE.LoopOnce, 1);
             restartAction.clampWhenFinished = true;
             restartAction.timeScale = 0.5;
             restartAction.reset().play();
             phase = "intro";
             vel = 0; disp = 0; bounceTime = 0; breathTime = 0;
+            introElapsed = 0;
             footPositionsLocked = false;
             obj.position.y = restY;
             clock.start();
@@ -4499,12 +4502,13 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           const FRAME_MS = 1000 / 30;
           const FADE_MS = 500;
           let lastFrame = 0;
+          let introElapsed = 0;
           let hiddenAt = visibleRef.current ? Infinity : 0;
           let wasVisible = visibleRef.current;
           const animateWithBreath = (now) => {
             animId = requestAnimationFrame(animateWithBreath);
             const isVisible = visibleRef.current;
-            if (isVisible && !wasVisible) { restartAnimation(); lastFrame = now; hiddenAt = Infinity; }
+            if (isVisible && !wasVisible) { restartAnimation(); lastFrame = now; introElapsed = 0; hiddenAt = Infinity; }
             if (!isVisible && wasVisible) hiddenAt = now;
             wasVisible = isVisible;
             const fadingOut = !isVisible && (now - hiddenAt < FADE_MS);
@@ -4514,6 +4518,12 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             const dt = Math.min(clock.getDelta(), 0.05);
             if (!isVisible) { if (mixer) mixer.update(dt); crossRenderer.render(crossScene, camera); figureRenderer.render(figureScene, camera); return; }
             if (mixer) mixer.update(dt);
+
+            // Manual intro end detection — fire bounce when intro duration elapsed
+            if (phase === "intro") {
+              introElapsed += dt;
+              if (introElapsed >= introDuration) triggerBounce();
+            }
 
             const toCamX = camera.position.x - crossGroup.position.x;
             const toCamZ = camera.position.z - crossGroup.position.z;
