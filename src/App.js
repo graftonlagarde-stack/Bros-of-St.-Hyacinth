@@ -4363,25 +4363,6 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           let breathTime = 0;
           let bounceTime = 0;
 
-          const triggerBounce = () => {
-            if (phase !== "intro") return;
-            phase = "bounce";
-            vel   = kickVel;
-            disp  = 0;
-            bounceTime = 0;
-            footBones.forEach(fb => {
-              fb.bone.updateWorldMatrix(true, false);
-              fb.worldPos = new THREE.Vector3();
-              fb.bone.getWorldPosition(fb.worldPos);
-            });
-            footPositionsLocked = true;
-            leanBones.forEach(lb => { lb.baseRot = lb.bone.quaternion.clone(); });
-            armBones.forEach(ab => {
-              ab.baseRot = ab.bone.quaternion.clone();
-              ab.dispX = 0; ab.dispY = 0; ab.velX = 0; ab.velY = 0;
-            });
-          };
-
           // Physics bounce — upward kick, 1.5x faster than before
           const restY     = obj.position.y;
           let   vel       = 0;
@@ -4427,8 +4408,26 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           // Estimate bounce duration for normalizing t (stiffness/damping gives ~settle time)
           const bounceDuration = 1.2; // seconds estimate
 
-          // introDuration: subclip is 45 frames at 30fps = 1.5s, played at 0.5x = 3s wall time
-          const introDuration = (45 / fps) / 0.5;
+          const triggerBounce = () => {
+            if (phase !== "intro") return;
+            phase = "bounce";
+            vel   = kickVel;
+            disp  = 0;
+            bounceTime = 0;
+            footBones.forEach(fb => {
+              fb.bone.updateWorldMatrix(true, false);
+              fb.worldPos = new THREE.Vector3();
+              fb.bone.getWorldPosition(fb.worldPos);
+            });
+            footPositionsLocked = true;
+            leanBones.forEach(lb => { lb.baseRot = lb.bone.quaternion.clone(); });
+            armBones.forEach(ab => {
+              ab.baseRot = ab.bone.quaternion.clone();
+              ab.dispX = 0; ab.dispY = 0; ab.velX = 0; ab.velY = 0;
+            });
+          };
+
+          mixer.addEventListener("finished", () => { triggerBounce(); });
 
           const breathBones = [];
           obj.traverse(c => {
@@ -4445,14 +4444,14 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
           obj.traverse(c => {
             if (!c.isBone) return;
             const n = c.name.toLowerCase();
-            const isUpper = n === "mixamorig:spine"  || n === "mixamorig:spine1" ||
-                            n === "mixamorig:spine2" || n === "mixamorig:neck"   ||
-                            n === "mixamorig:head"   || n === "mixamorig:leftshoulder" ||
-                            n === "mixamorig:rightshoulder" || n === "mixamorig:leftarm" ||
-                            n === "mixamorig:rightarm" || n === "mixamorig:leftforearm" ||
-                            n === "mixamorig:rightforearm" || n === "mixamorig:lefthand" ||
-                            n === "mixamorig:righthand";
-            if (isUpper) {
+            const isUpper = n.includes("spine") || n.includes("neck") ||
+                            n.includes("head")  || n.includes("shoulder") ||
+                            n.includes("arm")   || n.includes("forearm") ||
+                            n.includes("hand")  || n.includes("clavicle");
+            const isLower = n.includes("knee") || n.includes("foot") ||
+                            n.includes("toe")  || n.includes("ankle") ||
+                            n.includes("leg")  || n.includes("thigh") || n.includes("upleg");
+            if (isUpper && !isLower) {
               // Each bone gets unique phase offsets for organic, non-repeating feel
               idleBones.push({
                 bone:   c,
@@ -4478,6 +4477,9 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
               lowerLockBones.push({ bone: c, worldPos: null });
             }
           });
+
+          // introDuration: subclip is 45 frames at 30fps = 1.5s, played at 0.5x = 3s wall time
+          const introDuration = (45 / fps) / 0.5;
 
           const tmpQ  = new THREE.Quaternion();
           const leanQ = new THREE.Quaternion();
@@ -4519,7 +4521,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
             if (!isVisible) { if (mixer) mixer.update(dt); crossRenderer.render(crossScene, camera); figureRenderer.render(figureScene, camera); return; }
             if (mixer) mixer.update(dt);
 
-            // Manual intro end detection — fire bounce when intro duration elapsed
+            // Manual intro end detection as fallback in case finished event doesn't fire
             if (phase === "intro") {
               introElapsed += dt;
               if (introElapsed >= introDuration) triggerBounce();
