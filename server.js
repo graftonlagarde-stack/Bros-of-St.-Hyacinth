@@ -1605,8 +1605,13 @@ app.post("/api/board/messages", requireAuth, async (req, res) => {
       }
     }
 
+    // Re-fetch with JOIN to include alias avatar in immediate response
+    const { rows: msgRows } = await db.query(
+      `SELECT m.*, u.avatar_url, u.chat_alias_avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.id = $1`,
+      [rows[0].id]
+    );
+    const newMsg = shapeMessage(msgRows[0], {});
     // Push notification — notify all OTHER users that a new message arrived
-    const newMsg = shapeMessage(rows[0], {});
     const { rows: allUsers } = await db.query(
       "SELECT DISTINCT user_id FROM push_subscriptions WHERE user_id != $1",
       [req.userId]
