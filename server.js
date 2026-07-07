@@ -400,6 +400,9 @@ async function initDb() {
   await db.query(`ALTER TABLE meetings ADD COLUMN IF NOT EXISTS join_count INTEGER NOT NULL DEFAULT 0;`);
   await db.query(`ALTER TABLE meetings ADD COLUMN IF NOT EXISTS active_participants INTEGER NOT NULL DEFAULT 0;`);
   await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_public_id TEXT;`);
+  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS chat_alias_name TEXT;`);
+  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS chat_alias_avatar_url TEXT;`);
+  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS chat_alias_avatar_public_id TEXT;`);
   await db.query(`ALTER TABLE session_sets ADD COLUMN IF NOT EXISTS migrated BOOLEAN NOT NULL DEFAULT FALSE;`);
 
   // Step 1: Mark all pre-launch session_sets as migrated (catches any rows from broken migrations)
@@ -571,6 +574,8 @@ const shapeUser = (u) => ({
   displayName: displayName(u),
   role:        u.role,
   avatarUrl:   u.avatar_url || null,
+  chatAliasName:      u.chat_alias_name || null,
+  chatAliasAvatarUrl: u.chat_alias_avatar_url || null,
 });
 
 // Middleware: require arch_admin or admin role
@@ -608,7 +613,7 @@ async function loadReactions(messageIds) {
 const shapeMessage = (row, reactionsMap) => ({
   id:        Number(row.id),
   author:    row.author,
-  avatarUrl: row.avatar_url || null,
+  avatarUrl: row.chapter_id ? (row.avatar_url || null) : (row.chat_alias_avatar_url || row.avatar_url || null),
   text:      row.text,
   chapterId: row.chapter_id ? Number(row.chapter_id) : null,
   media:     row.media_url ? {
@@ -1011,7 +1016,7 @@ async function updatePrIfBetter(userId, exercise, prValue) {
 // GET /api/workout/session/today — get or create today's session with all sets
 app.get("/api/workout/session/today", requireAuth, async (req, res) => {
   try {
-    const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD" — parses unambiguously everywhere
+    const today = new Date().toLocaleDateString("en-US", { month:"short", day:"numeric" });
     const { rows: sessRows } = await db.query(`
       INSERT INTO workout_sessions (user_id, date, created_at)
       VALUES ($1, $2, $3)
@@ -1218,8 +1223,85 @@ app.delete("/api/profile/avatar", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Server error." });
   }
 });
+// ─── CHAT ALIAS ──────────────────────────────────────────────────────────────
+
+// GET /api/profile/chat-alias — get current user's chat alias
+app.get("/api/profile/chat-alias", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      "SELECT chat_alias_name, chat_alias_avatar_url FROM users WHERE id = $1",
+      [req.userId]
+    );
+    res.json({
+      chatAliasName:      rows[0]?.chat_alias_name || null,
+      chatAliasAvatarUrl: rows[0]?.chat_alias_avatar_url || null,
+    });
+  } catch (err) {
+    console.error("GET /api/profile/chat-alias:", err);
+    res.status(500).json({ error: "Server error." });
+  }
+});
+
+// PUT /api/profile/chat-alias — set or clear alias name
+app.put("/api/profile/chat-alias", requireAuth, async (req, res) => {
+  try {
+    const name = req.body.name?.trim() || null;
+    await db.query(
+      "UPDATE users SET chat_alias_name = $1 WHERE id = $2",
+      [name, req.userId]
+    );
+    res.json({ chatAliasName: name });
+  } catch (err) {
+    console.error("PUT /api/profile/chat-alias:", err);
+    res.status(500).json({ error: "Server error." });
+  }
+});
+
+// POST /api/profile/chat-alias/avatar — upload chat alias photo
+app.post("/api/profile/chat-alias/avatar", requireAuth, upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file provided." });
+    const { rows } = await db.query("SELECT chat_alias_avatar_public_id FROM users WHERE id = $1", [req.userId]);
+    if (rows[0]?.chat_alias_avatar_public_id) {
+      await cloudinary.uploader.destroy(rows[0].chat_alias_avatar_public_id).catch(() => {});
+    }
+    const result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: "chat-aliases", resource_type: "image", transformation: [{ width: 600, height: 600, crop: "fill", gravity: "face" }] },
+        (err, res) => err ? reject(err) : resolve(res)
+      );
+      stream.end(req.file.buffer);
+    });
+    await db.query(
+      "UPDATE users SET chat_alias_avatar_url = $1, chat_alias_avatar_public_id = $2 WHERE id = $3",
+      [result.secure_url, result.public_id, req.userId]
+    );
+    res.json({ chatAliasAvatarUrl: result.secure_url });
+  } catch (err) {
+    console.error("POST /api/profile/chat-alias/avatar:", err);
+    res.status(500).json({ error: "Server error." });
+  }
+});
+
+// DELETE /api/profile/chat-alias/avatar — remove alias photo
+app.delete("/api/profile/chat-alias/avatar", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await db.query("SELECT chat_alias_avatar_public_id FROM users WHERE id = $1", [req.userId]);
+    if (rows[0]?.chat_alias_avatar_public_id) {
+      await cloudinary.uploader.destroy(rows[0].chat_alias_avatar_public_id).catch(() => {});
+    }
+    await db.query(
+      "UPDATE users SET chat_alias_avatar_url = NULL, chat_alias_avatar_public_id = NULL WHERE id = $1",
+      [req.userId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("DELETE /api/profile/chat-alias/avatar:", err);
+    res.status(500).json({ error: "Server error." });
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
-// ═════════════════════════════════════════════════════════════════════════════
 
 app.post("/api/upload", requireAuth, upload.single("file"), async (req, res) => {
   try {
@@ -1478,8 +1560,8 @@ app.get("/api/board/messages", requireAuth, async (req, res) => {
   try {
     const since = req.query.since ? Number(req.query.since) : null;
     const { rows } = since
-      ? await db.query(`SELECT m.*, u.avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL AND m.ts > $1 ORDER BY m.ts ASC`, [since])
-      : await db.query(`SELECT m.*, u.avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL ORDER BY m.ts ASC`);
+      ? await db.query(`SELECT m.*, u.avatar_url, u.chat_alias_avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL AND m.ts > $1 ORDER BY m.ts ASC`, [since])
+      : await db.query(`SELECT m.*, u.avatar_url, u.chat_alias_avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL ORDER BY m.ts ASC`);
     const ids = rows.map(r => Number(r.id));
     const reactionsMap = ids.length > 0 ? await loadReactions(ids) : {};
     return res.json(rows.map(r => shapeMessage(r, reactionsMap)));
@@ -1501,11 +1583,13 @@ app.post("/api/board/messages", requireAuth, async (req, res) => {
 
     const extraItems = Array.isArray(mediaExtra) && mediaExtra.length > 0 ? mediaExtra : null;
     const ts = Date.now();
+    // Global chat uses alias name if set; chapter chat always uses real name
+    const authorName = (!req.body.chapterId && user.chat_alias_name) ? user.chat_alias_name : displayName(user);
     const { rows } = await db.query(`
       INSERT INTO messages
         (user_id, author, ts, text, media_url, media_type, media_bytes, media_public_id, media_extra)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [req.userId, displayName(user), ts, text?.trim() || "",
+      [req.userId, authorName, ts, text?.trim() || "",
        media?.dataUrl || null, media?.type || null,
        media?.bytes || 0, media?.publicId || null,
        extraItems ? JSON.stringify(extraItems) : null]

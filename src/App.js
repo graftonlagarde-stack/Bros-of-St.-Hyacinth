@@ -193,6 +193,13 @@ const api = {
     return fetch(`${API_BASE}/api/profile/avatar`, { method:"POST", headers:{ Authorization:`Bearer ${api.getToken()}` }, body:fd }).then(r=>r.json());
   },
   deleteAvatar:       ()              => api.delete("/api/profile/avatar"),
+  getChatAlias:       ()              => api.get("/api/profile/chat-alias"),
+  updateChatAliasName: (name)         => api.put("/api/profile/chat-alias", { name }),
+  uploadChatAliasAvatar: (file) => {
+    const fd = new FormData(); fd.append("file", file);
+    return fetch(`${API_BASE}/api/profile/chat-alias/avatar`, { method:"POST", headers:{ Authorization:`Bearer ${api.getToken()}` }, body:fd }).then(r=>r.json());
+  },
+  deleteChatAliasAvatar: ()           => api.delete("/api/profile/chat-alias/avatar"),
   // Meetings
   getMeetings:        ()              => api.get("/api/meetings"),
   createMeeting:      (body)          => api.post("/api/meetings", body),
@@ -7708,7 +7715,9 @@ function AuthScreen({ onAuth }) {
 
 // ─── PROFILE PAGE ─────────────────────────────────────────────────────────────
 // ─── AVATAR UPLOAD ─────────────────────────────────────────────────────────────
-function AvatarUpload({ user, onUpdate }) {
+function AvatarUpload({ user, onUpdate, uploadFn, removeFn }) {
+  uploadFn = uploadFn || api.uploadAvatar;
+  removeFn = removeFn || api.deleteAvatar;
   const [uploading, setUploading] = useState(false);
   const [removing,  setRemoving]  = useState(false);
   const [error,     setError]     = useState("");
@@ -7783,7 +7792,7 @@ function AvatarUpload({ user, onUpdate }) {
       const file = new File([blob], "avatar.png", { type: "image/png" });
       setUploading(true); setCropSrc(null);
       try {
-        const data = await api.uploadAvatar(file);
+        const data = await uploadFn(file);
         if (data.avatarUrl) onUpdate(data.avatarUrl);
         else setError(data.error || "Upload failed.");
       } catch { setError("Upload failed."); }
@@ -7805,7 +7814,7 @@ function AvatarUpload({ user, onUpdate }) {
 
   const handleRemove = async () => {
     setRemoving(true); setError("");
-    try { await api.deleteAvatar(); onUpdate(null); }
+    try { await removeFn(); onUpdate(null); }
     catch { setError("Remove failed."); }
     finally { setRemoving(false); }
   };
@@ -7875,7 +7884,91 @@ function AvatarUpload({ user, onUpdate }) {
   );
 }
 
-function ProfilePage({ user, onDeleted, onLogout, onAvatarUpdate }) {
+// ─── CHAT ALIAS SECTION ────────────────────────────────────────────────────
+function ChatAliasSection({ user, onUpdate }) {
+  const [aliasName, setAliasName] = useState(user.chatAliasName || "");
+  const [aliasAvatarUrl, setAliasAvatarUrl] = useState(user.chatAliasAvatarUrl || null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved]   = useState(false);
+  const [error, setError]   = useState("");
+
+  // Preview: what the user will look like in global chat
+  const previewName   = aliasName.trim() || user.displayName;
+  const previewAvatar = aliasAvatarUrl || user.avatarUrl;
+  const previewInitials = aliasName.trim()
+    ? aliasName.trim().slice(0, 2).toUpperCase()
+    : (user.displayName || "").slice(0, 2).toUpperCase();
+
+  const saveName = async () => {
+    setSaving(true); setError(""); setSaved(false);
+    try {
+      const data = await api.updateChatAliasName(aliasName.trim() || null);
+      onUpdate({ chatAliasName: data.chatAliasName });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch { setError("Save failed."); }
+    finally { setSaving(false); }
+  };
+
+  const divider = { borderTop:"1px solid var(--border)", margin:"20px 0" };
+  const label   = { fontSize:10, fontFamily:"'Orbitron',sans-serif", letterSpacing:1, color:"var(--muted)", marginBottom:6 };
+
+  return (
+    <div style={{marginTop:24}}>
+      <div style={divider} />
+      <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>Global Chat Alias</div>
+      <div style={{fontSize:11,color:"var(--muted)",marginBottom:16,lineHeight:1.5}}>
+        This identity only appears in the global chat. Your real name and photo are used everywhere else.
+      </div>
+
+      {/* Preview */}
+      <div style={label}>PREVIEW</div>
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",
+        background:"var(--surface2)",borderRadius:8,marginBottom:18,border:"1px solid var(--border)"}}>
+        {previewAvatar
+          ? <AvatarPhoto src={previewAvatar} size={36} />
+          : <div className="avatar sm" style={{width:36,height:36,fontSize:12,flexShrink:0}}>
+              {previewInitials}
+            </div>
+        }
+        <div style={{fontWeight:600,fontSize:13}}>{previewName}</div>
+      </div>
+
+      {/* Alias name */}
+      <div style={label}>CHAT NICKNAME</div>
+      <div style={{display:"flex",gap:8,marginBottom:16}}>
+        <input
+          value={aliasName}
+          onChange={e => { setAliasName(e.target.value); setSaved(false); }}
+          placeholder="Leave blank to use your real name"
+          maxLength={32}
+          style={{flex:1,background:"var(--surface2)",border:"1px solid var(--border)",
+            borderRadius:4,padding:"8px 12px",color:"var(--text)",fontSize:13,outline:"none"}}
+        />
+        <button className="btn" onClick={saveName} disabled={saving}
+          style={{padding:"8px 16px",fontSize:11,letterSpacing:1,whiteSpace:"nowrap",
+            color: saved ? "#88ff00" : "var(--accent)", borderColor: saved ? "rgba(136,255,0,0.4)" : undefined}}>
+          {saving ? "…" : saved ? "SAVED ✓" : "SAVE"}
+        </button>
+      </div>
+      {error && <div style={{color:"#ff4455",fontSize:11,marginBottom:8}}>{error}</div>}
+
+      {/* Alias avatar */}
+      <div style={label}>CHAT PHOTO</div>
+      <AvatarUpload
+        user={{ avatarUrl: aliasAvatarUrl }}
+        uploadFn={api.uploadChatAliasAvatar}
+        removeFn={api.deleteChatAliasAvatar}
+        onUpdate={(url) => {
+          setAliasAvatarUrl(url);
+          onUpdate({ chatAliasAvatarUrl: url });
+        }}
+      />
+    </div>
+  );
+}
+
+function ProfilePage({ user, onDeleted, onLogout, onAvatarUpdate, onAliasUpdate }) {
   const isMobile = useIsMobile();
   const isArchAdmin = user.role === "arch_admin";
   const isAdmin = user.role === "arch_admin" || user.role === "admin";
@@ -8078,6 +8171,9 @@ function ProfilePage({ user, onDeleted, onLogout, onAvatarUpdate }) {
           </div>
         </div>
         <AvatarUpload user={user} onUpdate={onAvatarUpdate} />
+
+        {/* Chat Alias Section */}
+        <ChatAliasSection user={user} onUpdate={onAliasUpdate || (() => {})} />
         {[
           ["First Name",   user.firstName],
           ["Last Name",    user.lastName],
@@ -9938,7 +10034,7 @@ export default function App() {
           )}
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
           {page === "rule" && <RulePage user={user} />}
-          {page === "profile" && <ProfilePage user={user} onDeleted={() => { api.clearToken(); setUser(null); }} onLogout={() => { handleLogout(); setPage("workout"); }} onAvatarUpdate={(url) => setUser(u => ({ ...u, avatarUrl: url }))} />}
+          {page === "profile" && <ProfilePage user={user} onDeleted={() => { api.clearToken(); setUser(null); }} onLogout={() => { handleLogout(); setPage("workout"); }} onAvatarUpdate={(url) => setUser(u => ({ ...u, avatarUrl: url }))} onAliasUpdate={(alias) => setUser(u => ({ ...u, ...alias }))} />}
         </div>
         <FigureBackdrop variant="boards"    visible={page === "boards"}    isMobile={isMobile} />
         <FigureBackdrop variant="meet"      visible={page === "meet" && !inCall}      isMobile={isMobile} />
