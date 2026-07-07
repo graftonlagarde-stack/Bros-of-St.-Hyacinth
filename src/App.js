@@ -168,6 +168,7 @@ const api = {
 
   get:    (path)        => api.request("GET",    path, null),
   post:   (path, body)  => api.request("POST",   path, body),
+  put:    (path, body)  => api.request("PUT",    path, body),
   delete: (path, body)  => api.request("DELETE", path, body),
 
   // Auth
@@ -7715,7 +7716,7 @@ function AuthScreen({ onAuth }) {
 
 // ─── PROFILE PAGE ─────────────────────────────────────────────────────────────
 // ─── AVATAR UPLOAD ─────────────────────────────────────────────────────────────
-function AvatarUpload({ user, onUpdate, uploadFn, removeFn }) {
+function AvatarUpload({ user, onUpdate, uploadFn, removeFn, responseKey = "avatarUrl" }) {
   uploadFn = uploadFn || api.uploadAvatar;
   removeFn = removeFn || api.deleteAvatar;
   const [uploading, setUploading] = useState(false);
@@ -7793,7 +7794,7 @@ function AvatarUpload({ user, onUpdate, uploadFn, removeFn }) {
       setUploading(true); setCropSrc(null);
       try {
         const data = await uploadFn(file);
-        if (data.avatarUrl) onUpdate(data.avatarUrl);
+        if (data[responseKey]) onUpdate(data[responseKey]);
         else setError(data.error || "Upload failed.");
       } catch { setError("Upload failed."); }
       finally { setUploading(false); }
@@ -7959,6 +7960,7 @@ function ChatAliasSection({ user, onUpdate }) {
         user={{ avatarUrl: aliasAvatarUrl }}
         uploadFn={api.uploadChatAliasAvatar}
         removeFn={api.deleteChatAliasAvatar}
+        responseKey="chatAliasAvatarUrl"
         onUpdate={(url) => {
           setAliasAvatarUrl(url);
           onUpdate({ chatAliasAvatarUrl: url });
