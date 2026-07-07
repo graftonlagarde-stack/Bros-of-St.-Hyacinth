@@ -4242,8 +4242,9 @@ function AudioFigureBackdropPR({ visible = false, isMobile = false }) {
   }, []);
 
 
-  // Cross — unchanged from original
+  // Cross — Three.js only runs on Safari (GLB path). On WebM path the cross PNG handles it.
   useEffect(() => {
+    if (!needsCanvasForAlpha) return;
     if (!crossMountRef.current) return;
     const crossEl = crossMountRef.current;
     let animId = null;
@@ -5703,7 +5704,9 @@ function AudioFigureBackdropGLB({ visible = false, isMobile = false }) {
       pointerEvents: "none", zIndex: -1, opacity,
       transition: "opacity 0.5s ease",
     }}>
-      <canvas ref={crossMountRef} style={{ position: "absolute", inset: 0, zIndex: 1, filter: "drop-shadow(0 0 10px rgba(180,220,255,0.88)) drop-shadow(0 0 3px rgba(255,255,255,0.75))" }} />
+      {needsCanvasForAlpha && (
+        <canvas ref={crossMountRef} style={{ position: "absolute", inset: 0, zIndex: 1, filter: "drop-shadow(0 0 10px rgba(180,220,255,0.88)) drop-shadow(0 0 3px rgba(255,255,255,0.75))" }} />
+      )}
       <div ref={figureMountRef} style={{ position: "absolute", inset: 0, zIndex: 2 }} />
     </div>
   );
