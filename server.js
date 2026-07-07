@@ -612,6 +612,7 @@ async function loadReactions(messageIds) {
 // ── Helper: shape a message row for the client ────────────────────────────────
 const shapeMessage = (row, reactionsMap) => ({
   id:        Number(row.id),
+  userId:    Number(row.user_id),
   author:    row.chapter_id ? row.author : (row.chat_alias_name || row.author),
   avatarUrl: row.chapter_id ? (row.avatar_url || null) : (row.chat_alias_avatar_url || row.avatar_url || null),
   text:      row.text,

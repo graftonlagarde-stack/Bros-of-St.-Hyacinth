@@ -1395,7 +1395,7 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
   // Rendered into a column-reverse container, so we reverse the array here
   // to keep chronological order (oldest top → newest bottom) visually correct.
   function buildMessageList(msgs) { return msgs.map((msg, i, arr) => {
-    const isMe = msg.author === username;
+    const isMe = msg.userId ? msg.userId === currentUser?.id : msg.author === username;
     const prevMsg = arr[i + 1];
     const nextMsg = arr[i - 1];
     const sameDay = (a, b) => {
