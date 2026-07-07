@@ -612,7 +612,7 @@ async function loadReactions(messageIds) {
 // ── Helper: shape a message row for the client ────────────────────────────────
 const shapeMessage = (row, reactionsMap) => ({
   id:        Number(row.id),
-  author:    row.author,
+  author:    row.chapter_id ? row.author : (row.chat_alias_name || row.author),
   avatarUrl: row.chapter_id ? (row.avatar_url || null) : (row.chat_alias_avatar_url || row.avatar_url || null),
   text:      row.text,
   chapterId: row.chapter_id ? Number(row.chapter_id) : null,
@@ -1560,8 +1560,8 @@ app.get("/api/board/messages", requireAuth, async (req, res) => {
   try {
     const since = req.query.since ? Number(req.query.since) : null;
     const { rows } = since
-      ? await db.query(`SELECT m.*, u.avatar_url, u.chat_alias_avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL AND m.ts > $1 ORDER BY m.ts ASC`, [since])
-      : await db.query(`SELECT m.*, u.avatar_url, u.chat_alias_avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL ORDER BY m.ts ASC`);
+      ? await db.query(`SELECT m.*, u.avatar_url, u.chat_alias_avatar_url, u.chat_alias_name FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL AND m.ts > $1 ORDER BY m.ts ASC`, [since])
+      : await db.query(`SELECT m.*, u.avatar_url, u.chat_alias_avatar_url, u.chat_alias_name FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL ORDER BY m.ts ASC`);
     const ids = rows.map(r => Number(r.id));
     const reactionsMap = ids.length > 0 ? await loadReactions(ids) : {};
     return res.json(rows.map(r => shapeMessage(r, reactionsMap)));
@@ -1607,7 +1607,7 @@ app.post("/api/board/messages", requireAuth, async (req, res) => {
 
     // Re-fetch with JOIN to include alias avatar in immediate response
     const { rows: msgRows } = await db.query(
-      `SELECT m.*, u.avatar_url, u.chat_alias_avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.id = $1`,
+      `SELECT m.*, u.avatar_url, u.chat_alias_avatar_url, u.chat_alias_name FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.id = $1`,
       [rows[0].id]
     );
     const newMsg = shapeMessage(msgRows[0], {});
