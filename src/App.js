@@ -1415,14 +1415,7 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
           <div style={{ width:48, flexShrink:0 }}>
             {isLastInGroup && (
               msg.avatarUrl
-                ? <div className="avatar-photo sm" style={{position:"relative"}}>
-                    <img src={msg.avatarUrl} alt={msg.author} crossOrigin="anonymous" />
-                    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"conic-gradient(from 198deg at 34% 24%, rgba(255,255,255,0) 0deg, rgba(255,255,255,0.7) 22deg, rgba(255,255,255,0) 44deg, rgba(255,255,255,0) 360deg)",WebkitMaskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",maskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",pointerEvents:"none",zIndex:3}} />
-                    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 40% 28% at 33% 22%,rgba(255,255,255,0.22) 0%,transparent 62%)",pointerEvents:"none",zIndex:3}} />
-                    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 11% 8% at 31% 18%,rgba(255,255,255,1) 0%,transparent 100%)",pointerEvents:"none",zIndex:3}} />
-                    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 6% 4% at 44% 29%,rgba(200,230,255,0.6) 0%,transparent 100%)",pointerEvents:"none",zIndex:3}} />
-                    <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 60% 18% at 50% 100%,rgba(0,0,0,0.38) 0%,transparent 65%)",pointerEvents:"none",zIndex:3}} />
-                  </div>
+                ? <AvatarPhoto src={msg.avatarUrl} alt={msg.author} />
                 : <div className="avatar sm" style={{ background:"linear-gradient(135deg,#001a10,#002e1a)", color:"#88ff00" }}>
                     {initials(msg.author)}
                     <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"conic-gradient(from 198deg at 34% 24%, rgba(255,255,255,0) 0deg, rgba(255,255,255,0.7) 22deg, rgba(255,255,255,0) 44deg, rgba(255,255,255,0) 360deg)",WebkitMaskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",maskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",pointerEvents:"none",zIndex:3}} />
@@ -2082,7 +2075,11 @@ const EXERCISE_MAP    = Object.fromEntries(EXERCISES.map(e => [e.name, e]));
 const EXERCISE_LIST   = EXERCISES.map(e => e.name); // backward compat
 
 // Normalize date strings — old system used "Mar 8", new uses "Mar 8, 2026"
-const normDate = (d) => d ? d.replace(/,\s*\d{4}$/, "").trim() : d;
+// normDate: normalises the session date string for use as a display/grouping key.
+// Old sessions: "Jan 15" (no year — stored without year, pre-fix)
+// New sessions: "2025-01-15" (ISO, unambiguous)
+// Returns the date as-is for grouping — the rawTs field carries the real timestamp.
+const normDate = (d) => d ? d.trim() : d;
 
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 const css = `
@@ -3366,20 +3363,97 @@ const css = `
 const fmtTime = (s) => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
 
 // ─── FIGURE BACKDROP ──────────────────────────────────────────────────────────
-const BACKDROP_MODELS = {
-  boards:    "/Talking_On_A_Cell_Phone.glb",
-  meet:      "/Talking.glb",
-  workout:   null,
-  audio:     "/Talking_On_A_Cell_Phone.glb",
-  topcharts: "/Warming_Up.glb",
-};
+// ─── PRE-RENDER PATH ──────────────────────────────────────────────────────────
+const PR = "/Pre-Render/";
 
-function FigureBackdrop({ variant = "workout", visible = false, isMobile = false }) {
-  const mountRef  = useRef(null);
-  const fbxFile   = BACKDROP_MODELS[variant];
-  const visibleRef = useRef(visible);
+// Detect whether this browser needs the canvas+MOV approach for correct alpha.
+// Safari (and Safari-engine browsers) support HEVC (hvc1) — Chrome and Firefox don't.
+// Safari's <video> element renders WebM alpha incorrectly even though it technically
+// supports VP9. The fix: serve MOV and draw frames via canvas instead.
+const needsCanvasForAlpha = (() => {
+  const v = document.createElement("video");
+  return v.canPlayType('video/mp4; codecs="hvc1"') !== "";
+})();
 
+// Renders the correct single source for the current browser.
+function VideoSource({ name }) {
+  return needsCanvasForAlpha
+    ? <source src={PR + name + ".mov"} type='video/mp4; codecs="hvc1"' />
+    : <source src={PR + name + ".webm"} type="video/webm" />;
+}
+
+// For Safari (MOV path): drives a canvas that draws from an opacity:0 video element.
+// The video must be visible in the DOM (opacity:0, not display:none) for Safari to
+// continue decoding frames. The canvas receives the correctly composited output.
+// For non-Safari (WebM path): no-op — the video element renders correctly on its own.
+function useVideoCanvas(videoRef, canvasRef, { circular = false, visibleRef = null } = {}) {
+  useEffect(() => {
+    if (!needsCanvasForAlpha) return;
+    let cancelled = false;
+    let rafId;
+    let sizeSet = false;
+
+    const drawFrame = () => {
+      if (cancelled) return;
+      const vid = videoRef.current;
+      const cvs = canvasRef.current;
+      if (!vid || !cvs || vid.readyState < 2) return;
+      if (visibleRef && !visibleRef.current) {
+        if (vid.requestVideoFrameCallback) vid.requestVideoFrameCallback(drawFrame);
+        return;
+      }
+      const ctx = cvs.getContext("2d");
+      if (!sizeSet || cvs.width !== vid.videoWidth || cvs.height !== vid.videoHeight) {
+        cvs.width = vid.videoWidth;
+        cvs.height = vid.videoHeight;
+        sizeSet = true;
+      }
+      ctx.clearRect(0, 0, cvs.width, cvs.height);
+      if (circular) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cvs.width/2, cvs.height/2, Math.min(cvs.width, cvs.height)/2, 0, Math.PI*2);
+        ctx.clip();
+      }
+      ctx.drawImage(vid, 0, 0, cvs.width, cvs.height);
+      if (circular) ctx.restore();
+      if (vid.requestVideoFrameCallback) vid.requestVideoFrameCallback(drawFrame);
+    };
+
+    const start = () => {
+      if (cancelled) return;
+      const vid = videoRef.current;
+      const cvs = canvasRef.current;
+      if (!vid || !cvs) { rafId = requestAnimationFrame(start); return; }
+      if (vid.requestVideoFrameCallback) {
+        vid.requestVideoFrameCallback(drawFrame);
+      } else {
+        const rafLoop = () => {
+          if (cancelled) return;
+          rafId = requestAnimationFrame(rafLoop);
+          drawFrame();
+        };
+        rafLoop();
+      }
+    };
+    rafId = requestAnimationFrame(start);
+    return () => { cancelled = true; cancelAnimationFrame(rafId); };
+  }, []);
+}
+
+// Shared video backdrop. Positions a <video> by projecting world-space coordinates
+// through the exact same Three.js camera the original GLB component used.
+function VideoBackdrop({ visible, isMobile, fullH = false, src, worldX, worldY, worldZ,
+                         scale, containerStyle, extraStyle, videoRef: extVideoRef, children,
+                         onMetadata }) {
   const [opacity, setOpacity] = useState(0);
+  const [pos, setPos]         = useState(null);
+  const internalRef           = useRef(null);
+  const videoRef              = extVideoRef || internalRef;
+  const canvasRef             = useRef(null);
+  const visibleRef            = useRef(visible);
+
+  useVideoCanvas(videoRef, canvasRef, { visibleRef });
 
   useEffect(() => {
     visibleRef.current = visible;
@@ -3388,125 +3462,135 @@ function FigureBackdrop({ variant = "workout", visible = false, isMobile = false
     return () => clearTimeout(t);
   }, [visible]);
 
+  // Restart from frame 0 each time the page opens, pause when it closes
   useEffect(() => {
-    if (!fbxFile || !mountRef.current) return;
-    const el = mountRef.current;
-    let animId = null;
-    let rendererInst = null;
-    let cancelled = false;
-
-    Promise.all([
-      import("three"),
-      import("three/examples/jsm/loaders/GLTFLoader"),
-    ]).then(([THREE, { GLTFLoader }]) => {
-      if (cancelled) return;
-      const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
-      const h = isMobile ? window.innerHeight : (window.innerHeight - 70);
-
-      const scene  = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
-      // Desktop: camera offset left so figure at x=110 appears at screen-right-third
-      // Mobile: camera centered, pulled back for portrait aspect
-      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
-      camera.lookAt(0, 160, 0);
-
-      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
-      renderer.setPixelRatio(1);
-      renderer.setSize(w, h);
-      renderer.setClearColor(0x000000, 0);
-      renderer.domElement.style.cssText="position:absolute;top:0;left:0;"; el.appendChild(renderer.domElement);
-      rendererInst = renderer;
-
-      const wireMat = new THREE.MeshBasicMaterial({
-        color: 0x00ffcc, wireframe: true,
-        transparent: true, opacity: 0.32,
-        blending: THREE.AdditiveBlending, depthWrite: false,
-      });
-
-      let mixer = null;
-      const clock = new THREE.Clock();
-
-      new GLTFLoader().load(fbxFile, (gltf) => {
-        const obj = gltf.scene;
-        obj.animations = gltf.animations;
-        if (cancelled) return;
-        obj.traverse(c => {
-          if (c.isMesh) { c.material = wireMat; c.castShadow = c.receiveShadow = false; }
-        });
-        const box    = new THREE.Box3().setFromObject(obj);
-        const size   = box.getSize(new THREE.Vector3());
-        const fovRad = (40 * Math.PI) / 180;
-        const worldH = 2 * Math.tan(fovRad / 2) * 600;
-        const scale  = (worldH * 0.65) / size.y;
-        const newScale = scale * 1.495;
-        obj.scale.setScalar(newScale);
-        const box2   = new THREE.Box3().setFromObject(obj);
-        const extraH = size.y * (newScale - scale);
-        // Same x position on mobile as desktop — camera centered so 110 puts figure right-of-center
-        obj.position.set(110, -box2.min.y - extraH + 70, 0);
-        obj.rotation.y = isMobile ? (-Math.PI * 5 / 180) : -Math.PI / 6;  // mobile: -5°, desktop: -30°
-        scene.add(obj);
-        if (obj.animations?.length) {
-          mixer = new THREE.AnimationMixer(obj);
-          const a = mixer.clipAction(obj.animations[0]);
-          a.setLoop(THREE.LoopRepeat, Infinity);
-          a.play();
-        }
-
-        let wasVisible = visibleRef.current;
-        let hiddenAt = wasVisible ? Infinity : 0;
-        const FADE_MS = 500;
-        const FRAME_MS = 1000 / 30;
-        let lastFrame = 0;
-        const animate = (now) => {
-          animId = requestAnimationFrame(animate);
-          const isVisible = visibleRef.current;
-          if (isVisible && !wasVisible && mixer && obj.animations?.length) {
-            mixer.stopAllAction();
-            const a = mixer.clipAction(obj.animations[0]);
-            a.setLoop(THREE.LoopRepeat, Infinity);
-            a.time = 0;
-            a.play();
-            clock.start();
-            lastFrame = now;
-            hiddenAt = Infinity;
-          }
-          if (!isVisible && wasVisible) hiddenAt = now;
-          wasVisible = isVisible;
-          const fadingOut = !isVisible && (now - hiddenAt < FADE_MS);
-          if (!isVisible && !fadingOut) return;
-          if (now - lastFrame < FRAME_MS) return;
-          lastFrame = now - ((now - lastFrame) % FRAME_MS);
-          if (mixer) mixer.update(clock.getDelta());
-          renderer.render(scene, camera);
-        };
-        animate(0);
-      }, undefined, e => console.warn("FBX load error:", e));
-    }).catch(e => console.warn("Three.js import error:", e));
-
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(animId);
-      if (rendererInst) {
-        rendererInst.dispose();
-        if (el.contains(rendererInst.domElement)) el.removeChild(rendererInst.domElement);
+    let wasVisible = visibleRef.current;
+    let rafId;
+    const tick = () => {
+      rafId = requestAnimationFrame(tick);
+      const isVisible = visibleRef.current;
+      if (isVisible && !wasVisible) {
+        const vid = videoRef.current;
+        if (vid) { vid.currentTime = 0; vid.play().catch(() => {}); }
+      } else if (!isVisible && wasVisible) {
+        const vid = videoRef.current;
+        if (vid) vid.pause();
       }
+      wasVisible = isVisible;
     };
-  }, [fbxFile]);
+    tick();
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
+  const calcPos = useCallback(() => {
+    const vid = videoRef.current;
+    const aspect = (vid?.videoWidth && vid?.videoHeight)
+      ? vid.videoWidth / vid.videoHeight : 1;
+    projectWithThree(worldX, worldY, worldZ, 300, scale, isMobile, fullH).then(r => {
+      const h = r.projH;
+      const w = h * aspect;
+      setPos({ left: r.cssLeft - w/2, top: r.cssTop - h/2, width: w, height: h });
+    });
+  }, [worldX, worldY, worldZ, scale, isMobile, fullH]);
+
+  useEffect(() => {
+    calcPos();
+    window.addEventListener("resize", calcPos);
+    return () => window.removeEventListener("resize", calcPos);
+  }, [calcPos]);
+
+  // Shared style for both the video (opacity:0 in Safari) and the canvas overlay
+  const elStyle = pos ? {
+    position: "absolute",
+    left: pos.left, top: pos.top, width: pos.width, height: pos.height,
+    ...extraStyle,
+  } : null;
 
   return (
-    <div ref={mountRef} style={{
+    <div style={{
       position: "fixed",
-      left: isMobile ? 0 : 224,
-      top: 0,
-      right: 0,
-      bottom: isMobile ? 0 : 70,
       pointerEvents: "none",
       zIndex: -1,
-      opacity: fbxFile ? opacity : 0,
+      opacity,
       transition: "opacity 0.5s ease",
-      filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)",
-    }} />
+      ...containerStyle,
+    }}>
+      {elStyle && (<>
+        <video
+          ref={videoRef}
+          autoPlay muted loop playsInline
+          onLoadedMetadata={() => { calcPos(); onMetadata?.(); }}
+          style={{
+            ...elStyle,
+            // Safari: keep in DOM for frame decoding but invisible — canvas draws instead
+            opacity: !needsCanvasForAlpha ? 1 : 0,
+          }}
+        >
+          <VideoSource name={src.replace(PR,"").replace(".webm","")} />
+        </video>
+        {/* Safari canvas overlay — draws video frames with correct alpha */}
+        {!!needsCanvasForAlpha && (
+          <canvas ref={canvasRef} style={{...elStyle, pointerEvents:"none"}} />
+        )}
+      </>)}
+      {children}
+    </div>
+  );
+}
+// This is the only way to guarantee the result matches the original Three.js rendering.
+// Three.js is already in the bundle (used by the cross and original GLB components),
+// so the lazy import just retrieves the cached module — no extra download.
+let _threeCache = null;
+function projectWithThree(worldX, worldY, worldZ, worldH, scale, isMobile, fullH) {
+  const load = _threeCache
+    ? Promise.resolve(_threeCache)
+    : import("three").then(m => { _threeCache = m; return m; });
+
+  return load.then(THREE => {
+    // Canvas dimensions — identical to what each original component used
+    const W = isMobile ? window.innerWidth : (window.innerWidth - 224);
+    const H = isMobile
+      ? window.innerHeight
+      : (fullH ? window.innerHeight : window.innerHeight - 70);
+
+    const camX = isMobile ? 0 : (-W * 0.32);
+    const camZ = isMobile ? 1200 : 660;
+
+    const cam = new THREE.PerspectiveCamera(40, W / H, 0.1, 5000);
+    cam.position.set(camX, 160, camZ);
+    cam.lookAt(new THREE.Vector3(0, 160, 0));
+    cam.updateMatrixWorld();
+    cam.updateProjectionMatrix();
+
+    // Project the center point
+    const center = new THREE.Vector3(worldX, worldY, worldZ).project(cam);
+    const cssLeft = (center.x + 1) / 2 * W;
+    const cssTop  = (1 - center.y) / 2 * H;
+
+    // Project a point half-height above center to get projected height in pixels
+    const topPt = new THREE.Vector3(worldX, worldY + (300 * scale) / 2, worldZ).project(cam);
+    const topY  = (1 - topPt.y) / 2 * H;
+    const projH = 2 * Math.abs(cssTop - topY);
+
+    return { cssLeft, cssTop, projH, W, H };
+  });
+}
+
+const FIGURE_CONTAINER = (isMobile) => ({ left: isMobile ? 0 : 224, top: 0, right: 0, bottom: isMobile ? 0 : 70 });
+
+function FigureBackdropPR({ variant = "boards", visible = false, isMobile = false }) {
+  const src = {
+    boards:    PR+"Talking_On_A_Cell_Phone.webm",
+    meet:      PR+"Talking.webm",
+    topcharts: PR+"Warming_Up.webm",
+  }[variant];
+  return (
+    <VideoBackdrop
+      visible={visible} isMobile={isMobile}
+      src={src}
+      worldX={110} worldY={146} worldZ={0} scale={2.75}
+      containerStyle={FIGURE_CONTAINER(isMobile)}
+    />
   );
 }
 
@@ -3832,7 +3916,940 @@ function RulePage({ user }) {
 }
 
 
-function RuleBackdrop({ visible = false, isMobile = false }) {
+function RuleBackdropPR({ visible = false, isMobile = false }) {
+  const [opacity, setOpacity] = useState(0);
+  const [pos, setPos]         = useState(null);
+  const containerRef          = useRef(null);
+  const videoRef              = useRef(null);
+  const bubbleMountRef        = useRef(null);
+  const visibleRef            = useRef(visible);
+
+  useEffect(() => {
+    visibleRef.current = visible;
+    if (!visible) { setOpacity(0); return; }
+    const t = setTimeout(() => setOpacity(0.85), 250);
+    return () => clearTimeout(t);
+  }, [visible]);
+
+  // Restart statue video from frame 0 on page re-open, pause on close
+  useEffect(() => {
+    let wasVisible = visibleRef.current;
+    let rafId;
+    const tick = () => {
+      rafId = requestAnimationFrame(tick);
+      const isVisible = visibleRef.current;
+      if (isVisible && !wasVisible) {
+        const vid = videoRef.current;
+        if (vid) { vid.currentTime = 0; vid.play().catch(() => {}); }
+      } else if (!isVisible && wasVisible) {
+        const vid = videoRef.current;
+        if (vid) vid.pause();
+      }
+      wasVisible = isVisible;
+    };
+    tick();
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
+  const calcPos = useCallback(() => {
+    const vid = videoRef.current;
+    const aspect = (vid?.videoWidth && vid?.videoHeight) ? vid.videoWidth / vid.videoHeight : 1;
+    projectWithThree(110, 146, 0, 300, 2.75, isMobile, true).then(r => {
+      const h = r.projH, w = h * aspect;
+      setPos({ left: r.cssLeft - w/2, top: r.cssTop - h/2, width: w, height: h });
+    });
+  }, [isMobile]);
+
+  useEffect(() => {
+    calcPos();
+    window.addEventListener("resize", calcPos);
+    return () => window.removeEventListener("resize", calcPos);
+  }, [calcPos]);
+
+  // Bubble canvas — Three.js scene on top of the video (Option A)
+  useEffect(() => {
+    const el = bubbleMountRef.current;
+    if (!el) return;
+    let animId = null;
+    let rendererInst = null;
+    let cancelled = false;
+
+    Promise.all([
+      import("three"),
+      import("three/examples/jsm/environments/RoomEnvironment"),
+    ]).then(([THREE, { RoomEnvironment }]) => {
+      if (cancelled) return;
+
+      const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
+      const h = window.innerHeight;
+
+      const scene  = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 5000);
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
+      camera.lookAt(0, 160, 0);
+
+      const renderer = new THREE.WebGLRenderer({ canvas: el, alpha: true, antialias: false });
+      renderer.setPixelRatio(1);
+      renderer.setSize(w, h);
+      renderer.setClearColor(0x000000, 0);
+      rendererInst = renderer;
+
+      const makeCausticLayer = (phaseOffset, speedMult) => {
+        const SIZE = 256;
+        const cvs  = document.createElement("canvas");
+        cvs.width = cvs.height = SIZE;
+        const ctx  = cvs.getContext("2d");
+        const tex  = new THREE.CanvasTexture(cvs);
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(2.2, 2.2);
+        const update = (t) => {
+          ctx.clearRect(0, 0, SIZE, SIZE);
+          const tt = t * speedMult;
+          for (let i = 0; i < 10; i++) {
+            const phase = (i / 10) * Math.PI * 2 + phaseOffset;
+            const cx = SIZE * (0.5 + 0.4  * Math.sin(tt * 0.65 + phase) * Math.cos(tt * 0.28 + phase * 0.6));
+            const cy = SIZE * (0.5 + 0.25 * Math.cos(tt * 0.48 + phase * 1.2));
+            const rx = Math.max(1, 16 + 13 * Math.sin(tt * 0.85 + phase * 0.55));
+            const ry = Math.max(0.5, 7 + 5 * Math.cos(tt * 0.58 + phase * 0.75));
+            const al = 0.28 + 0.16 * Math.sin(tt * 1.05 + phase);
+            const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, rx);
+            grd.addColorStop(0,   `rgba(200,230,255,${al})`);
+            grd.addColorStop(0.4, `rgba(160,210,255,${al * 0.55})`);
+            grd.addColorStop(1,   "rgba(0,0,0,0)");
+            ctx.save(); ctx.translate(cx, cy); ctx.scale(1, ry / rx); ctx.translate(-cx, -cy);
+            ctx.beginPath(); ctx.arc(cx, cy, rx, 0, Math.PI * 2);
+            ctx.fillStyle = grd; ctx.fill(); ctx.restore();
+          }
+          tex.needsUpdate = true;
+        };
+        const mat  = new THREE.MeshBasicMaterial({
+          map: tex, transparent: true, opacity: 0.13,
+          blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+        });
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), mat);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.y = 420;
+        scene.add(mesh);
+        return { update, mat, mesh };
+      };
+      const causticA = makeCausticLayer(0, 1.0);
+      const causticB = makeCausticLayer(Math.PI * 0.7, 0.65);
+      causticB.mesh.rotation.z = Math.PI * 0.08;
+
+      const bubbleLightDir = new THREE.Vector3(-0.4, 0.8, 0.6).normalize();
+      const bubbleVert = `
+        varying vec3 vNormal;
+        varying vec3 vViewDir;
+        void main() {
+          vec4 worldPos = modelMatrix * vec4(position, 1.0);
+          vNormal   = normalize(normalMatrix * normal);
+          vViewDir  = normalize(cameraPosition - worldPos.xyz);
+          gl_Position = projectionMatrix * viewMatrix * worldPos;
+        }
+      `;
+      const bubbleFrag = `
+        varying vec3 vNormal;
+        varying vec3 vViewDir;
+        uniform float uTime;
+        uniform float uPhase;
+        uniform vec3  uLightDir;
+        vec3 iridescence(float f) {
+          float h = 0.33 + 0.21 * fract(f * 1.4 + uPhase * 0.12);
+          vec3 c = clamp(abs(mod(h*6.0 + vec3(0,4,2), 6.0)-3.0)-1.0, 0.0, 1.0);
+          return c;
+        }
+        void main() {
+          float NdotV   = max(dot(vNormal, vViewDir), 0.0);
+          float fresnel = pow(1.0 - NdotV, 3.5);
+          vec3 halfV    = normalize(uLightDir + vViewDir);
+          float spec    = pow(max(dot(vNormal, halfV), 0.0), 80.0);
+          vec3  specColor  = vec3(0.88, 1.0, 0.96) * spec * 2.5;
+          float spec2      = pow(max(dot(vNormal, halfV), 0.0), 18.0) * 0.35;
+          vec3  specColor2 = vec3(0.72, 1.0, 0.88) * spec2;
+          vec3  iriColor   = iridescence(fresnel) * fresnel * 1.4;
+          float shadow     = pow(max(-dot(vNormal, uLightDir), 0.0), 2.0) * 0.25;
+          vec3  color  = specColor + specColor2 + iriColor * 0.9;
+          float alpha  = fresnel * 0.55 + spec * 0.8 + spec2 * 0.3 + shadow * 0.15;
+          alpha = clamp(alpha, 0.0, 0.92);
+          gl_FragColor = vec4(color, alpha);
+        }
+      `;
+
+      const bubbleGeo = new THREE.SphereGeometry(1, 32, 24);
+      const bubbles = [];
+      for (let i = 0; i < 14; i++) {
+        const r   = 6 + Math.random() * 18;
+        const mat = new THREE.ShaderMaterial({
+          vertexShader: bubbleVert, fragmentShader: bubbleFrag,
+          uniforms: {
+            uTime:     { value: 0 },
+            uPhase:    { value: Math.random() * Math.PI * 2 },
+            uLightDir: { value: bubbleLightDir },
+          },
+          transparent: true, depthWrite: false, side: THREE.FrontSide,
+        });
+        const mesh = new THREE.Mesh(bubbleGeo, mat);
+        mesh.scale.setScalar(r);
+        const zBase = 20 + Math.random() * 140;
+        mesh.position.set(
+          40 + (Math.random() - 0.5) * 420,
+          -80 + Math.random() * 710,
+          zBase
+        );
+        mesh.userData.speed  = 8  + Math.random() * 12;
+        mesh.userData.driftX = (Math.random() - 0.5) * 0.9;
+        mesh.userData.driftZ = (Math.random() - 0.5) * 0.5;
+        mesh.userData.wobble = 0.3 + Math.random() * 0.5;
+        mesh.userData.phase  = Math.random() * Math.PI * 2;
+        mesh.userData.phaseZ = Math.random() * Math.PI * 2;
+        mesh.userData.resetY = -90  - Math.random() * 20;
+        mesh.userData.topY   = 640  + Math.random() * 80;
+        scene.add(mesh);
+        bubbles.push(mesh);
+      }
+
+      const clock    = new THREE.Clock();
+      const FRAME_MS = 1000 / 30;
+      const FADE_MS  = 500;
+      let lastFrame  = 0;
+      let hiddenAt   = visibleRef.current ? Infinity : 0;
+      let wasVisible = visibleRef.current;
+
+      const animate = (now) => {
+        animId = requestAnimationFrame(animate);
+        const isVisible = visibleRef.current;
+        if (isVisible && !wasVisible) { lastFrame = now; hiddenAt = Infinity; }
+        if (!isVisible && wasVisible) hiddenAt = now;
+        wasVisible = isVisible;
+        const fadingOut = !isVisible && (now - hiddenAt < FADE_MS);
+        if (!isVisible && !fadingOut) return;
+        if (now - lastFrame < FRAME_MS) return;
+        lastFrame = now - ((now - lastFrame) % FRAME_MS);
+
+        const t  = clock.getElapsedTime();
+        const dt = clock.getDelta();
+
+        causticA.update(t);
+        causticB.update(t);
+        const baseOp = 0.11 + 0.05 * Math.sin(t * 0.75);
+        causticA.mat.opacity = baseOp;
+        causticB.mat.opacity = baseOp * 0.85;
+        causticB.mesh.rotation.z = Math.PI * 0.08 + t * 0.015;
+
+        for (const b of bubbles) {
+          b.material.uniforms.uTime.value = t;
+          b.position.y += b.userData.speed * dt
+                        + Math.sin(t * 0.4  + b.userData.phase)  * b.userData.wobble * 0.3
+                        + Math.sin(t * 0.9  + b.userData.phaseZ) * b.userData.wobble * 0.15;
+          b.position.x += Math.sin(t * 0.22 + b.userData.phase)  * b.userData.driftX
+                        + Math.cos(t * 0.37 + b.userData.phase)  * b.userData.wobble * 0.35
+                        + Math.sin(t * 0.61 + b.userData.phaseZ) * b.userData.driftX * 0.2;
+          b.position.z += Math.cos(t * 0.18 + b.userData.phaseZ) * b.userData.driftZ
+                        + Math.sin(t * 0.31 + b.userData.phaseZ) * b.userData.wobble * 0.2;
+          if (b.position.y > b.userData.topY) {
+            b.position.y = b.userData.resetY;
+            b.userData.phase  = Math.random() * Math.PI * 2;
+            b.userData.phaseZ = Math.random() * Math.PI * 2;
+          }
+        }
+
+        renderer.render(scene, camera);
+      };
+      animate(0);
+    }).catch(e => console.warn("RuleBackdrop bubble error:", e));
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(animId);
+      if (rendererInst) rendererInst.dispose();
+    };
+  }, []);
+
+  const statueCvsRef = useRef(null);
+  useVideoCanvas(videoRef, statueCvsRef, { visibleRef });
+
+  return (
+    <div ref={containerRef} style={{
+      position: "fixed", left: isMobile ? 0 : 224, top: 0, right: 0, bottom: 0,
+      pointerEvents: "none", zIndex: -1, opacity, transition: "opacity 0.5s ease",
+    }}>
+      {pos && <>
+        <img src={PR+"statue_halo.png"} alt=""
+          style={{ position:"absolute", left:pos.left, top:pos.top, width:pos.width, height:pos.height, zIndex:1, pointerEvents:"none" }} />
+        <video ref={videoRef} autoPlay muted loop playsInline onLoadedMetadata={calcPos}
+          style={{ position:"absolute", left:pos.left, top:pos.top, width:pos.width, height:pos.height, zIndex:2, opacity: !needsCanvasForAlpha ? 1 : 0 }}>
+          <VideoSource name="Mary_Statue" />
+        </video>
+        {!!needsCanvasForAlpha && (
+          <canvas ref={statueCvsRef}
+            style={{ position:"absolute", left:pos.left, top:pos.top, width:pos.width, height:pos.height, zIndex:2, pointerEvents:"none" }} />
+        )}
+      </>}
+      <canvas ref={bubbleMountRef} style={{ position:"absolute", inset:0, zIndex:3, pointerEvents:"none" }} />
+    </div>
+  );
+}
+
+function AudioFigureBackdropPR({ visible = false, isMobile = false }) {
+  const crossMountRef = useRef(null);
+  const containerDivRef = useRef(null);
+  const visibleRef    = useRef(visible);
+  const [opacity, setOpacity] = useState(0);
+  const [pos, setPos] = useState(null);
+  // Use refs for playback state — mirrors the original 3D wasVisible pattern,
+  // avoiding React re-render races that caused "already on loop" / "revert flicker" bugs.
+  const introRef      = useRef(null);
+  const idleRef       = useRef(null);
+  const swappedRef    = useRef(false); // true once intro has finished and loop is active
+
+  // Only opacity is driven by React — playback is driven by the visibleRef + refs pattern
+  useEffect(() => {
+    visibleRef.current = visible;
+    if (!visible) { setOpacity(0); return; }
+    const t = setTimeout(() => setOpacity(0.85), 250);
+    return () => clearTimeout(t);
+  }, [visible]);
+
+  // Mirror original's wasVisible pattern: when page re-opens, restart intro; pause when it closes
+  useEffect(() => {
+    let wasVisible = visibleRef.current;
+    let rafId;
+    const tick = () => {
+      rafId = requestAnimationFrame(tick);
+      const isVisible = visibleRef.current;
+      if (isVisible && !wasVisible) {
+        // Page just opened — restart from intro
+        swappedRef.current = false;
+        if (introRef.current) {
+          introRef.current.style.display = "block";
+          introRef.current.currentTime = 0;
+          introRef.current.play().catch(() => {});
+        }
+        if (idleRef.current) {
+          idleRef.current.style.display = "none";
+          idleRef.current.pause();
+          idleRef.current.currentTime = 0;
+        }
+      } else if (!isVisible && wasVisible) {
+        // Page closed — pause both to stop decoding
+        if (introRef.current) introRef.current.pause();
+        if (idleRef.current) idleRef.current.pause();
+      }
+      wasVisible = isVisible;
+    };
+    tick();
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
+
+  // Cross — unchanged from original
+  useEffect(() => {
+    if (!crossMountRef.current) return;
+    const crossEl = crossMountRef.current;
+    let animId = null;
+    let crossRendererInst = null;
+    let cancelled = false;
+
+    Promise.all([import("three"), import("three/examples/jsm/loaders/GLTFLoader")])
+      .then(([THREE, { GLTFLoader }]) => {
+      if (cancelled) return;
+      const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
+      const h = isMobile ? window.innerHeight : (window.innerHeight - 70);
+
+      const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 5000);
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
+      camera.lookAt(0, 160, 0);
+
+      const crossScene    = new THREE.Scene();
+      const crossRenderer = new THREE.WebGLRenderer({ canvas: crossEl, alpha: true, antialias: false });
+      crossRenderer.setPixelRatio(1);
+      crossRenderer.setSize(w, h);
+      crossRenderer.setClearColor(0x000000, 0);
+      crossRendererInst = crossRenderer;
+
+      const glitterCanvas = document.createElement("canvas");
+      glitterCanvas.width = glitterCanvas.height = 128;
+      const gCtx = glitterCanvas.getContext("2d");
+      const glitterTex = new THREE.CanvasTexture(glitterCanvas);
+
+      const updateGlitter = (time) => {
+        gCtx.clearRect(0, 0, 128, 128);
+        const grd = gCtx.createLinearGradient(0, 0, 128, 128);
+        grd.addColorStop(0,   "#e8eef2");
+        grd.addColorStop(0.4, "#ffffff");
+        grd.addColorStop(0.7, "#d4e4f0");
+        grd.addColorStop(1,   "#f0f4f8");
+        gCtx.fillStyle = grd;
+        gCtx.fillRect(0, 0, 128, 128);
+        const rng = (s) => { let x = Math.sin(s) * 43758.5453; return x - Math.floor(x); };
+        for (let i = 0; i < 60; i++) {
+          const tx = time * 0.7 + i * 1.3;
+          const x  = rng(tx) * 128;
+          const y  = rng(tx + 99) * 128;
+          const r  = rng(tx + 17) * 3 + 0.5;
+          const br = Math.sin(time * (2 + rng(i) * 4) + i) * 0.5 + 0.5;
+          const a  = br * 0.9 + 0.1;
+          const spark = gCtx.createRadialGradient(x, y, 0, x, y, r * 4);
+          spark.addColorStop(0,   `rgba(255,255,255,${a})`);
+          spark.addColorStop(0.3, `rgba(210,230,245,${a * 0.5})`);
+          spark.addColorStop(1,   "rgba(255,255,255,0)");
+          gCtx.fillStyle = spark;
+          gCtx.beginPath(); gCtx.arc(x, y, r * 4, 0, Math.PI * 2); gCtx.fill();
+        }
+        glitterTex.needsUpdate = true;
+      };
+
+      const crossMat = new THREE.MeshBasicMaterial({
+        map: glitterTex, transparent: true, opacity: 1.0,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+      const crossGroup = new THREE.Group();
+      const crossH = isMobile ? 279 : 230, crossW = isMobile ? 153 : 125, barThick = isMobile ? 30 : 23;
+      const vBar = new THREE.Mesh(new THREE.BoxGeometry(barThick, crossH, barThick), crossMat);
+      vBar.position.y = crossH / 2;
+      const hBar = new THREE.Mesh(new THREE.BoxGeometry(crossW, barThick, barThick), crossMat.clone());
+      hBar.position.y = crossH * 0.70;
+      crossGroup.add(vBar, hBar);
+      const crossCamDist    = isMobile ? 1200 : 660;
+      const crossFovRad     = (40 * Math.PI) / 180;
+      const crossWorldPerPx = 2 * Math.tan(crossFovRad / 2) * crossCamDist / w;
+      const crossCenterX    = isMobile ? 0 : (-160 * crossWorldPerPx);
+      crossGroup.position.set(crossCenterX, 0, 0);
+      // Load the Praying GLB to get the exact world Y the original code used for the cross.
+      // Original formula: crossGroup.position.y = obj.position.y + 180,
+      // where obj.position.y = -box2.min.y - extraH + 70.
+      new GLTFLoader().load("/Praying.glb", (gltf) => {
+        if (cancelled) return;
+        const obj = gltf.scene;
+        const box = new THREE.Box3().setFromObject(obj);
+        const size = box.getSize(new THREE.Vector3());
+        const fovRad = (40 * Math.PI) / 180;
+        const worldH2 = 2 * Math.tan(fovRad / 2) * 600;
+        const s1 = (worldH2 * 0.65) / size.y;
+        const s2 = s1 * 1.495;
+        obj.scale.setScalar(s2);
+        const box2 = new THREE.Box3().setFromObject(obj);
+        const extraH = size.y * (s2 - s1);
+        crossGroup.position.y = (-box2.min.y - extraH + 70) + 180;
+      }, undefined, () => {
+        // Fallback if GLB unavailable
+        crossGroup.position.y = 110;
+      });
+      crossScene.add(crossGroup);
+
+      let lastFrame = 0;
+      const FRAME_MS = 1000 / 30;
+      let elapsed = 0;
+      let lastTime = performance.now();
+      const animate = (now) => {
+        animId = requestAnimationFrame(animate);
+        if (!visibleRef.current) return;
+        const dt = Math.min((now - lastTime) / 1000, 0.05);
+        lastTime = now;
+        elapsed += dt;
+        if (now - lastFrame < FRAME_MS) return;
+        lastFrame = now - ((now - lastFrame) % FRAME_MS);
+        const toCamX = camera.position.x - crossGroup.position.x;
+        const toCamZ = camera.position.z - crossGroup.position.z;
+        crossGroup.rotation.set(0, Math.atan2(toCamX, toCamZ), 0);
+        updateGlitter(elapsed);
+        crossMat.opacity = 0.88 + Math.sin(elapsed * 4.1) * 0.08 + Math.sin(elapsed * 11.3) * 0.04;
+        crossRenderer.render(crossScene, camera);
+      };
+      animate(performance.now());
+    }).catch(e => console.warn("AudioFigure cross error:", e));
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(animId);
+      if (crossRendererInst) crossRendererInst.dispose();
+    };
+  }, []);
+
+  // wasVisible RAF loop — detects page re-entry and restarts intro
+  useEffect(() => {
+    let wasVisible = visibleRef.current;
+    let rafId;
+    const tick = () => {
+      rafId = requestAnimationFrame(tick);
+      const isVisible = visibleRef.current;
+      if (isVisible && !wasVisible) {
+        swappedRef.current = false;
+        if (introRef.current) {
+          introRef.current.style.display = "block";
+          introRef.current.currentTime = 0;
+          introRef.current.play().catch(() => {});
+        }
+        if (idleRef.current) {
+          idleRef.current.style.display = "none";
+          idleRef.current.pause();
+          idleRef.current.currentTime = 0;
+        }
+      }
+      wasVisible = isVisible;
+    };
+    tick();
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
+  const calcPos = useCallback(() => {
+    const vid = introRef.current;
+    const aspect = (vid?.videoWidth && vid?.videoHeight) ? vid.videoWidth / vid.videoHeight : 1;
+    projectWithThree(110, 146, 0, 300, 2.75, isMobile, false).then(r => {
+      const h = r.projH, w = h * aspect;
+      setPos({ left: r.cssLeft - w/2, top: r.cssTop - h/2, width: w, height: h });
+    });
+  }, [isMobile]);
+
+  useEffect(() => {
+    calcPos();
+    window.addEventListener("resize", calcPos);
+    return () => window.removeEventListener("resize", calcPos);
+  }, [calcPos]);
+
+  const handleIntroEnded = useCallback(() => {
+    if (swappedRef.current) return;
+    swappedRef.current = true;
+    if (introRef.current) introRef.current.style.display = "none";
+    if (idleRef.current) {
+      idleRef.current.style.display = "block";
+      idleRef.current.currentTime = 0;
+      idleRef.current.play().catch(() => {});
+    }
+  }, []);
+
+  const AUDIO_VID_STYLE = pos ? {
+    position: "absolute",
+    left: pos.left, top: pos.top, width: pos.width, height: pos.height,
+    zIndex: 2,
+  } : null;
+
+  // Cross PNG — positioned like a billboard, flickering drop-shadow simulates glitter
+  const crossImgRef = useRef(null);
+  const [crossPos, setCrossPos] = useState(null);
+
+  const calcCrossPos = useCallback(() => {
+    const img = crossImgRef.current;
+    const aspect = (img?.naturalWidth && img?.naturalHeight) ? img.naturalWidth / img.naturalHeight : 1;
+    const cx = isMobile ? 1 : -102;
+    const cy = isMobile ? 161 : 153;
+    const sc = isMobile ? 2.9 : 2.4;
+    projectWithThree(cx, cy, 0, 300, sc, isMobile, false).then(r => {
+      const h = r.projH, w = h * aspect;
+      setCrossPos({ left: r.cssLeft - w/2, top: r.cssTop - h/2, width: w, height: h });
+    });
+  }, [isMobile]);
+
+  useEffect(() => {
+    calcCrossPos();
+    window.addEventListener("resize", calcCrossPos);
+    return () => window.removeEventListener("resize", calcCrossPos);
+  }, [calcCrossPos]);
+
+  // Flickering drop-shadow — mirrors the original glitter opacity animation.
+  // Fully suspends (no RAF) when page is not visible, restarts on re-entry.
+  useEffect(() => {
+    let rafId = null;
+    let start = null;
+    let running = false;
+
+    const tick = (now) => {
+      if (!visibleRef.current) { rafId = null; running = false; return; }
+      rafId = requestAnimationFrame(tick);
+      if (!start) start = now;
+      const t = (now - start) / 1000;
+      const intensity = 0.88
+        + Math.sin(t * 4.1)  * 0.08
+        + Math.sin(t * 11.3) * 0.04
+        + Math.sin(t * 23.7) * 0.02;
+      const a1 = Math.max(0, Math.min(1, intensity));
+      const a2 = a1 * 0.6;
+      const el = crossImgRef.current;
+      if (el) {
+        el.style.filter = [
+          `drop-shadow(0 0 10px rgba(180,220,255,${a1.toFixed(2)}))`,
+          `drop-shadow(0 0 3px rgba(255,255,255,${a2.toFixed(2)}))`,
+          `drop-shadow(0 0 24px rgba(180,220,255,${(a1 * 0.4).toFixed(2)}))`,
+        ].join(' ');
+      }
+    };
+
+    // Start/stop based on page visibility via wasVisible pattern
+    let wasVisible = visibleRef.current;
+    const watchId = requestAnimationFrame(function watch(now) {
+      requestAnimationFrame(watch);
+      const isVisible = visibleRef.current;
+      if (isVisible && !wasVisible && !running) {
+        // Page just opened — start the flicker loop
+        running = true;
+        start = null;
+        rafId = requestAnimationFrame(tick);
+      }
+      if (isVisible && !running && !rafId) {
+        // Initial start if page is already visible on mount
+        running = true;
+        start = null;
+        rafId = requestAnimationFrame(tick);
+      }
+      wasVisible = isVisible;
+    });
+
+    return () => {
+      cancelAnimationFrame(watchId);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, []);
+
+  // Safari canvas — draws from whichever video is currently active
+  const audioCvsRef = useRef(null);
+  useEffect(() => {
+    if (!needsCanvasForAlpha) return;
+    let cancelled = false, rafId, sizeSet = false;
+
+    const drawFrame = () => {
+      if (cancelled) return;
+      const cvs = audioCvsRef.current;
+      const vid = swappedRef.current ? idleRef.current : introRef.current;
+      if (!cvs || !vid || vid.readyState < 2) return;
+      if (!visibleRef.current) { if (vid.requestVideoFrameCallback) vid.requestVideoFrameCallback(drawFrame); return; }
+      const ctx = cvs.getContext("2d");
+      if (!sizeSet || cvs.width !== vid.videoWidth || cvs.height !== vid.videoHeight) {
+        cvs.width = vid.videoWidth; cvs.height = vid.videoHeight; sizeSet = true;
+      }
+      ctx.clearRect(0, 0, cvs.width, cvs.height);
+      ctx.drawImage(vid, 0, 0, cvs.width, cvs.height);
+      if (vid.requestVideoFrameCallback) vid.requestVideoFrameCallback(drawFrame);
+    };
+
+    const start = () => {
+      if (cancelled) return;
+      const vid = swappedRef.current ? idleRef.current : introRef.current;
+      const cvs = audioCvsRef.current;
+      if (!vid || !cvs) { rafId = requestAnimationFrame(start); return; }
+      if (vid.requestVideoFrameCallback) { vid.requestVideoFrameCallback(drawFrame); }
+      else { const loop = () => { if (!cancelled) { rafId = requestAnimationFrame(loop); drawFrame(); } }; loop(); }
+    };
+    rafId = requestAnimationFrame(start);
+    return () => { cancelled = true; cancelAnimationFrame(rafId); };
+  }, []);
+
+  return (
+    <div ref={containerDivRef} style={{
+      position: "fixed", left: isMobile ? 0 : 224, top: 0, right: 0, bottom: isMobile ? 0 : 70,
+      pointerEvents: "none", zIndex: -1, opacity, transition: "opacity 0.5s ease",
+    }}>
+      {/* Pre-rendered cross PNG — zIndex 1, behind the praying figure */}
+      {crossPos && (
+        <img ref={crossImgRef} src={PR+"Cross.png"} alt=""
+          onLoad={calcCrossPos}
+          style={{
+            position: "absolute",
+            left: crossPos.left, top: crossPos.top,
+            width: crossPos.width, height: crossPos.height,
+            zIndex: 1, pointerEvents: "none",
+          }} />
+      )}
+      {AUDIO_VID_STYLE && <>
+        <video ref={introRef} autoPlay muted playsInline
+          onLoadedMetadata={calcPos} onEnded={handleIntroEnded}
+          style={{...AUDIO_VID_STYLE, display: "block", opacity: !needsCanvasForAlpha ? 1 : 0}}>
+          <VideoSource name="Praying_Intro" />
+        </video>
+        <video ref={idleRef} muted loop playsInline
+          onLoadedMetadata={calcPos}
+          style={{...AUDIO_VID_STYLE, display: "none", opacity: !needsCanvasForAlpha ? 1 : 0}}>
+          <VideoSource name="Praying_Idle" />
+        </video>
+        {!!needsCanvasForAlpha && (
+          <canvas ref={audioCvsRef} style={{...AUDIO_VID_STYLE, pointerEvents:"none"}} />
+        )}
+      </>}
+    </div>
+  );
+}
+
+
+// ─── WORKOUT FIGURE BACKDROP ──────────────────────────────────────────────────
+function WorkoutFigureBackdropPR({ visible = false, isMobile = false }) {
+  const [opacity, setOpacity] = useState(0);
+  const [pos, setPos]         = useState(null);
+  const visibleRef            = useRef(visible);
+  const introRef              = useRef(null);
+  const loopRef               = useRef(null);
+  const swappedRef            = useRef(false);
+
+  useEffect(() => {
+    visibleRef.current = visible;
+    if (!visible) { setOpacity(0); return; }
+    const t = setTimeout(() => setOpacity(0.85), 250);
+    return () => clearTimeout(t);
+  }, [visible]);
+
+  // Mirror original wasVisible pattern — restart intro on page re-entry, pause on close
+  useEffect(() => {
+    let wasVisible = visibleRef.current;
+    let rafId;
+    const tick = () => {
+      rafId = requestAnimationFrame(tick);
+      const isVisible = visibleRef.current;
+      if (isVisible && !wasVisible) {
+        swappedRef.current = false;
+        if (introRef.current) {
+          introRef.current.style.display = "block";
+          introRef.current.currentTime = 0;
+          introRef.current.play().catch(() => {});
+        }
+        if (loopRef.current) {
+          loopRef.current.style.display = "none";
+          loopRef.current.pause();
+          loopRef.current.currentTime = 0;
+        }
+      } else if (!isVisible && wasVisible) {
+        if (introRef.current) introRef.current.pause();
+        if (loopRef.current) loopRef.current.pause();
+      }
+      wasVisible = isVisible;
+    };
+    tick();
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
+  const calcPos = useCallback(() => {
+    const vid = introRef.current;
+    const aspect = (vid?.videoWidth && vid?.videoHeight) ? vid.videoWidth / vid.videoHeight : 1;
+    projectWithThree(110, 146, 0, 300, 2.75, isMobile, true).then(r => {
+      const h = r.projH, w = h * aspect;
+      setPos({ left: r.cssLeft - w/2, top: r.cssTop - h/2, width: w, height: h });
+    });
+  }, [isMobile]);
+
+  useEffect(() => {
+    calcPos();
+    window.addEventListener("resize", calcPos);
+    return () => window.removeEventListener("resize", calcPos);
+  }, [calcPos]);
+
+  const handleIntroEnded = useCallback(() => {
+    if (swappedRef.current) return;
+    swappedRef.current = true;
+    if (introRef.current) introRef.current.style.display = "none";
+    if (loopRef.current) {
+      loopRef.current.style.display = "block";
+      loopRef.current.currentTime = 0;
+      loopRef.current.play().catch(() => {});
+    }
+  }, []);
+
+  const VID_STYLE = pos ? {
+    position: "absolute",
+    left: pos.left, top: pos.top, width: pos.width, height: pos.height,
+    zIndex: 1,
+  } : null;
+
+  // Safari canvas — draws from whichever video is currently active
+  const workoutCvsRef = useRef(null);
+  useEffect(() => {
+    if (!needsCanvasForAlpha) return;
+    let cancelled = false, rafId, sizeSet = false;
+
+    const drawFrame = () => {
+      if (cancelled) return;
+      const cvs = workoutCvsRef.current;
+      const vid = swappedRef.current ? loopRef.current : introRef.current;
+      if (!cvs || !vid || vid.readyState < 2) return;
+      if (!visibleRef.current) { if (vid.requestVideoFrameCallback) vid.requestVideoFrameCallback(drawFrame); return; }
+      const ctx = cvs.getContext("2d");
+      if (!sizeSet || cvs.width !== vid.videoWidth || cvs.height !== vid.videoHeight) {
+        cvs.width = vid.videoWidth; cvs.height = vid.videoHeight; sizeSet = true;
+      }
+      ctx.clearRect(0, 0, cvs.width, cvs.height);
+      ctx.drawImage(vid, 0, 0, cvs.width, cvs.height);
+      if (vid.requestVideoFrameCallback) vid.requestVideoFrameCallback(drawFrame);
+    };
+
+    const start = () => {
+      if (cancelled) return;
+      const vid = swappedRef.current ? loopRef.current : introRef.current;
+      const cvs = workoutCvsRef.current;
+      if (!vid || !cvs) { rafId = requestAnimationFrame(start); return; }
+      if (vid.requestVideoFrameCallback) { vid.requestVideoFrameCallback(drawFrame); }
+      else { const loop = () => { if (!cancelled) { rafId = requestAnimationFrame(loop); drawFrame(); } }; loop(); }
+    };
+    rafId = requestAnimationFrame(start);
+    return () => { cancelled = true; cancelAnimationFrame(rafId); };
+  }, []);
+
+  return (
+    <div style={{
+      position: "fixed", left: isMobile ? 0 : 224, top: 0, right: 0, bottom: 0,
+      pointerEvents: "none", zIndex: -1, opacity, transition: "opacity 0.5s ease",
+    }}>
+      {VID_STYLE && <>
+        <video ref={introRef} autoPlay muted playsInline
+          onLoadedMetadata={calcPos} onEnded={handleIntroEnded}
+          style={{...VID_STYLE, display: "block", opacity: !needsCanvasForAlpha ? 1 : 0}}>
+          <VideoSource name="Idle_To_Push_Up" />
+        </video>
+        <video ref={loopRef} muted loop playsInline
+          onLoadedMetadata={calcPos}
+          style={{...VID_STYLE, display: "none", opacity: !needsCanvasForAlpha ? 1 : 0}}>
+          <VideoSource name="Push_Up" />
+        </video>
+        {!!needsCanvasForAlpha && (
+          <canvas ref={workoutCvsRef} style={{...VID_STYLE, pointerEvents:"none"}} />
+        )}
+      </>}
+    </div>
+  );
+}
+
+
+
+const BACKDROP_MODELS_GLB = {
+  boards:    "/Talking_On_A_Cell_Phone.glb",
+  meet:      "/Talking.glb",
+  workout:   null,
+  audio:     "/Talking_On_A_Cell_Phone.glb",
+  topcharts: "/Warming_Up.glb",
+};
+
+function FigureBackdropGLB({ variant = "workout", visible = false, isMobile = false }) {
+  const mountRef  = useRef(null);
+  const fbxFile   = BACKDROP_MODELS_GLB[variant];
+  const visibleRef = useRef(visible);
+
+  const [opacity, setOpacity] = useState(0);
+
+  useEffect(() => {
+    visibleRef.current = visible;
+    if (!visible) { setOpacity(0); return; }
+    const t = setTimeout(() => setOpacity(0.85), 250);
+    return () => clearTimeout(t);
+  }, [visible]);
+
+  useEffect(() => {
+    if (!fbxFile || !mountRef.current) return;
+    const el = mountRef.current;
+    let animId = null;
+    let rendererInst = null;
+    let cancelled = false;
+
+    Promise.all([
+      import("three"),
+      import("three/examples/jsm/loaders/GLTFLoader"),
+    ]).then(([THREE, { GLTFLoader }]) => {
+      if (cancelled) return;
+      const w = isMobile ? window.innerWidth : (window.innerWidth - 224);
+      const h = isMobile ? window.innerHeight : (window.innerHeight - 70);
+
+      const scene  = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 2000);
+      // Desktop: camera offset left so figure at x=110 appears at screen-right-third
+      // Mobile: camera centered, pulled back for portrait aspect
+      camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
+      camera.lookAt(0, 160, 0);
+
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
+      renderer.setPixelRatio(1);
+      renderer.setSize(w, h);
+      renderer.setClearColor(0x000000, 0);
+      renderer.domElement.style.cssText="position:absolute;top:0;left:0;"; el.appendChild(renderer.domElement);
+      rendererInst = renderer;
+
+      const wireMat = new THREE.MeshBasicMaterial({
+        color: 0x00ffcc, wireframe: true,
+        transparent: true, opacity: 0.32,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+
+      let mixer = null;
+      const clock = new THREE.Clock();
+
+      new GLTFLoader().load(fbxFile, (gltf) => {
+        const obj = gltf.scene;
+        obj.animations = gltf.animations;
+        if (cancelled) return;
+        obj.traverse(c => {
+          if (c.isMesh) { c.material = wireMat; c.castShadow = c.receiveShadow = false; }
+        });
+        const box    = new THREE.Box3().setFromObject(obj);
+        const size   = box.getSize(new THREE.Vector3());
+        const fovRad = (40 * Math.PI) / 180;
+        const worldH = 2 * Math.tan(fovRad / 2) * 600;
+        const scale  = (worldH * 0.65) / size.y;
+        const newScale = scale * 1.495;
+        obj.scale.setScalar(newScale);
+        const box2   = new THREE.Box3().setFromObject(obj);
+        const extraH = size.y * (newScale - scale);
+        // Same x position on mobile as desktop — camera centered so 110 puts figure right-of-center
+        obj.position.set(110, -box2.min.y - extraH + 70, 0);
+        obj.rotation.y = isMobile ? (-Math.PI * 5 / 180) : -Math.PI / 6;  // mobile: -5°, desktop: -30°
+        scene.add(obj);
+        if (obj.animations?.length) {
+          mixer = new THREE.AnimationMixer(obj);
+          const a = mixer.clipAction(obj.animations[0]);
+          a.setLoop(THREE.LoopRepeat, Infinity);
+          a.play();
+        }
+
+        let wasVisible = visibleRef.current;
+        let hiddenAt = wasVisible ? Infinity : 0;
+        const FADE_MS = 500;
+        const FRAME_MS = 1000 / 30;
+        let lastFrame = 0;
+        const animate = (now) => {
+          animId = requestAnimationFrame(animate);
+          const isVisible = visibleRef.current;
+          if (isVisible && !wasVisible && mixer && obj.animations?.length) {
+            mixer.stopAllAction();
+            const a = mixer.clipAction(obj.animations[0]);
+            a.setLoop(THREE.LoopRepeat, Infinity);
+            a.time = 0;
+            a.play();
+            clock.start();
+            lastFrame = now;
+            hiddenAt = Infinity;
+          }
+          if (!isVisible && wasVisible) hiddenAt = now;
+          wasVisible = isVisible;
+          const fadingOut = !isVisible && (now - hiddenAt < FADE_MS);
+          if (!isVisible && !fadingOut) return;
+          if (now - lastFrame < FRAME_MS) return;
+          lastFrame = now - ((now - lastFrame) % FRAME_MS);
+          if (mixer) mixer.update(clock.getDelta());
+          renderer.render(scene, camera);
+        };
+        animate(0);
+      }, undefined, e => console.warn("FBX load error:", e));
+    }).catch(e => console.warn("Three.js import error:", e));
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(animId);
+      if (rendererInst) {
+        rendererInst.dispose();
+        if (el.contains(rendererInst.domElement)) el.removeChild(rendererInst.domElement);
+      }
+    };
+  }, [fbxFile]);
+
+  return (
+    <div ref={mountRef} style={{
+      position: "fixed",
+      left: isMobile ? 0 : 224,
+      top: 0,
+      right: 0,
+      bottom: isMobile ? 0 : 70,
+      pointerEvents: "none",
+      zIndex: -1,
+      opacity: fbxFile ? opacity : 0,
+      transition: "opacity 0.5s ease",
+      }} />
+  );
+}
+
+
+function RuleBackdropGLB({ visible = false, isMobile = false }) {
   const mountRef   = useRef(null);
   const visibleRef = useRef(visible);
   const [opacity, setOpacity] = useState(0);
@@ -3866,7 +4883,7 @@ function RuleBackdrop({ visible = false, isMobile = false }) {
       camera.position.set(isMobile ? 0 : (-w * 0.32), 160, isMobile ? 1200 : 660);
       camera.lookAt(0, 160, 0);
 
-      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
       renderer.setPixelRatio(1);
       renderer.setSize(w, h);
       renderer.setClearColor(0x000000, 0);
@@ -4210,7 +5227,7 @@ function RuleBackdrop({ visible = false, isMobile = false }) {
 }
 
 
-function AudioFigureBackdrop({ visible = false, isMobile = false }) {
+function AudioFigureBackdropGLB({ visible = false, isMobile = false }) {
   const crossMountRef  = useRef(null);
   const figureMountRef = useRef(null);
   const visibleRef     = useRef(visible);
@@ -4692,7 +5709,7 @@ function AudioFigureBackdrop({ visible = false, isMobile = false }) {
   );
 }
 // ─── WORKOUT FIGURE BACKDROP ──────────────────────────────────────────────────
-function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
+function WorkoutFigureBackdropGLB({ visible = false, isMobile = false }) {
   const mountRef   = useRef(null);
   const visibleRef = useRef(visible);
   const [opacity, setOpacity] = useState(0);
@@ -4933,11 +5950,76 @@ function WorkoutFigureBackdrop({ visible = false, isMobile = false }) {
       left: isMobile ? 0 : 224, top: 0, right: 0, bottom: 0,
       pointerEvents: "none", zIndex: -1,
       opacity, transition: "opacity 0.5s ease",
-      filter: "drop-shadow(0 0 6px #00ffcc88) drop-shadow(0 0 18px #00ffcc44)",
-    }} />
+      }} />
   );
 }
 
+
+// ─── BACKDROP SWITCHERS ────────────────────────────────────────────────────────
+// needsCanvasForAlpha = true means Safari (no WebM alpha support).
+// Safari gets original 3D GLB rendering — same as before.
+// Everyone else gets the pre-rendered WebM video — lighter and faster.
+
+function FigureBackdrop(props) {
+  return needsCanvasForAlpha
+    ? <FigureBackdropGLB {...props} />
+    : <FigureBackdropPR {...props} />;
+}
+
+function RuleBackdrop(props) {
+  return needsCanvasForAlpha
+    ? <RuleBackdropGLB {...props} />
+    : <RuleBackdropPR {...props} />;
+}
+
+function AudioFigureBackdrop(props) {
+  return needsCanvasForAlpha
+    ? <AudioFigureBackdropGLB {...props} />
+    : <AudioFigureBackdropPR {...props} />;
+}
+
+function WorkoutFigureBackdrop(props) {
+  return needsCanvasForAlpha
+    ? <WorkoutFigureBackdropGLB {...props} />
+    : <WorkoutFigureBackdropPR {...props} />;
+}
+
+
+// ─── AVATAR PHOTO ──────────────────────────────────────────────────────────────
+// Single source of truth for the glossy sphere avatar effect.
+// Use everywhere a user photo appears.
+function AvatarPhoto({ src, alt = "", size = 45, className = "sm" }) {
+  return (
+    <div className={`avatar-photo ${className}`} style={{width:size,height:size,flexShrink:0,position:"relative"}}>
+      <img src={src} alt={alt} crossOrigin="anonymous" />
+      <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(circle at 50% 50%,transparent 50%,rgba(0,0,0,0.4) 68%,rgba(0,0,0,0.85) 100%)",pointerEvents:"none"}} />
+      <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"linear-gradient(155deg,rgba(255,255,255,0.28) 0%,rgba(255,255,255,0.06) 25%,transparent 42%)",pointerEvents:"none"}} />
+      <div style={{position:"absolute",inset:0,borderRadius:"50%",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.35),inset 1px 0 0 rgba(255,255,255,0.1)",pointerEvents:"none"}} />
+      <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"conic-gradient(from 198deg at 34% 24%, rgba(255,255,255,0) 0deg, rgba(255,255,255,0.7) 22deg, rgba(255,255,255,0) 44deg, rgba(255,255,255,0) 360deg)",WebkitMaskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",maskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",pointerEvents:"none"}} />
+      <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 40% 28% at 33% 22%,rgba(255,255,255,0.22) 0%,transparent 62%)",pointerEvents:"none"}} />
+      <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 11% 8% at 31% 18%,rgba(255,255,255,1) 0%,transparent 100%)",pointerEvents:"none"}} />
+      <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 6% 4% at 44% 29%,rgba(200,230,255,0.6) 0%,transparent 100%)",pointerEvents:"none"}} />
+      <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 60% 18% at 50% 100%,rgba(0,0,0,0.38) 0%,transparent 65%)",pointerEvents:"none"}} />
+    </div>
+  );
+}
+
+// Initials avatar with the same glossy overlays as AvatarPhoto.
+// bg defaults to var(--surface); pass "var(--accent)" for the current user.
+function AvatarInitials({ name, size = 45, bg = "var(--surface)", color = "var(--text)", fontSize }) {
+  const fs = fontSize || Math.round(size * 0.31);
+  return (
+    <div className="avatar sm" style={{width:size,height:size,flexShrink:0,fontSize:fs,background:bg,color,position:"relative"}}>
+      {initials(name)}
+      <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(circle at 50% 50%,transparent 50%,rgba(0,0,0,0.4) 68%,rgba(0,0,0,0.85) 100%)",pointerEvents:"none"}} />
+      <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"linear-gradient(155deg,rgba(255,255,255,0.18) 0%,rgba(255,255,255,0.04) 25%,transparent 42%)",pointerEvents:"none"}} />
+      <div style={{position:"absolute",inset:0,borderRadius:"50%",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.25),inset 1px 0 0 rgba(255,255,255,0.08)",pointerEvents:"none"}} />
+      <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"conic-gradient(from 198deg at 34% 24%, rgba(255,255,255,0) 0deg, rgba(255,255,255,0.5) 22deg, rgba(255,255,255,0) 44deg, rgba(255,255,255,0) 360deg)",WebkitMaskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",maskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",pointerEvents:"none"}} />
+      <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 11% 8% at 31% 18%,rgba(255,255,255,0.8) 0%,transparent 100%)",pointerEvents:"none"}} />
+      <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 60% 18% at 50% 100%,rgba(0,0,0,0.3) 0%,transparent 65%)",pointerEvents:"none"}} />
+    </div>
+  );
+}
 
 // ─── RANK CARD ─────────────────────────────────────────────────────────────────
 // Unified rank card using PR data. myPr and communityPrs are plain numbers.
@@ -5062,6 +6144,7 @@ function WorkoutPage({ username }) {
   const [chartEx, setChartEx]     = useState("Bench Press");
   const [chartGroup, setChartGroup] = useState("Chest");
   const [chartView, setChartView] = useState("volume"); // "volume" | "pr"
+  const [chartPeriod, setChartPeriod] = useState("all"); // "1m" | "3m" | "1y" | "all"
 
   const exDef = EXERCISE_MAP[exercise] || EXERCISES[0];
   const chartExDef = EXERCISE_MAP[chartEx] || EXERCISES[0];
@@ -5145,17 +6228,28 @@ function WorkoutPage({ username }) {
   };
 
   // ── Chart data ────────────────────────────────────────────────────────────
+  // Parse session date robustly — old sessions stored as "Jan 15" (no year),
+  // new sessions as "2025-01-15" (ISO). Add current year to yearless strings.
+  const parseSessionDate = (d) => {
+    if (!d) return 0;
+    const withYear = /^[A-Za-z]{3}\s+\d{1,2}$/.test(d.trim())
+      ? `${d.trim()}, ${new Date().getFullYear()}`
+      : d;
+    const ts = new Date(withYear).getTime();
+    return isNaN(ts) ? 0 : ts;
+  };
+
   const buildVolumeData = (ex) => {
     const byDate = {};
     for (const sess of history) {
       const dateKey = normDate(sess.date);
-      if (!byDate[dateKey]) byDate[dateKey] = { date: dateKey, sets: [] };
+      if (!byDate[dateKey]) byDate[dateKey] = { date: dateKey, rawTs: parseSessionDate(sess.date), sets: [] };
       for (const s of sess.sets) {
         if (s.exercise !== ex) continue;
         byDate[dateKey].sets.push(s);
       }
     }
-    return Object.values(byDate).map(({ date, sets }) => {
+    return Object.values(byDate).map(({ date, rawTs, sets }) => {
       if (sets.length === 0) return null;
       let vol = 0;
       for (const s of sets) {
@@ -5164,7 +6258,7 @@ function WorkoutPage({ username }) {
         if (s.setType === "duration")   vol += s.durationSeconds || 0;
       }
       if (vol === 0) return null;
-      return { date, value: vol };
+      return { date, rawTs, value: vol };
     }).filter(Boolean).sort((a, b) => {
       const ia = history.findIndex(s => normDate(s.date) === a.date);
       const ib = history.findIndex(s => normDate(s.date) === b.date);
@@ -5176,37 +6270,46 @@ function WorkoutPage({ username }) {
     const byDate = {};
     for (const sess of history) {
       const dateKey = normDate(sess.date);
-      if (!byDate[dateKey]) byDate[dateKey] = [];
+      if (!byDate[dateKey]) byDate[dateKey] = { sets: [], rawTs: parseSessionDate(sess.date) };
       for (const s of sess.sets) {
         if (s.exercise !== ex) continue;
-        byDate[dateKey].push(s);
+        byDate[dateKey].sets.push(s);
       }
     }
     const dates = history
       .map(s => normDate(s.date))
-      .filter((d, i, a) => a.indexOf(d) === i); // unique, in order
+      .filter((d, i, a) => a.indexOf(d) === i);
     let best = null;
     return dates.map(date => {
-      const daySets = byDate[date] || [];
-      if (daySets.length === 0) return null;
+      const entry = byDate[date] || { sets: [], rawTs: 0 };
+      if (entry.sets.length === 0) return null;
       let dayBest = null;
-      for (const s of daySets) {
+      for (const s of entry.sets) {
         const v = def.type === "weighted"
           ? (s.reps === 1 ? s.weight : Math.round(s.weight * (1 + s.reps / 30)))
           : def.type === "duration" ? s.durationSeconds : s.reps;
         if (dayBest === null || v > dayBest) dayBest = v;
       }
       if (best === null || dayBest > best) best = dayBest;
-      return { date, value: best };
+      return { date, rawTs: entry.rawTs, value: best };
     }).filter(Boolean);
   };
 
-  const chartData = chartView === "volume"
-    ? buildVolumeData(chartEx)
-    : buildPrData(chartEx, chartExDef);
+  const chartData = useMemo(() => {
+    const raw = chartView === "volume"
+      ? buildVolumeData(chartEx)
+      : buildPrData(chartEx, chartExDef);
+
+    const cutoffDays = { "1m": 30, "3m": 91, "1y": 365 }[chartPeriod];
+    const cutoffTs = cutoffDays ? Date.now() - cutoffDays * 24 * 60 * 60 * 1000 : 0;
+
+    return raw
+      .filter(d => d.rawTs >= cutoffTs)
+      .map(d => ({ ...d, ts: d.rawTs }));
+  }, [chartView, chartEx, chartPeriod, history]);
 
   // ── Stat tiles ────────────────────────────────────────────────────────────
-  const totalSessions  = history.length;
+  const totalSessions  = new Set(history.map(s => s.date?.slice(0, 10))).size;
   const totalSetsCount = history.reduce((n, s) => n + s.sets.length, 0);
   const prCount        = Object.keys(prs).length;
 
@@ -5390,6 +6493,20 @@ function WorkoutPage({ username }) {
           ))}
         </div>
 
+        {/* Period filter */}
+        <div style={{display:"flex",gap:6,marginBottom:14}}>
+          {[["1m","1M"],["3m","3M"],["1y","1Y"],["all","All"]].map(([v,l]) => (
+            <button key={v} onClick={() => setChartPeriod(v)}
+              style={{padding:"5px 12px",border:`1px solid ${chartPeriod===v?"var(--accent)":"var(--border)"}`,
+                background: chartPeriod===v ? "rgba(136,255,0,0.08)" : "var(--surface2)",
+                color: chartPeriod===v ? "var(--accent)" : "var(--muted)",
+                borderRadius:4,cursor:"pointer",fontSize:11,fontFamily:"'Orbitron',sans-serif",
+                letterSpacing:1}}>
+              {l}
+            </button>
+          ))}
+        </div>
+
         {/* Chart exercise group */}
         <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:8,paddingBottom:4}}>
           <div className="tab-row" style={{flexWrap:"nowrap",minWidth:"max-content"}}>
@@ -5415,18 +6532,29 @@ function WorkoutPage({ username }) {
         {chartData.length > 1 ? (
           <div style={{height:220}}>
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData}>
+              <LineChart data={chartData} margin={{top:4,right:8,bottom:36,left:0}}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#2a2a32" />
-                <XAxis dataKey="date" stroke="#7a7a8a" tick={{fontSize:9}} angle={-30} textAnchor="end" height={36} />
+                <XAxis
+                  dataKey="ts" type="number" scale="time"
+                  domain={["dataMin","dataMax"]}
+                  stroke="#7a7a8a" tick={{fontSize:9}} angle={-30} textAnchor="end" height={36}
+                  tickCount={Math.min(chartData.length, 7)}
+                  tickFormatter={ts => {
+                    const d = new Date(ts);
+                    return `${d.getMonth()+1}/${d.getDate()}`;
+                  }}
+                />
                 <YAxis stroke="#7a7a8a" tick={{fontSize:10}} width={42}
                   tickFormatter={v => chartExDef.type === "duration" ? formatDuration(v) : v} />
-                <Tooltip contentStyle={{background:"#141417",border:"1px solid #2a2a32",borderRadius:8,fontSize:11}}
+                <Tooltip
+                  contentStyle={{background:"#141417",border:"1px solid #2a2a32",borderRadius:8,fontSize:11}}
+                  labelFormatter={ts => new Date(ts).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})}
                   formatter={v => [chartExDef.type === "duration" ? formatDuration(v)
                     : chartView === "volume" && chartExDef.type === "weighted" ? `${v} lbs`
                     : chartView === "volume" && chartExDef.type === "bodyweight" ? `${v} reps`
                     : `${v}`, chartView === "volume" ? "Volume" : "Est. PR"]} />
                 <Line type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2.5}
-                  dot={{fill:"var(--accent)",r:3}} />
+                  dot={{fill:"var(--accent)",r:3}} activeDot={{r:5}} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -6040,14 +7168,8 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
                       {i < 3 ? <span style={{fontFamily:"'Orbitron',sans-serif",fontWeight:900,fontSize:13,color:medalColors[i],textShadow:`0 0 8px ${medalColors[i]}99`,letterSpacing:1}}>{medalLabels[i]}</span> : <span style={{color:"var(--muted)",fontWeight:700,fontSize:13,fontFamily:"'Orbitron',sans-serif"}}>#{i+1}</span>}
                     </div>
                     {entry.avatarUrl
-                      ? <div className="avatar-photo sm" style={{width:45,height:45,flexShrink:0}}>
-                          <img src={entry.avatarUrl} alt={entry.name} crossOrigin="anonymous" />
-                          <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"conic-gradient(from 198deg at 34% 24%, rgba(255,255,255,0) 0deg, rgba(255,255,255,0.7) 22deg, rgba(255,255,255,0) 44deg, rgba(255,255,255,0) 360deg)",WebkitMaskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",maskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",pointerEvents:"none",zIndex:3}} />
-                          <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 11% 8% at 31% 18%,rgba(255,255,255,1) 0%,transparent 100%)",pointerEvents:"none",zIndex:3}} />
-                        </div>
-                      : <div className="avatar sm" style={{background: entry.isMe ? "var(--accent)" : "var(--surface)"}}>
-                          {initials(entry.name)}
-                        </div>
+                      ? <AvatarPhoto src={entry.avatarUrl} alt={entry.name} />
+                      : <AvatarInitials name={entry.name} bg={entry.isMe ? "var(--accent)" : "var(--surface)"} color={entry.isMe ? "#000" : "var(--text)"} />
                     }
                     <div style={{flex:1}}>
                       <div style={{fontWeight:700,fontSize:14,color: entry.isMe ? "var(--accent)" : "var(--text)"}}>
@@ -6085,12 +7207,8 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
                     {top ? (
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         {top.avatarUrl
-                          ? <div className="avatar-photo sm" style={{width:45,height:45,flexShrink:0}}>
-                              <img src={top.avatarUrl} alt={top.name} crossOrigin="anonymous" />
-                            </div>
-                          : <div className="avatar sm" style={{background: top.isMe ? "var(--accent)" : "var(--surface2)"}}>
-                              {initials(top.name)}
-                            </div>
+                          ? <AvatarPhoto src={top.avatarUrl} alt={top.name} />
+                          : <AvatarInitials name={top.name} bg={top.isMe ? "var(--accent)" : "var(--surface2)"} color={top.isMe ? "#000" : "var(--text)"} />
                         }
                         <span style={{fontWeight:600,color: top.isMe ? "var(--accent)" : "var(--text)"}}>{top.name}{top.isMe?" (You)":""}</span>
                       </div>
@@ -6174,12 +7292,8 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
                           : <span style={{color:"var(--muted)",fontWeight:700,fontSize:13,fontFamily:"'Orbitron',sans-serif"}}>#{i+1}</span>}
                       </div>
                       {entry.avatarUrl
-                        ? <div className="avatar-photo sm" style={{width:45,height:45,flexShrink:0}}>
-                            <img src={entry.avatarUrl} alt={entry.name} crossOrigin="anonymous" />
-                          </div>
-                        : <div className="avatar sm" style={{background: entry.isMe ? "var(--accent)" : "var(--surface)"}}>
-                            {initials(entry.name)}
-                          </div>
+                        ? <AvatarPhoto src={entry.avatarUrl} alt={entry.name} />
+                        : <AvatarInitials name={entry.name} bg={entry.isMe ? "var(--accent)" : "var(--surface)"} color={entry.isMe ? "#000" : "var(--text)"} />
                       }
                       <div style={{flex:1}}>
                         <div style={{fontWeight:700,fontSize:14,color: entry.isMe ? "var(--accent)" : "var(--text)"}}>
@@ -6217,12 +7331,8 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
                       {top ? (
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
                           {top.avatarUrl
-                            ? <div className="avatar-photo sm" style={{width:45,height:45,flexShrink:0}}>
-                                <img src={top.avatarUrl} alt={top.name} crossOrigin="anonymous" />
-                              </div>
-                            : <div className="avatar sm" style={{background: top.isMe ? "var(--accent)" : "var(--surface2)"}}>
-                                {initials(top.name)}
-                              </div>
+                            ? <AvatarPhoto src={top.avatarUrl} alt={top.name} />
+                            : <AvatarInitials name={top.name} bg={top.isMe ? "var(--accent)" : "var(--surface2)"} color={top.isMe ? "#000" : "var(--text)"} />
                           }
                           <span style={{fontWeight:600,color: top.isMe ? "var(--accent)" : "var(--text)"}}>{top.name}{top.isMe?" (You)":""}</span>
                         </div>
@@ -6956,14 +8066,7 @@ function ProfilePage({ user, onDeleted, onLogout, onAvatarUpdate }) {
         {sectionTitle("Account")}
         <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:20}}>
           {user.avatarUrl
-            ? <div className="avatar-photo" style={{width:52,height:52,position:"relative"}}>
-                <img src={user.avatarUrl} alt={user.displayName} crossOrigin="anonymous" />
-                <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"conic-gradient(from 198deg at 34% 24%, rgba(255,255,255,0) 0deg, rgba(255,255,255,0.7) 22deg, rgba(255,255,255,0) 44deg, rgba(255,255,255,0) 360deg)",WebkitMaskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",maskImage:"radial-gradient(circle at 50% 50%,transparent 51%,black 57%,transparent 65%)",pointerEvents:"none",zIndex:3}} />
-                <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 40% 28% at 33% 22%,rgba(255,255,255,0.22) 0%,transparent 62%)",pointerEvents:"none",zIndex:3}} />
-                <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 11% 8% at 31% 18%,rgba(255,255,255,1) 0%,transparent 100%)",pointerEvents:"none",zIndex:3}} />
-                <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 6% 4% at 44% 29%,rgba(200,230,255,0.6) 0%,transparent 100%)",pointerEvents:"none",zIndex:3}} />
-                <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(ellipse 60% 18% at 50% 100%,rgba(0,0,0,0.38) 0%,transparent 65%)",pointerEvents:"none",zIndex:3}} />
-              </div>
+            ? <AvatarPhoto src={user.avatarUrl} alt={user.displayName} size={52} />
             : <div className="avatar" style={{width:52,height:52,fontSize:18}}>{initials(user.displayName)}</div>
           }
           <div>
@@ -8107,7 +9210,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           ? <video ref={localVideoRef} autoPlay muted playsInline style={{width:"100%",height:"100%",objectFit:"cover",transform:"scaleX(-1)"}} />
           : <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
               {currentUser.avatarUrl
-                ? <img src={currentUser.avatarUrl} crossOrigin="anonymous" style={{width:"100%",height:"100%",objectFit:"cover"}} alt="" />
+                ? <AvatarPhoto src={currentUser.avatarUrl} alt={currentUser.displayName} size={52} />
                 : <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:14,color:"var(--accent)",fontWeight:900}}>{initials(currentUser.displayName)}</span>}
             </div>}
         {SPHERE_OVERLAY}
@@ -8391,56 +9494,10 @@ export default function App() {
   const [hasMobileChapter, setHasMobileChapter] = useState(false); // true when user has an approved chapter
   const [loaded, setLoaded]                     = useState(false);
   const mainRef = useRef(null);
+  const orbVideoRef  = useRef(null);
+  const orbCanvasRef = useRef(null);
   const glbCanvasRef = useRef(null);
-  const navWrapRef = useRef(null);
-  const orbWrapRef = useRef(null);
-  const swipeTouchRef = useRef(null); // { x, y } of touchstart
-
-  const [currentTrack, setCurrentTrack] = useState(PERMANENT_TRACKS[0] ?? null);
-  const [isPlaying, setIsPlaying]       = useState(false);
-  const [inCall, setInCall]             = useState(false);
-
-  // Push notifications — mobile only, only when logged in
-  usePushNotifications(isMobile ? api.getToken() : null);
-
-  // Mobile: center orb vertically relative to the full nav-wrap (all tabs including user/admin)
-  useEffect(() => {
-    if (!isMobile) return;
-    const centerOrb = () => {
-      const nav = navWrapRef.current;
-      const orb = orbWrapRef.current;
-      if (!nav || !orb) return;
-      const navTop  = parseInt(getComputedStyle(nav).top, 10) || 62;
-      const navH    = nav.offsetHeight;
-      const orbH    = orb.offsetHeight;
-      orb.style.top = (navTop + navH / 2 - orbH / 2) + "px";
-    };
-    centerOrb();
-    // Re-center whenever the window resizes (orientation change etc.)
-    window.addEventListener("resize", centerOrb);
-    return () => window.removeEventListener("resize", centerOrb);
-  }, [isMobile, user]); // re-run when user changes (admin tab appears/disappears)
-
-  // On mount: try to restore session from stored JWT
-  useEffect(() => {
-    const token = api.getToken();
-    if (!token) { setLoaded(true); return; }
-    api.me()
-      .then(({ user: u }) => setUser(u))
-      .catch(() => api.clearToken())          // token expired/invalid — clear it
-      .finally(() => setLoaded(true));
-
-    store.get("player:lastTrackId").then(saved => {
-      if (saved) {
-        const track = PERMANENT_TRACKS.find(t => t.id === parseInt(saved));
-        if (track) setCurrentTrack(track);
-      }
-    });
-  }, []);
-
-  useLayoutEffect(() => {
-    window.scrollTo(0, 0);
-  }, [page]);
+  useVideoCanvas(orbVideoRef, orbCanvasRef, { circular: true, visibleRef: null });
 
   // ── GLB orb renderer ──────────────────────────────────────────────
   useEffect(() => {
@@ -8462,7 +9519,7 @@ export default function App() {
       const H = (parent && parent.offsetHeight > 10) ? parent.offsetHeight : (canvas.offsetHeight || 220);
       if (W < 10) { setTimeout(init, 150); return; }
 
-      renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+      renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: false });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       renderer.setSize(W, H);
       renderer.setClearColor(0x000000, 0);
@@ -8590,6 +9647,57 @@ export default function App() {
       if (renderer) renderer.dispose();
     };
   }, []);
+
+
+  const navWrapRef = useRef(null);
+  const orbWrapRef = useRef(null);
+  const swipeTouchRef = useRef(null); // { x, y } of touchstart
+
+  const [currentTrack, setCurrentTrack] = useState(PERMANENT_TRACKS[0] ?? null);
+  const [isPlaying, setIsPlaying]       = useState(false);
+  const [inCall, setInCall]             = useState(false);
+
+  // Push notifications — mobile only, only when logged in
+  usePushNotifications(isMobile ? api.getToken() : null);
+
+  // Mobile: center orb vertically relative to the full nav-wrap (all tabs including user/admin)
+  useEffect(() => {
+    if (!isMobile) return;
+    const centerOrb = () => {
+      const nav = navWrapRef.current;
+      const orb = orbWrapRef.current;
+      if (!nav || !orb) return;
+      const navTop  = parseInt(getComputedStyle(nav).top, 10) || 62;
+      const navH    = nav.offsetHeight;
+      const orbH    = orb.offsetHeight;
+      orb.style.top = (navTop + navH / 2 - orbH / 2) + "px";
+    };
+    centerOrb();
+    // Re-center whenever the window resizes (orientation change etc.)
+    window.addEventListener("resize", centerOrb);
+    return () => window.removeEventListener("resize", centerOrb);
+  }, [isMobile, user]); // re-run when user changes (admin tab appears/disappears)
+
+  // On mount: try to restore session from stored JWT
+  useEffect(() => {
+    const token = api.getToken();
+    if (!token) { setLoaded(true); return; }
+    api.me()
+      .then(({ user: u }) => setUser(u))
+      .catch(() => api.clearToken())          // token expired/invalid — clear it
+      .finally(() => setLoaded(true));
+
+    store.get("player:lastTrackId").then(saved => {
+      if (saved) {
+        const track = PERMANENT_TRACKS.find(t => t.id === parseInt(saved));
+        if (track) setCurrentTrack(track);
+      }
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, [page]);
 
   useEffect(() => {
     if (currentTrack?.id) store.set("player:lastTrackId", String(currentTrack.id));
@@ -8778,7 +9886,13 @@ export default function App() {
             style={{}}>
             <div className="xbox-orb" />
             <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(circle at 50% 55%, transparent 30%, rgba(0,5,0,0.5) 62%, rgba(0,0,0,0.80) 100%)",zIndex:1,pointerEvents:"none"}} />
-            <canvas ref={glbCanvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",borderRadius:"50%",pointerEvents:"none",zIndex:2,filter:"blur(0.5px) drop-shadow(0 0 10px #aaff00cc) drop-shadow(0 0 25px #88ff0099) drop-shadow(0 0 55px #55dd0066) drop-shadow(0 0 90px #33aa0033)"}} />
+            {needsCanvasForAlpha
+              ? <canvas ref={glbCanvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",borderRadius:"50%",pointerEvents:"none",zIndex:2,filter:"blur(0.5px) drop-shadow(0 0 10px #aaff00cc) drop-shadow(0 0 25px #88ff0099) drop-shadow(0 0 55px #55dd0066) drop-shadow(0 0 90px #33aa0033)"}} />
+              : <video ref={orbVideoRef} autoPlay muted loop playsInline
+                  style={{position:"absolute",width:"343px",height:"343px",left:"50%",top:"50%",transform:"translate(-50%,-50%)",borderRadius:"50%",objectFit:"cover",pointerEvents:"none",zIndex:2,filter:"blur(0.5px) drop-shadow(0 0 10px #aaff00cc) drop-shadow(0 0 25px #88ff0099) drop-shadow(0 0 55px #55dd0066) drop-shadow(0 0 90px #33aa0033)"}}>
+                  <source src={PR+"Hyacinth_Sphere.webm"} type="video/webm" />
+                </video>
+            }
             <div className="xbox-bubble" />
             <div className="xbox-bubble" />
             <div className="xbox-bubble" />
