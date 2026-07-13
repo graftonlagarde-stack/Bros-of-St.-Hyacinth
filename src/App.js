@@ -6320,16 +6320,20 @@ function WorkoutPage({ username }) {
   }, [chartView, chartEx, chartPeriod, history]);
 
   // ── Stat tiles ────────────────────────────────────────────────────────────
-  // Count unique days — normalize both "Jan 15" (old) and "2025-07-07" (new) formats
-  const totalSessions = new Set(history.map(s => {
-    const d = s.date;
-    if (!d) return null;
-    // ISO format: slice to YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0, 10);
-    // Old yearless format e.g. "Jan 15" — parse with current year, return ISO date
-    const parsed = new Date(`${d}, ${new Date().getFullYear()}`);
-    return isNaN(parsed) ? d : parsed.toISOString().slice(0, 10);
-  })).size;
+  // Count unique days that have at least one set logged
+  // (visiting the page creates a session row even with no sets, so we exclude empty sessions)
+  const totalSessions = new Set(
+    history
+      .filter(s => s.sets && s.sets.length > 0)
+      .map(s => {
+        const d = s.date;
+        if (!d) return null;
+        if (/^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0, 10);
+        const parsed = new Date(`${d}, ${new Date().getFullYear()}`);
+        return isNaN(parsed) ? d : parsed.toISOString().slice(0, 10);
+      })
+      .filter(Boolean)
+  ).size;
   const totalSetsCount = history.reduce((n, s) => n + s.sets.length, 0);
   const prCount        = Object.keys(prs).length;
 
