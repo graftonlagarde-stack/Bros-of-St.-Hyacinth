@@ -1109,6 +1109,18 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
     return false;
   };
 
+  // Arch-admin: fetch full user list to resolve real names behind aliases
+  const [allUsersMap, setAllUsersMap] = useState({});
+  useEffect(() => {
+    if (!isArchAdmin) return;
+    api.get("/api/admin/users").then(users => {
+      if (!Array.isArray(users)) return;
+      const map = {};
+      for (const u of users) map[u.id] = u.displayName;
+      setAllUsersMap(map);
+    }).catch(() => {});
+  }, [isArchAdmin]);
+
   // ── Most-used emoji (localStorage per user) ────────────────────────────
   const MOST_USED_KEY = `emoji_usage_${username}`;
   const getMostUsed = () => {
@@ -1437,6 +1449,12 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
         )}
 
         <div style={{ maxWidth:"75%", display:"flex", flexDirection:"column", alignItems: isMe ? "flex-end" : "flex-start" }}>
+          {/* Arch-admin real name reveal — shown above alias on hover */}
+          {isArchAdmin && deleteHover === msg.id && msg.userId && allUsersMap[msg.userId] && allUsersMap[msg.userId] !== msg.author && (
+            <div style={{ fontSize:9, color:"#ffcc00", fontFamily:"'Orbitron',sans-serif", letterSpacing:0.5, marginBottom:2, paddingLeft: isMe ? 0 : 2, paddingRight: isMe ? 2 : 0 }}>
+              {allUsersMap[msg.userId]}
+            </div>
+          )}
           {!grouped && (
             <div style={{ fontSize:11, color:"var(--muted)", marginBottom:3, paddingLeft: isMe ? 0 : 2, paddingRight: isMe ? 2 : 0, fontFamily:"'Orbitron',sans-serif", letterSpacing:0.5 }}>
               <span style={{ fontWeight:700, color: isMe ? "var(--accent)" : "var(--chrome)" }}>{msg.author}</span>
@@ -1549,7 +1567,7 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
                 style={{
                   display: deleteHover === msg.id ? "flex" : "none",
                   position:"absolute", top:6, right:6,
-                  alignItems:"center", justifyContent:"center",
+                  alignItems:"center", gap:6,
                   zIndex: 10,
                 }}>
                 <button
@@ -8460,7 +8478,11 @@ function ProfilePage({ user, onDeleted, onLogout, onAvatarUpdate, onAliasUpdate 
                         style={{flex:1,padding:"8px 10px",background:"var(--surface)",border:"1px solid var(--border)",
                           color:"var(--text)",borderRadius:3,fontSize:13}}>
                         <option value="">Select a user…</option>
-                        {allUsers.map(u => (
+                        {[...allUsers].sort((a,b)=>{
+                          const la=(a.lastName||a.displayName||"").toLowerCase();
+                          const lb=(b.lastName||b.displayName||"").toLowerCase();
+                          return la<lb?-1:la>lb?1:0;
+                        }).map(u => (
                           <option key={u.id} value={u.id}>{u.displayName} ({u.email})</option>
                         ))}
                       </select>
@@ -8545,7 +8567,11 @@ function AdminSection({ currentUser, cardStyle, sectionTitle }) {
       {loading ? (
         <div style={{color:"var(--muted)",fontSize:12,textAlign:"center",padding:20,
           fontFamily:"'Orbitron',sans-serif",letterSpacing:2}}>LOADING…</div>
-      ) : users.map(u => {
+      ) : [...users].sort((a,b)=>{
+        const la=(a.lastName||a.displayName||"").toLowerCase();
+        const lb=(b.lastName||b.displayName||"").toLowerCase();
+        return la<lb?-1:la>lb?1:0;
+      }).map(u => {
         const badge = roleBadge(u.role);
         const isMe = u.id === currentUser.id;
         return (
@@ -8796,7 +8822,12 @@ function MeetPage({ currentUser, onCallActive }) {
         />
         {/* User list */}
         <div style={{maxHeight:200,overflowY:"auto",border:"1px solid var(--border)",borderRadius:6,padding:8,marginBottom:16}}>
-          {allUsers
+          {[...allUsers]
+            .sort((a,b)=>{
+              const la = (a.lastName || a.displayName.split(" ").slice(-1)[0] || "").toLowerCase();
+              const lb = (b.lastName || b.displayName.split(" ").slice(-1)[0] || "").toLowerCase();
+              return la < lb ? -1 : la > lb ? 1 : 0;
+            })
             .filter(u => u.id !== currentUser.id)
             .filter(u => !search.trim() || u.displayName.toLowerCase().includes(search.trim().toLowerCase()))
             .map(u => (
