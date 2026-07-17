@@ -6170,13 +6170,11 @@ function WorkoutPage({ username }) {
 
   // ── History + chart state ──────────────────────────────────────────────────
   const [history, setHistory]     = useState([]);
-  const [chartEx, setChartEx]     = useState("Bench Press");
-  const [chartGroup, setChartGroup] = useState("Chest");
   const [chartView, setChartView] = useState("volume"); // "volume" | "pr"
   const [chartPeriod, setChartPeriod] = useState("all"); // "1m" | "3m" | "1y" | "all"
 
   const exDef = EXERCISE_MAP[exercise] || EXERCISES[0];
-  const chartExDef = EXERCISE_MAP[chartEx] || EXERCISES[0];
+  const chartExDef = EXERCISE_MAP[exercise] || EXERCISES[0]; // chart follows Today's Session exercise
 
   // ── Load on mount ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -6326,8 +6324,8 @@ function WorkoutPage({ username }) {
 
   const chartData = useMemo(() => {
     const raw = chartView === "volume"
-      ? buildVolumeData(chartEx)
-      : buildPrData(chartEx, chartExDef);
+      ? buildVolumeData(exercise)
+      : buildPrData(exercise, chartExDef);
 
     const cutoffDays = { "1m": 30, "3m": 91, "1y": 365 }[chartPeriod];
     const cutoffTs = cutoffDays ? Date.now() - cutoffDays * 24 * 60 * 60 * 1000 : 0;
@@ -6335,7 +6333,7 @@ function WorkoutPage({ username }) {
     return raw
       .filter(d => d.rawTs >= cutoffTs)
       .map(d => ({ ...d, ts: d.rawTs }));
-  }, [chartView, chartEx, chartPeriod, history]);
+  }, [chartView, exercise, chartPeriod, history]);
 
   // ── Stat tiles ────────────────────────────────────────────────────────────
   // Count unique days that have at least one set logged
@@ -6549,28 +6547,6 @@ function WorkoutPage({ username }) {
           ))}
         </div>
 
-        {/* Chart exercise group */}
-        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:8,paddingBottom:4}}>
-          <div className="tab-row" style={{flexWrap:"nowrap",minWidth:"max-content"}}>
-            {EXERCISE_GROUPS.map(g => (
-              <div key={g} className={`tab ${chartGroup===g?"active":""}`}
-                onClick={() => {
-                  setChartGroup(g);
-                  const first = EXERCISES.find(e => e.group === g);
-                  if (first) setChartEx(first.name);
-                }}>{g}</div>
-            ))}
-          </div>
-        </div>
-        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch",marginBottom:16,paddingBottom:4}}>
-          <div className="tab-row" style={{flexWrap:"nowrap",minWidth:"max-content"}}>
-            {EXERCISES.filter(e => e.group === chartGroup).map(e => (
-              <div key={e.name} className={`tab ${chartEx===e.name?"active":""}`}
-                onClick={() => setChartEx(e.name)}>{e.name}</div>
-            ))}
-          </div>
-        </div>
-
         {chartData.length > 1 ? (
           <div style={{height:220}}>
             <ResponsiveContainer width="100%" height="100%">
@@ -6602,7 +6578,7 @@ function WorkoutPage({ username }) {
           </div>
         ) : (
           <div style={{textAlign:"center",padding:"32px 0",color:"var(--muted)",fontSize:13}}>
-            {chartData.length === 1 ? "Log one more session to see your trend." : `Log some ${chartEx} sets to see your progress.`}
+            {chartData.length === 1 ? "Log one more session to see your trend." : `Log some ${exercise} sets to see your progress.`}
           </div>
         )}
       </div>
