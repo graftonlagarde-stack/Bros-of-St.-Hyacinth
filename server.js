@@ -610,9 +610,9 @@ async function loadReactions(messageIds) {
 }
 
 // ── Helper: shape a message row for the client ────────────────────────────────
-const shapeMessage = (row, reactionsMap) => ({
+const shapeMessage = (row, reactionsMap, includeUserId = false) => ({
   id:        Number(row.id),
-  userId:    Number(row.user_id),
+  ...(includeUserId ? { userId: Number(row.user_id) } : {}),
   author:    row.chapter_id ? row.author : (row.chat_alias_name || row.author),
   avatarUrl: row.chapter_id ? (row.avatar_url || null) : (row.chat_alias_avatar_url || row.avatar_url || null),
   text:      row.text,
@@ -1565,7 +1565,8 @@ app.get("/api/board/messages", requireAuth, async (req, res) => {
       : await db.query(`SELECT m.*, u.avatar_url, u.chat_alias_avatar_url, u.chat_alias_name FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL ORDER BY m.ts ASC`);
     const ids = rows.map(r => Number(r.id));
     const reactionsMap = ids.length > 0 ? await loadReactions(ids) : {};
-    return res.json(rows.map(r => shapeMessage(r, reactionsMap)));
+    const isArchAdmin = req.userRole === "arch_admin";
+    return res.json(rows.map(r => shapeMessage(r, reactionsMap, isArchAdmin)));
   } catch (err) {
     console.error("getMessages:", err);
     return res.status(500).json({ error: "Server error." });
@@ -1611,7 +1612,7 @@ app.post("/api/board/messages", requireAuth, async (req, res) => {
       `SELECT m.*, u.avatar_url, u.chat_alias_avatar_url, u.chat_alias_name FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.id = $1`,
       [rows[0].id]
     );
-    const newMsg = shapeMessage(msgRows[0], {});
+    const newMsg = shapeMessage(msgRows[0], {}, req.userRole === "arch_admin");
     // Push notification — notify all OTHER users that a new message arrived
     const { rows: allUsers } = await db.query(
       "SELECT DISTINCT user_id FROM push_subscriptions WHERE user_id != $1",
