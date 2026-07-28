@@ -9331,7 +9331,7 @@ function DailyCallScreen({ roomName, roomUrl, token, meeting, meetingId, current
           ? <video ref={localVideoRef} autoPlay muted playsInline style={{width:"100%",height:"100%",objectFit:"cover",transform:"scaleX(-1)"}} />
           : <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
               {currentUser.avatarUrl
-                ? <AvatarPhoto src={currentUser.avatarUrl} alt={currentUser.displayName} size={52} />
+                ? <img src={currentUser.avatarUrl} alt={currentUser.displayName} crossOrigin="anonymous" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} />
                 : <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:14,color:"var(--accent)",fontWeight:900}}>{initials(currentUser.displayName)}</span>}
             </div>}
         {SPHERE_OVERLAY}
