@@ -3194,6 +3194,14 @@ const css = `
       animation-duration: 14s !important;
       transform: perspective(600px) rotateX(88deg) translateY(35%) !important;
     }
+    .onboard-grid-floor {
+      background-image:
+        linear-gradient(rgba(136,255,0,0.38) 0.5px, transparent 0.5px),
+        linear-gradient(90deg, rgba(136,255,0,0.38) 0.5px, transparent 0.5px) !important;
+      background-size: 20px 20px !important;
+      animation-duration: 14s !important;
+      transform: perspective(600px) rotateX(88deg) translateY(35%) !important;
+    }
 
     /* ── Main: full viewport, slides in from right when nav retracts ── */
     .main {
@@ -3343,25 +3351,48 @@ const css = `
 
   /* ── ONBOARDING ── */
   .onboard-wrap {
-    min-height: 100vh; display: flex; align-items: center; justify-content: center;
-    background:
-      radial-gradient(ellipse 70% 80% at 50% 50%, rgba(0,60,35,0.6)  0%, transparent 60%),
-      radial-gradient(ellipse 40% 50% at 15% 85%, rgba(0,30,50,0.5)  0%, transparent 60%),
-      radial-gradient(ellipse 40% 50% at 85% 15%, rgba(0,50,30,0.5)  0%, transparent 60%),
-      #000a04;
+    min-height: 100vh; display: flex; align-items: flex-end; justify-content: center;
+    background: #020800;
     position: relative; overflow: hidden;
+    padding-bottom: 0;
   }
-  .onboard-wrap::before {
-    content: ''; position: absolute; inset: 0; pointer-events: none;
+  .onboard-grid-floor {
+    position: absolute; pointer-events: none; z-index: 0;
+    left: -50%; right: -50%;
+    top: 0%; bottom: -5%;
     background-image:
-      repeating-linear-gradient( 45deg, transparent, transparent 55px, rgba(136,255,0,0.018) 55px, rgba(136,255,0,0.018) 56px),
-      repeating-linear-gradient(-45deg, transparent, transparent 55px, rgba(170,255,30,0.018) 55px, rgba(170,255,30,0.018) 56px);
-    animation: gridBreath 10s ease-in-out infinite;
+      linear-gradient(rgba(136,255,0,0.38) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(136,255,0,0.38) 1px, transparent 1px);
+    background-size: 80px 80px;
+    background-position: 50% 0%;
+    transform: perspective(600px) rotateX(82deg) translateY(35%);
+    transform-origin: 50% 50%;
+    animation: depthSweep 3.6s linear infinite;
+    mask-image: linear-gradient(180deg, transparent 0%, black 15%, black 100%);
   }
-  .onboard-wrap::after {
-    content: ''; position: absolute; inset: 0; pointer-events: none;
-    background: radial-gradient(ellipse 60% 40% at 50% 50%, rgba(136,255,0,0.04), transparent);
-    animation: voidPulse 5s ease-in-out infinite;
+  .onboard-grid-fog {
+    position: absolute; inset: 0; pointer-events: none; z-index: 1;
+    background: linear-gradient(180deg, #020800 0%, rgba(2,8,0,0.0) 38%, rgba(2,8,0,0.0) 100%);
+  }
+  .onboard-title {
+    position: absolute; top: 28px; left: 0; right: 0; z-index: 3;
+    text-align: center; pointer-events: none;
+  }
+  .onboard-scroll {
+    position: absolute; top: 44%; left: 0; right: 0; bottom: 0; z-index: 2;
+    overflow-y: auto; display: flex; flex-direction: column; align-items: center;
+    padding: 0 20px 40px;
+  }
+  .onboard-scroll-bar {
+    position: absolute; top: 44%; left: 50%; transform: translateX(-50%);
+    width: calc(100% - 40px); max-width: 400px; height: 2px; z-index: 3; pointer-events: none;
+    background: rgba(136,255,0,0.9);
+    box-shadow:
+      0 0 4px  rgba(136,255,0,1),
+      0 0 12px rgba(136,255,0,0.9),
+      0 0 28px rgba(136,255,0,0.7),
+      0 0 55px rgba(136,255,0,0.4),
+      0 0 90px rgba(136,255,0,0.2);
   }
 
   /* ── MISC ── */
@@ -7377,11 +7408,145 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
 // ─── AUTH SCREEN ──────────────────────────────────────────────────────────────
 // Defined outside AuthScreen so React doesn't recreate these as new component
 // types on every render (which would unmount/remount inputs and lose focus).
+// ─── BLADE RINGS AUTH ANIMATION ─────────────────────────────────────────────
+const CHIRHO_SVG = `<?xml version="1.0"?><svg width="1280" height="1557" viewBox="0 0 1280 1557" xmlns="http://www.w3.org/2000/svg"><path fill="#ffffff" fill-rule="evenodd" stroke="none" d="M 785.032837 1504 L 785.032837 1464.325928 L 758.592346 1464.325928 C 741.325073 1464.325928 724.957336 1455.747803 709.488586 1438.591431 C 697.977051 1425.724121 690.422607 1410.355225 686.825378 1392.483765 C 682.148682 1368.893799 679.810547 1320.284424 679.810547 1246.654907 L 679.810547 969.718201 L 927.800903 1112.895508 C 988.243774 1147.792236 1024.233032 1173.555176 1035.77002 1190.185303 C 1053.211304 1216.039795 1054.377441 1242.05127 1039.268433 1268.220703 L 1026.317993 1290.651489 L 1053.814453 1306.526489 L 1210.568604 1035.020264 L 1183.072266 1019.145264 L 1169.852051 1042.043335 C 1161.218384 1056.997192 1147.089355 1067.739746 1127.464722 1074.271118 C 1112.791138 1079.091797 1098.362427 1079.484375 1084.177856 1075.44873 C 1065.490234 1070.05957 1030.632202 1052.634155 979.602661 1023.172241 L 731.621033 880 L 979.202942 737.058533 C 1039.645874 702.161804 1080.041748 684.031372 1100.392334 682.666748 C 1131.50354 680.48938 1154.523315 692.32959 1169.452271 718.187378 L 1182.672607 741.08551 L 1210.168945 725.21051 L 1053.414673 453.704224 L 1025.918335 469.579224 L 1038.868774 492.010132 C 1047.502441 506.963989 1049.831055 524.727173 1045.85498 545.299805 C 1042.513184 560.106262 1035.548828 572.642456 1024.961548 582.908813 C 1010.950623 596.397949 978.430725 617.873413 927.401245 647.335266 L 679.810547 790.281799 L 679.810547 542.886536 L 766.593323 542.886536 C 862.366272 542.886536 933.649353 517.185791 980.444824 465.783569 C 1022.148499 419.715698 1043 362.373901 1043 293.756836 C 1043 242.596924 1031.301392 197.499512 1007.903625 158.463013 C 984.505859 119.426392 953.592224 91.543457 915.161926 74.813599 C 876.731567 58.08374 820.66272 49.71875 746.953857 49.71875 L 546.195313 49.71875 L 546.195313 50 L 471.524384 50 L 471.524384 89.674072 L 497.425262 89.674072 C 514.692505 89.674072 531.240234 98.252197 547.068604 115.408569 C 558.22052 128.275757 565.594971 143.644775 569.192261 161.516235 C 573.868713 185.106201 576.207092 233.715576 576.207092 307.345093 L 576.207092 790.271729 L 328.607574 647.320068 C 268.164703 612.42334 232.26535 586.5047 220.908234 569.562866 C 203.466949 543.708374 202.211014 517.852661 217.140015 491.994873 L 230.360245 469.09668 L 202.863876 453.22168 L 46.109676 724.727905 L 73.606041 740.602966 L 86.556473 718.17218 C 95.190102 703.218262 109.409111 692.320007 129.213623 685.477112 C 143.707321 680.967896 158.046097 680.731079 172.230698 684.766785 C 190.918121 690.156067 225.776337 707.58136 276.805817 737.043274 L 524.414124 880 L 276.406128 1023.1875 C 215.963272 1058.084229 175.657257 1076.370239 155.486572 1078.046509 C 124.375313 1080.223877 101.265732 1068.228027 86.156784 1042.058594 L 73.206352 1019.627808 L 45.709984 1035.502808 L 202.464188 1307.009033 L 229.960556 1291.134033 L 216.740326 1268.235962 C 208.106705 1253.281982 205.867981 1235.674683 210.023941 1215.413574 C 213.185898 1200.295532 220.060226 1187.603516 230.647552 1177.337158 C 244.658401 1163.8479 277.178375 1142.372559 328.207886 1112.910645 L 576.207092 969.728271 L 576.207092 1246.654907 C 576.207092 1333.866821 571.890259 1388.909424 563.256653 1411.784668 C 549.58667 1446.8125 527.643188 1464.325928 497.425262 1464.325928 L 471.524384 1464.325928 L 471.524384 1504 L 785.032837 1504 Z M 686.944519 507.244629 C 717.737305 514.033569 743.559326 517.427979 764.411133 517.427979 C 820.662598 517.427979 867.336121 497.66748 904.432983 458.145996 C 941.529785 418.624634 960.078003 365.040894 960.078003 297.393677 C 960.078003 229.261719 941.529785 175.556885 904.432983 136.27771 C 867.336121 96.998535 819.692749 77.359375 761.501587 77.359375 C 739.679871 77.359375 714.827759 80.874878 686.944519 87.906494 L 686.944519 507.244629 Z"/></svg>`;
+
+function BladeRingsCanvas() {
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let raf, ro, renderer;
+    let destroyed = false;
+
+    (async () => {
+      // Build chrome environment
+      const env = document.createElement('canvas');
+      env.width = 512; env.height = 256;
+      const g = env.getContext('2d');
+      const grad = g.createLinearGradient(0, 0, 0, 256);
+      grad.addColorStop(0.00, '#0a2200'); grad.addColorStop(0.28, '#66cc00');
+      grad.addColorStop(0.42, '#aaff44'); grad.addColorStop(0.47, '#ffffff');
+      grad.addColorStop(0.52, '#eeffcc'); grad.addColorStop(0.56, '#88ff00');
+      grad.addColorStop(0.72, '#1d3d00'); grad.addColorStop(1.00, '#020800');
+      g.fillStyle = grad; g.fillRect(0, 0, 512, 256);
+      const spot = (x, y, r, c) => { const rg = g.createRadialGradient(x,y,0,x,y,r); rg.addColorStop(0,c); rg.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle=rg; g.fillRect(x-r,y-r,r*2,r*2); };
+      spot(90,70,60,'rgba(255,255,255,.95)'); spot(300,55,45,'rgba(200,255,140,.8)'); spot(430,120,50,'rgba(136,255,0,.6)');
+
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.15;
+      if (destroyed) { renderer.dispose(); return; }
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
+      camera.position.set(0, 0, 14);
+      camera.lookAt(0, -2.5, 0);
+
+      const envTex = new THREE.CanvasTexture(env);
+      envTex.mapping = THREE.EquirectangularReflectionMapping;
+      envTex.colorSpace = THREE.SRGBColorSpace;
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const envRT = pmrem.fromEquirectangular(envTex);
+      scene.environment = envRT.texture;
+      pmrem.dispose(); envTex.dispose();
+
+      const chrome = (tint, rough) => new THREE.MeshStandardMaterial({ color: tint, metalness: 1.0, roughness: rough, envMapIntensity: 2.2, flatShading: true });
+      const outer = new THREE.Mesh(new THREE.TorusGeometry(2.55, 0.30, 3, 320), chrome(0x88ff00, 0.06));
+      const inner = new THREE.Mesh(new THREE.TorusGeometry(1.55, 0.22, 3, 280), chrome(0xaaff44, 0.10));
+
+      // Chi-Rho extrusion
+      const chiRho = new THREE.Group();
+      const bright = new THREE.MeshStandardMaterial({ color: 0xeeffcc, metalness: 1.0, roughness: 0.08, envMapIntensity: 2.6, emissive: 0x88ff00, emissiveIntensity: 0.55 });
+      try {
+        const { SVGLoader } = await import("three/examples/jsm/loaders/SVGLoader.js");
+        const parsed = new SVGLoader().parse(CHIRHO_SVG);
+        const svgGroup = new THREE.Group();
+        const U = 1557;
+        const svgExtrude = { depth: U*0.085, bevelEnabled: true, bevelThickness: U*0.012, bevelSize: U*0.010, bevelSegments: 4, curveSegments: 32 };
+        const contours = [];
+        parsed.paths.forEach(p => p.subPaths.forEach(sp => {
+          const pts = sp.getPoints(64);
+          if (pts.length > 2) contours.push({ pts, holes: [], area: Math.abs(THREE.ShapeUtils.area(pts)) });
+        }));
+        const inside = (pt, poly) => { let hit=false; for (let i=0,j=poly.length-1;i<poly.length;j=i++){const xi=poly[i].x,yi=poly[i].y,xj=poly[j].x,yj=poly[j].y; if(((yi>pt.y)!=(yj>pt.y))&&(pt.x<(xj-xi)*(pt.y-yi)/(yj-yi)+xi))hit=!hit;} return hit; };
+        contours.sort((a,b) => b.area-a.area);
+        const roots = [];
+        contours.forEach(c => { const parent = roots.find(r => inside(c.pts[0], r.pts)); if (parent) parent.holes.push(c.pts); else roots.push(c); });
+        roots.forEach(r => {
+          const outerPts = THREE.ShapeUtils.isClockWise(r.pts) ? r.pts.slice().reverse() : r.pts;
+          const shape = new THREE.Shape(outerPts);
+          r.holes.forEach(h => { const hp = THREE.ShapeUtils.isClockWise(h) ? h : h.slice().reverse(); shape.holes.push(new THREE.Path(hp)); });
+          svgGroup.add(new THREE.Mesh(new THREE.ExtrudeGeometry(shape, svgExtrude), bright));
+        });
+        const box0 = new THREE.Box3().setFromObject(svgGroup);
+        const size = new THREE.Vector3(), center = new THREE.Vector3();
+        box0.getSize(size); box0.getCenter(center);
+        svgGroup.children.forEach(m => m.geometry.translate(-center.x, -center.y, -center.z));
+        const fit = 1.95 / Math.max(size.x, size.y);
+        svgGroup.scale.set(fit, -fit, fit);
+        chiRho.add(svgGroup);
+      } catch(e) { /* fallback: no symbol, rings only */ }
+
+      chiRho.add(new THREE.PointLight(0xaaff44, 14, 12));
+      const group = new THREE.Group();
+      group.add(outer); group.add(inner); group.add(chiRho);
+      group.rotation.x = 0.16;
+      scene.add(group);
+
+      const key = new THREE.DirectionalLight(0xccff99, 2.4); key.position.set(4,5,6);
+      const rim = new THREE.DirectionalLight(0x66cc00, 3.0); rim.position.set(-5,-2,-4);
+      const fill = new THREE.PointLight(0x88ff00, 18, 30); fill.position.set(0,0,3);
+      scene.add(key, rim, fill, new THREE.AmbientLight(0x224400, 1.2));
+
+      const resize = () => {
+        const w = canvas.clientWidth, h = canvas.clientHeight;
+        if (!w || !h) return;
+        renderer.setSize(w, h, false);
+        camera.aspect = w / h; camera.updateProjectionMatrix();
+      };
+      resize();
+      ro = new ResizeObserver(resize); ro.observe(canvas);
+
+      const clock = new THREE.Clock();
+      const tick = () => {
+        if (destroyed) return;
+        const t = clock.getElapsedTime();
+        outer.rotation.y = t * 0.6;
+        outer.rotation.z = Math.sin(t * 0.3) * 0.15;
+        inner.rotation.x = t * 0.85;
+        inner.rotation.z = t * -0.35;
+        group.rotation.y = Math.sin(t * 0.18) * 0.22;
+        chiRho.rotation.y = Math.sin(t * 0.35) * 0.3;
+        chiRho.children.forEach(c => { if (c.material) c.material.emissiveIntensity = 0.5 + Math.sin(t*1.6)*0.18; });
+        renderer.render(scene, camera);
+        raf = requestAnimationFrame(tick);
+      };
+      tick();
+    })();
+
+    return () => {
+      destroyed = true;
+      cancelAnimationFrame(raf);
+      ro && ro.disconnect();
+      renderer && renderer.dispose();
+    };
+  }, []);
+
+  return (
+    <div style={{position:"absolute",inset:0,zIndex:1,pointerEvents:"none"}}>
+      <canvas ref={canvasRef} style={{display:"block",width:"100%",height:"100%"}} />
+    </div>
+  );
+}
+
 const AuthCard = ({ children }) => (
   <div style={{
-    width: 420, position:"relative", zIndex:1,
+    width:"100%", maxWidth:420, position:"relative", zIndex:1,
     background:"linear-gradient(155deg,rgba(0,14,8,0.98),rgba(0,5,3,1))",
     border:"1px solid rgba(6,51,34,0.9)", borderRadius:2, padding:34, overflow:"hidden",
+    boxSizing:"border-box",
   }}>
     <div style={{position:"absolute",top:0,left:0,right:0,height:1,
       background:"linear-gradient(90deg,#88ff00,#aaff44,#88ff00,#88ff00)",
@@ -7569,20 +7734,30 @@ function AuthScreen({ onAuth }) {
 
   return (
     <div className="onboard-wrap">
-      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:24}}>
-        {/* Logo */}
-        <div style={{textAlign:"center"}}>
-          <div style={{
-            fontFamily:"'Orbitron',sans-serif", fontSize:26, fontWeight:900, letterSpacing:4,
-            background:"linear-gradient(155deg,#ffffff 0%,#ccfff0 20%,#55ffcc 50%,#00bb99 75%,#005544 100%)",
-            WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
-            filter:"drop-shadow(0 0 24px rgba(136,255,0,0.9)) drop-shadow(0 0 60px rgba(136,255,0,0.3))",
-            marginBottom:4, animation:"chromaShift 5s ease-in-out infinite"
-          }}>Brothers of Saint Hyacinth</div>
-          <div style={{color:"var(--muted)",fontSize:11,letterSpacing:3,textTransform:"uppercase",fontFamily:"'Orbitron',sans-serif"}}>
-            Your Fitness Community
-          </div>
+      <BladeRingsCanvas />
+      <div className="onboard-grid-floor" />
+      <div className="onboard-grid-fog" />
+
+      {/* Title fixed near top of screen — matches main app logo style */}
+      <div className="onboard-title">
+        <div style={{
+          fontFamily:"'Orbitron',sans-serif", fontWeight:900, textTransform:"uppercase",
+          background:"linear-gradient(155deg,#ffffff 0%,#eeffcc 30%,#aaff44 60%,#66dd00 85%,#338800 100%)",
+          WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", backgroundClip:"text",
+          filter:"drop-shadow(0 0 14px rgba(136,255,0,0.5))",
+          lineHeight:1.15,
+        }}>
+          <span style={{display:"block", fontSize:22, letterSpacing:5}}>BROS OF ST.</span>
+          <span style={{display:"block", fontSize:22, letterSpacing:10.5}}>HYACINTH</span>
         </div>
+      </div>
+
+      {/* Fixed glowing bar at top of scroll zone */}
+      <div className="onboard-scroll-bar" />
+
+      {/* Scroll container starting 44% down */}
+      <div className="onboard-scroll">
+        <div style={{width:"100%",maxWidth:400}}>
 
         {/* VERIFYING */}
         {mode === "verifying" && (
@@ -7716,6 +7891,7 @@ function AuthScreen({ onAuth }) {
               onClick={() => switchMode("welcome")}>← BACK</button>
           </AuthCard>
         )}
+        </div>
       </div>
     </div>
   );
