@@ -3239,6 +3239,9 @@ const css = `
     /* ── Cards ── */
     .card       { padding: 14px 12px !important; margin-bottom: 12px !important; }
     .card-title { font-size: 11px !important; margin-bottom: 10px !important; }
+    .pr-badge   { top:10px !important; right:10px !important; padding:2px 6px !important; gap:3px !important; }
+    .pr-badge .pr-badge-label { display:none !important; }
+    .pr-badge .pr-badge-value { font-size:9px !important; }
 
     /* ── Log table: smaller, contained ── */
     .log-table              { font-size: 11px !important; width: 100% !important; }
@@ -6348,8 +6351,9 @@ function WorkoutPage({ username }) {
           : def.type === "duration" ? s.durationSeconds : s.reps;
         if (dayBest === null || v > dayBest) dayBest = v;
       }
-      if (best === null || dayBest > best) best = dayBest;
-      return { date, rawTs: entry.rawTs, value: best };
+      // Plot this session's best directly — allows chart to show regression,
+      // not just the running all-time max. All-time PR is unchanged elsewhere.
+      return { date, rawTs: entry.rawTs, value: dayBest };
     }).filter(Boolean);
   };
 
@@ -6544,11 +6548,29 @@ function WorkoutPage({ username }) {
       </div>
 
       {/* ── Progress Charts ── */}
-      <div className="card">
+      <div className="card" style={{position:"relative"}}>
         <div className="card-title">
           <span style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,color:"var(--accent)",letterSpacing:2,marginRight:8}}>▲▲▲</span>
           Progress
         </div>
+
+        {/* All-time PR badge — top-right corner, only on PR Trend view */}
+        {chartView === "pr" && currentPr != null && (
+          <div className="pr-badge" style={{
+            position:"absolute", top:14, right:16,
+            display:"inline-flex", alignItems:"center", gap:5,
+            border:"1px solid rgba(136,255,0,0.35)", borderRadius:4,
+            padding:"3px 8px", background:"rgba(136,255,0,0.05)",
+            fontFamily:"'Orbitron',sans-serif", pointerEvents:"none",
+          }}>
+            <svg width="8" height="10" viewBox="0 0 9 11" style={{flexShrink:0}}>
+              <polygon points="4.5,0 9,11 0,11" fill="none" stroke="rgba(136,255,0,0.6)" strokeWidth="1.2"/>
+              <polygon points="4.5,2.5 7.5,9.5 1.5,9.5" fill="rgba(136,255,0,0.2)"/>
+            </svg>
+            <span className="pr-badge-label" style={{fontSize:8,letterSpacing:1.5,color:"var(--muted)"}}>ALL-TIME</span>
+            <span className="pr-badge-value" style={{fontSize:10,fontWeight:700,color:"var(--accent)",letterSpacing:1}}>{prLabel}</span>
+          </div>
+        )}
 
         {/* Chart type toggle */}
         <div style={{display:"flex",gap:8,marginBottom:14}}>
