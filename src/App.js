@@ -3695,8 +3695,9 @@ const DEFAULT_SECTION_INDEX = [
 
 function RulePage({ user }) {
   const isArchAdmin = user?.role === "arch_admin";
-  const [sectionIndex, setSectionIndex] = useState(DEFAULT_SECTION_INDEX); // ordered list of {id, label}
-  const [contents, setContents]         = useState(RULE_DEFAULTS);          // { id: html }
+  const [sectionIndex, setSectionIndex] = useState([]); // ordered list of {id, label} — populated from server
+  const [contents, setContents]         = useState({});          // { id: html } — populated from server
+  const [loaded, setLoaded]             = useState(false); // true once /api/rule has responded
   const [editMode, setEditMode]         = useState(false);
   const [saving, setSaving]             = useState(false);
   const editorRefs   = useRef({});
@@ -3711,15 +3712,25 @@ function RulePage({ user }) {
     fetch(`${API_BASE}/api/rule`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(data => {
-        // __index__ is a special key storing the section list as JSON
-        if (data.__index__) {
-          try { setSectionIndex(JSON.parse(data.__index__)); } catch (_) {}
+        // __index__ is a special key storing the section list as JSON.
+        // Its absence means this install has never saved a rule page yet —
+        // that's the only case where we fall back to the built-in starter text.
+        const isFreshInstall = !data.__index__;
+        if (isFreshInstall) {
+          setSectionIndex(DEFAULT_SECTION_INDEX);
+        } else {
+          try { setSectionIndex(JSON.parse(data.__index__)); }
+          catch (_) { setSectionIndex(DEFAULT_SECTION_INDEX); }
         }
-        const merged = { ...RULE_DEFAULTS };
-        Object.entries(data).forEach(([k, v]) => { if (v && k !== "__index__") merged[k] = v; });
+        const merged = isFreshInstall ? { ...RULE_DEFAULTS } : {};
+        // Always take the server's value for a section, even an empty string —
+        // otherwise cleared-out content would keep falling back to the
+        // hardcoded defaults above.
+        Object.entries(data).forEach(([k, v]) => { if (k !== "__index__") merged[k] = v; });
         setContents(merged);
+        setLoaded(true);
       })
-      .catch(() => {});
+      .catch(() => setLoaded(true));
   }, []);
 
   // Populate editors when entering edit mode
@@ -3757,14 +3768,20 @@ function RulePage({ user }) {
 
   // ── Section management ──────────────────────────────────────────────────────
   const addSection = () => {
-    const id    = "section_" + Date.now();
-    const label = "New Section";
+    const id          = "section_" + Date.now();
+    const label       = "New Section";
+    const initialHtml = "<p>Enter text here.</p>";
     setSectionIndex(prev => [...prev, { id, label }]);
-    setContents(prev => ({ ...prev, [id]: "<p>Enter text here.</p>" }));
-    // Scroll to bottom after render
+    setContents(prev => ({ ...prev, [id]: initialHtml }));
+    // The new editor div isn't populated by the edit-mode effect (that only
+    // runs when editMode itself changes), so seed it directly once it mounts,
+    // then scroll to it.
     setTimeout(() => {
       const el = editorRefs.current[id];
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (el) {
+        el.innerHTML = initialHtml;
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
     }, 100);
   };
 
@@ -3857,7 +3874,13 @@ function RulePage({ user }) {
 
       <input ref={fileInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={insertImage} />
 
-      {sectionIndex.map((sec, idx) => (
+      {!loaded && (
+        <div className="card" style={{ fontFamily:"'Orbitron',sans-serif", fontSize:12, letterSpacing:1, color:"var(--muted)" }}>
+          Loading…
+        </div>
+      )}
+
+      {loaded && sectionIndex.map((sec, idx) => (
         <div key={sec.id} className="card" style={{ overflow: editMode && isArchAdmin ? "visible" : "hidden" }}>
 
           {/* Section header */}
@@ -3907,7 +3930,7 @@ function RulePage({ user }) {
 
           <div
             ref={el => { editorRefs.current[sec.id] = el; }}
-            contentEditable={isArchAdmin && editMode}
+            contentEditable={isArchAdmin && editMode && !saving}
             suppressContentEditableWarning
             className={(!editMode || !isArchAdmin) ? "rule-card" : ""}
             style={{
@@ -3951,8 +3974,11 @@ function RulePage({ user }) {
       {/* Bottom toolbar */}
       {isArchAdmin && (
         <div style={{ display:"flex", gap:10, marginTop:8, marginBottom:8, alignItems:"center", flexWrap:"wrap" }}>
-          <button className="btn btn-primary btn-sm"
-            onClick={() => { if (editMode) saveAll(); setEditMode(v => !v); }}>
+          <button className="btn btn-primary btn-sm" disabled={saving}
+            onClick={async () => {
+              if (editMode) { await saveAll(); setEditMode(false); }
+              else { setEditMode(true); }
+            }}>
             {editMode ? (saving ? "Saving…" : "💾 Save All & Exit") : "✏️ Edit Rule"}
           </button>
           {editMode && (
