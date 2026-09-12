@@ -8249,13 +8249,14 @@ function ProfilePage({ user, onDeleted, onLogout, onAvatarUpdate, onAliasUpdate 
     api.getMyMembership().then(m => setMembership(m)).catch(() => setMembership(null));
     api.getChapters().then(setChapters).catch(() => {});
     if (isArchAdmin) api.getAdminUsers().then(u => setAllUsers(u)).catch(() => {});
-    // Clear chapter-membership notifications on profile view
+    // Clear chapter-membership and pending-new-user notifications on profile view
+    // (the Admin/Arch-Admin panel, where pending approvals are shown, lives on this page)
     const token = api.getToken();
     if (token) {
       fetch(`${API_BASE}/api/badge/clear`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ types: ["chapter-membership"] }),
+        body: JSON.stringify({ types: ["chapter-membership", "new-member"] }),
       }).catch(() => {});
     }
   }, []);
@@ -8419,8 +8420,9 @@ function ProfilePage({ user, onDeleted, onLogout, onAvatarUpdate, onAliasUpdate 
         </div>
         <AvatarUpload user={user} onUpdate={onAvatarUpdate} />
 
-        {/* Chat Alias Section */}
-        <ChatAliasSection user={user} onUpdate={onAliasUpdate || (() => {})} />
+        {/* Chat Alias Section — hidden for pending accounts; it only affects
+            the global chat, which they can't access until approved */}
+        {!isNewUser && <ChatAliasSection user={user} onUpdate={onAliasUpdate || (() => {})} />}
         {[
           ["First Name",   user.firstName],
           ["Last Name",    user.lastName],
@@ -8780,6 +8782,72 @@ function AdminSection({ currentUser, cardStyle, sectionTitle }) {
     return true;
   };
 
+  const sortByLastName = (a, b) => {
+    const la = (a.lastName || a.displayName || "").toLowerCase();
+    const lb = (b.lastName || b.displayName || "").toLowerCase();
+    return la < lb ? -1 : la > lb ? 1 : 0;
+  };
+
+  // One user row — shared by the main list and the pending-approval box below it.
+  // The name block has a floor width instead of shrinking to 0, so on narrow
+  // screens the controls wrap onto their own line instead of overlapping the name.
+  const renderUserRow = (u) => {
+    const badge = roleBadge(u.role);
+    const isMe = u.id === currentUser.id;
+    return (
+      <div key={u.id} style={{
+        display:"flex", alignItems:"center", gap:12, padding:"12px 0",
+        borderBottom:"1px solid rgba(136,255,0,0.05)",
+        background: isMe ? "rgba(136,255,0,0.03)" : "transparent",
+        flexWrap:"wrap",
+      }}>
+        <div className="avatar sm" style={{
+          flexShrink:0,
+          background: u.role === "arch_admin" ? "linear-gradient(135deg,#332200,#664400)"
+                    : u.role === "admin"      ? "linear-gradient(135deg,#003322,#006644)"
+                    : "linear-gradient(135deg,#001a10,#002e1a)",
+          color: badge.color,
+        }}>{initials(u.displayName)}</div>
+        <div style={{flex:"1 1 160px", minWidth:160}}>
+          <div style={{display:"flex", alignItems:"center", gap:8}}>
+            <span style={{fontWeight:700, fontSize:13}}>{u.displayName}</span>
+            {isMe && <span style={{fontSize:9,color:"var(--muted)",fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>YOU</span>}
+          </div>
+          <div style={{color:"var(--muted)",fontSize:11,marginTop:1}}>{u.email}</div>
+        </div>
+        <div style={{display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", flexShrink:0}}>
+          <div style={{fontSize:9,fontWeight:700,letterSpacing:1.5,padding:"3px 8px",whiteSpace:"nowrap",
+            border:`1px solid ${badge.color}44`,borderRadius:2,
+            color:badge.color,fontFamily:"'Orbitron',sans-serif"}}>{badge.label}</div>
+          {u.role === "new_user" && (
+            <button onClick={() => handleApprove(u.id)}
+              style={{fontSize:9,padding:"3px 8px",cursor:"pointer",borderRadius:2,whiteSpace:"nowrap",
+                background:"rgba(255,136,0,0.1)",border:"1px solid rgba(255,136,0,0.4)",
+                color:"#ff8800",fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>
+              APPROVE
+            </button>
+          )}
+          {isArchAdmin && u.role !== "arch_admin" && u.role !== "new_user" && !isMe && (
+            <button onClick={() => handleSetRole(u.id, u.role === "admin" ? "user" : "admin")}
+              style={{fontSize:9,padding:"3px 8px",cursor:"pointer",borderRadius:2,whiteSpace:"nowrap",
+                background:"rgba(136,255,0,0.06)",border:"1px solid rgba(136,255,0,0.2)",
+                color:"var(--accent)",fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>
+              {u.role === "admin" ? "DEMOTE" : "MAKE ADMIN"}
+            </button>
+          )}
+          {canDelete(u) && (
+            <button onClick={() => setConfirm({ userId: u.id, name: u.displayName })}
+              style={{fontSize:9,padding:"3px 8px",cursor:"pointer",borderRadius:2,whiteSpace:"nowrap",
+                background:"rgba(255,68,85,0.06)",border:"1px solid rgba(255,68,85,0.25)",
+                color:"#ff4455",fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>
+              DELETE
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div style={{...cardStyle, borderColor:"rgba(255,204,0,0.2)"}}>
       <div style={{position:"absolute",top:0,left:0,right:0,height:1,
@@ -8796,68 +8864,26 @@ function AdminSection({ currentUser, cardStyle, sectionTitle }) {
       {loading ? (
         <div style={{color:"var(--muted)",fontSize:12,textAlign:"center",padding:20,
           fontFamily:"'Orbitron',sans-serif",letterSpacing:2}}>LOADING…</div>
-      ) : [...users].sort((a,b)=>{
-        if (a.role === "new_user" && b.role !== "new_user") return -1;
-        if (b.role === "new_user" && a.role !== "new_user") return 1;
-        const la=(a.lastName||a.displayName||"").toLowerCase();
-        const lb=(b.lastName||b.displayName||"").toLowerCase();
-        return la<lb?-1:la>lb?1:0;
-      }).map(u => {
-        const badge = roleBadge(u.role);
-        const isMe = u.id === currentUser.id;
-        return (
-          <div key={u.id} style={{
-            display:"flex", alignItems:"center", gap:12, padding:"12px 0",
-            borderBottom:"1px solid rgba(136,255,0,0.05)",
-            background: isMe ? "rgba(136,255,0,0.03)" : "transparent",
-            flexWrap:"wrap",
-          }}>
-            <div className="avatar sm" style={{
-              flexShrink:0,
-              background: u.role === "arch_admin" ? "linear-gradient(135deg,#332200,#664400)"
-                        : u.role === "admin"      ? "linear-gradient(135deg,#003322,#006644)"
-                        : "linear-gradient(135deg,#001a10,#002e1a)",
-              color: badge.color,
-            }}>{initials(u.displayName)}</div>
-            <div style={{flex:1, minWidth:0}}>
-              <div style={{display:"flex", alignItems:"center", gap:8}}>
-                <span style={{fontWeight:700, fontSize:13}}>{u.displayName}</span>
-                {isMe && <span style={{fontSize:9,color:"var(--muted)",fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>YOU</span>}
+      ) : (
+        <>
+          {users.filter(u => u.role !== "new_user").sort(sortByLastName).map(renderUserRow)}
+          {(() => {
+            const pending = users.filter(u => u.role === "new_user").sort(sortByLastName);
+            if (pending.length === 0) return null;
+            return (
+              <div style={{marginTop:20, padding:"14px 16px",
+                border:"1px solid rgba(255,136,0,0.3)", borderRadius:4,
+                background:"rgba(255,136,0,0.04)"}}>
+                <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:10,letterSpacing:2,
+                  color:"#ff8800",fontWeight:700,marginBottom:8}}>
+                  PENDING APPROVAL ({pending.length})
+                </div>
+                {pending.map(renderUserRow)}
               </div>
-              <div style={{color:"var(--muted)",fontSize:11,marginTop:1}}>{u.email}</div>
-            </div>
-            <div style={{display:"flex", alignItems:"center", gap:8, flexShrink:0}}>
-              <div style={{fontSize:9,fontWeight:700,letterSpacing:1.5,padding:"3px 8px",
-                border:`1px solid ${badge.color}44`,borderRadius:2,
-                color:badge.color,fontFamily:"'Orbitron',sans-serif"}}>{badge.label}</div>
-              {u.role === "new_user" && (
-                <button onClick={() => handleApprove(u.id)}
-                  style={{fontSize:9,padding:"3px 8px",cursor:"pointer",borderRadius:2,
-                    background:"rgba(255,136,0,0.1)",border:"1px solid rgba(255,136,0,0.4)",
-                    color:"#ff8800",fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>
-                  APPROVE
-                </button>
-              )}
-              {isArchAdmin && u.role !== "arch_admin" && u.role !== "new_user" && !isMe && (
-                <button onClick={() => handleSetRole(u.id, u.role === "admin" ? "user" : "admin")}
-                  style={{fontSize:9,padding:"3px 8px",cursor:"pointer",borderRadius:2,
-                    background:"rgba(136,255,0,0.06)",border:"1px solid rgba(136,255,0,0.2)",
-                    color:"var(--accent)",fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>
-                  {u.role === "admin" ? "DEMOTE" : "MAKE ADMIN"}
-                </button>
-              )}
-              {canDelete(u) && (
-                <button onClick={() => setConfirm({ userId: u.id, name: u.displayName })}
-                  style={{fontSize:9,padding:"3px 8px",cursor:"pointer",borderRadius:2,
-                    background:"rgba(255,68,85,0.06)",border:"1px solid rgba(255,68,85,0.25)",
-                    color:"#ff4455",fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>
-                  DELETE
-                </button>
-              )}
-            </div>
-          </div>
-        );
-      })}
+            );
+          })()}
+        </>
+      )}
       {confirm && (
         <div style={{
           position:"fixed",inset:0,zIndex:1002,
