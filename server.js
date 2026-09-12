@@ -663,8 +663,10 @@ app.post("/api/auth/register", authLimiter, async (req, res) => {
       return res.status(409).json({ error: "An account with that email already exists." });
 
     const hash = await bcrypt.hash(password, 12);
+    // New accounts start as 'new_user' — a lesser status that hides community
+    // pages and their data until an admin/arch-admin approves them.
     const { rows } = await db.query(
-      "INSERT INTO users (first_name, last_name, email, password, email_verified) VALUES ($1,$2,$3,$4,false) RETURNING *",
+      "INSERT INTO users (first_name, last_name, email, password, email_verified, role) VALUES ($1,$2,$3,$4,false,'new_user') RETURNING *",
       [firstName.trim(), lastName.trim(), email.trim().toLowerCase(), hash]
     );
     const user = rows[0];
@@ -732,6 +734,24 @@ app.get("/api/auth/verify-email", async (req, res) => {
     const { rows: userRows } = await db.query("SELECT * FROM users WHERE id = $1", [userId]);
     const user = userRows[0];
     const jwt  = signToken(user.id);
+
+    // Notify admins/arch-admin that a new member is awaiting approval
+    if (user.role === 'new_user') {
+      const { rows: admins } = await db.query(
+        "SELECT id FROM users WHERE role IN ('admin', 'arch_admin')"
+      );
+      const newName = displayName(user);
+      for (const a of admins) {
+        sendPushToUser(a.id, {
+          title: "New member awaiting approval",
+          body:  `${newName} just joined and needs to be approved.`,
+          tag:   `new-member-${user.id}`,
+          url:   "/",
+          notifType: "new-member",
+        });
+      }
+    }
+
     return res.json({ token: jwt, user: shapeUser(user) });
   } catch (err) {
     console.error("verify-email:", err);
@@ -1148,7 +1168,12 @@ app.get("/api/workout/prs", requireAuth, async (req, res) => {
 // GET /api/community/prs — all users' PRs for top charts
 app.get("/api/community/prs", requireAuth, async (req, res) => {
   try {
-    const { rows: users } = await db.query("SELECT * FROM users WHERE id != $1", [req.userId]);
+    const { rows: meRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    if (meRows[0]?.role === 'new_user')
+      return res.status(403).json({ error: "Forbidden." });
+    const { rows: users } = await db.query(
+      "SELECT * FROM users WHERE id != $1 AND role != 'new_user'", [req.userId]
+    );
     const result = await Promise.all(users.map(async (u) => {
       const { rows: prs } = await db.query(
         "SELECT exercise, value FROM personal_records WHERE user_id = $1",
@@ -1559,10 +1584,13 @@ app.post("/api/badge/clear", requireAuth, async (req, res) => {
 
 app.get("/api/board/messages", requireAuth, async (req, res) => {
   try {
+    const { rows: meRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    if (meRows[0]?.role === 'new_user')
+      return res.status(403).json({ error: "Forbidden." });
     const since = req.query.since ? Number(req.query.since) : null;
     const { rows } = since
-      ? await db.query(`SELECT m.*, u.avatar_url, u.chat_alias_avatar_url, u.chat_alias_name FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL AND m.ts > $1 ORDER BY m.ts ASC`, [since])
-      : await db.query(`SELECT m.*, u.avatar_url, u.chat_alias_avatar_url, u.chat_alias_name FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL ORDER BY m.ts ASC`);
+      ? await db.query(`SELECT m.*, u.avatar_url, u.chat_alias_avatar_url, u.chat_alias_name FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL AND m.ts > $1 AND (u.role IS NULL OR u.role != 'new_user') ORDER BY m.ts ASC`, [since])
+      : await db.query(`SELECT m.*, u.avatar_url, u.chat_alias_avatar_url, u.chat_alias_name FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL AND (u.role IS NULL OR u.role != 'new_user') ORDER BY m.ts ASC`);
     const ids = rows.map(r => Number(r.id));
     const reactionsMap = ids.length > 0 ? await loadReactions(ids) : {};
     const isArchAdmin = req.userRole === "arch_admin";
@@ -1578,6 +1606,7 @@ app.post("/api/board/messages", requireAuth, async (req, res) => {
     const { rows: userRows } = await db.query("SELECT * FROM users WHERE id = $1", [req.userId]);
     const user = userRows[0];
     if (!user) return res.status(404).json({ error: "User not found." });
+    if (user.role === 'new_user') return res.status(403).json({ error: "Forbidden." });
 
     const { text, media, mediaExtra } = req.body;
     if (!text?.trim() && !media)
@@ -1615,7 +1644,7 @@ app.post("/api/board/messages", requireAuth, async (req, res) => {
     const newMsg = shapeMessage(msgRows[0], {}, req.userRole === "arch_admin");
     // Push notification — notify all OTHER users that a new message arrived
     const { rows: allUsers } = await db.query(
-      "SELECT DISTINCT user_id FROM push_subscriptions WHERE user_id != $1",
+      "SELECT DISTINCT ps.user_id FROM push_subscriptions ps JOIN users u ON u.id = ps.user_id WHERE ps.user_id != $1 AND u.role != 'new_user'",
       [req.userId]
     );
     const senderName = displayName(user);
@@ -1732,7 +1761,7 @@ app.post("/api/board/reactions", requireAuth, async (req, res) => {
 app.get("/api/users", requireAuth, async (req, res) => {
   try {
     const { rows } = await db.query(
-      "SELECT id, first_name, last_name, email, avatar_url FROM users ORDER BY first_name ASC",
+      "SELECT id, first_name, last_name, email, avatar_url FROM users WHERE role != 'new_user' ORDER BY first_name ASC",
       []
     );
     res.json(rows.map(u => ({
@@ -1814,6 +1843,27 @@ app.post("/api/admin/users/:id/role", requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/admin/users/:id/approve — grant a pending new user full access.
+// Unlike role changes, both admin and arch_admin may approve.
+app.post("/api/admin/users/:id/approve", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await db.query("SELECT * FROM users WHERE id = $1", [req.params.id]);
+    const target = rows[0];
+    if (!target) return res.status(404).json({ error: "User not found." });
+    if (target.role !== 'new_user')
+      return res.status(400).json({ error: "User is not pending approval." });
+
+    const { rows: updated } = await db.query(
+      "UPDATE users SET role = 'user' WHERE id = $1 RETURNING *",
+      [req.params.id]
+    );
+    return res.json({ user: shapeUser(updated[0]) });
+  } catch (err) {
+    console.error("adminApproveUser:", err);
+    return res.status(500).json({ error: "Server error." });
+  }
+});
+
 // Catch-all: serve React app for any non-API route
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1823,6 +1873,9 @@ app.post("/api/admin/users/:id/role", requireAuth, async (req, res) => {
 // GET /api/rule — returns all section content
 app.get("/api/rule", requireAuth, async (req, res) => {
   try {
+    const { rows: meRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    if (meRows[0]?.role === 'new_user')
+      return res.status(403).json({ error: "Forbidden." });
     const { rows } = await db.query("SELECT id, content FROM rule_sections ORDER BY id");
     const data = {};
     rows.forEach(r => { data[r.id] = r.content; });
@@ -2019,6 +2072,9 @@ app.get("/api/chapters/my", requireAuth, async (req, res) => {
 // POST /api/chapters/:id/join — request to join a chapter
 app.post("/api/chapters/:id/join", requireAuth, async (req, res) => {
   try {
+    const { rows: meRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    if (meRows[0]?.role === 'new_user')
+      return res.status(403).json({ error: "Your account is awaiting admin approval before you can join a chapter." });
     const chapterId = Number(req.params.id);
     // Check chapter exists and is active
     const { rows: cRows } = await db.query("SELECT * FROM chapters WHERE id = $1 AND active = true", [chapterId]);
@@ -2184,7 +2240,7 @@ app.get("/api/chapters/:id/community-users", requireAuth, async (req, res) => {
     const { rows: users } = await db.query(`
       SELECT u.* FROM users u
       JOIN chapter_memberships cm ON cm.user_id = u.id
-      WHERE cm.chapter_id = $1 AND cm.status = 'approved' AND u.id != $2
+      WHERE cm.chapter_id = $1 AND cm.status = 'approved' AND u.id != $2 AND u.role != 'new_user'
     `, [chapterId, req.userId]);
     const result = await Promise.all(users.map(async (u) => {
       const { rows: prs } = await db.query(
@@ -2225,7 +2281,7 @@ app.get("/api/chapters/:id/stats", requireAuth, async (req, res) => {
       FROM chapter_memberships cm
       JOIN users u ON u.id = cm.user_id
       LEFT JOIN lift_logs ll ON ll.user_id = u.id
-      WHERE cm.chapter_id = $1 AND cm.status = 'approved'
+      WHERE cm.chapter_id = $1 AND cm.status = 'approved' AND u.role != 'new_user'
       GROUP BY u.id
       ORDER BY total_lifts DESC, days_logged DESC
     `, [chapterId]);
@@ -2258,8 +2314,8 @@ app.get("/api/chapters/:id/messages", requireAuth, async (req, res) => {
     }
     const since = req.query.since ? Number(req.query.since) : null;
     const { rows } = since
-      ? await db.query(`SELECT m.*, u.avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id = $1 AND m.ts > $2 ORDER BY m.ts DESC`, [chapterId, since])
-      : await db.query(`SELECT m.*, u.avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id = $1 ORDER BY m.ts DESC LIMIT 200`, [chapterId]);
+      ? await db.query(`SELECT m.*, u.avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id = $1 AND m.ts > $2 AND (u.role IS NULL OR u.role != 'new_user') ORDER BY m.ts DESC`, [chapterId, since])
+      : await db.query(`SELECT m.*, u.avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id = $1 AND (u.role IS NULL OR u.role != 'new_user') ORDER BY m.ts DESC LIMIT 200`, [chapterId]);
     const reactionsMap = await loadReactions(rows.map(r => r.id));
     res.json(rows.map(r => shapeMessage(r, reactionsMap)));
   } catch (err) {
@@ -2346,6 +2402,9 @@ async function dailyRequest(method, path, body) {
 // POST /api/meetings — create a meeting
 app.post("/api/meetings", requireAuth, async (req, res) => {
   try {
+    const { rows: meRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    if (meRows[0]?.role === 'new_user')
+      return res.status(403).json({ error: "Forbidden." });
     const { title, scheduledAt, inviteeIds } = req.body;
     if (!title || !scheduledAt || !Array.isArray(inviteeIds)) {
       return res.status(400).json({ error: "title, scheduledAt, and inviteeIds required" });
@@ -2376,8 +2435,12 @@ app.post("/api/meetings", requireAuth, async (req, res) => {
       VALUES ($1, $2, $3, $4, $5) RETURNING *
     `, [title, req.userId, scheduledAt, roomName, roomUrl]);
     const meeting = rows[0];
-    // Insert invitees (deduplicated, exclude creator)
-    const ids = [...new Set(inviteeIds.filter(id => id !== req.userId))];
+    // Insert invitees (deduplicated, exclude creator, exclude pending new users)
+    const dedupedIds = [...new Set(inviteeIds.filter(id => id !== req.userId))];
+    const { rows: validInvitees } = dedupedIds.length
+      ? await db.query(`SELECT id FROM users WHERE id = ANY($1) AND role != 'new_user'`, [dedupedIds])
+      : { rows: [] };
+    const ids = validInvitees.map(r => Number(r.id));
     for (const uid of ids) {
       await db.query(
         "INSERT INTO meeting_invitees (meeting_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
@@ -2414,6 +2477,9 @@ app.post("/api/meetings", requireAuth, async (req, res) => {
 // GET /api/meetings — all meetings user is involved in
 app.get("/api/meetings", requireAuth, async (req, res) => {
   try {
+    const { rows: meRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
+    if (meRows[0]?.role === 'new_user')
+      return res.status(403).json({ error: "Forbidden." });
     const { rows } = await db.query(`
       SELECT m.*, u.first_name, u.last_name,
         (SELECT json_agg(json_build_object(

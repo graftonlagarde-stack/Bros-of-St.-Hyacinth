@@ -218,6 +218,7 @@ const api = {
   getAdminUsers:  ()          => api.get("/api/admin/users"),
   adminDeleteUser:(id)         => api.delete(`/api/admin/users/${id}`),
   adminSetRole:   (id, role)   => api.post(`/api/admin/users/${id}/role`, { role }),
+  adminApproveUser:(id)        => api.post(`/api/admin/users/${id}/approve`, {}),
 
   // Chapters
   getChapters:          ()              => api.get("/api/chapters"),
@@ -6209,7 +6210,7 @@ function RankCard({ username, exercise, myPr, communityPrs = [] }) {
 }
 
 // ─── WORKOUT PAGE ─────────────────────────────────────────────────────────────
-function WorkoutPage({ username }) {
+function WorkoutPage({ username, isNewUser }) {
   const isMobile = useIsMobile();
 
   // ── Session state ──────────────────────────────────────────────────────────
@@ -6427,6 +6428,18 @@ function WorkoutPage({ username }) {
     <div className="page">
       <div className="page-title">WORKOUT <span className="accentText">TRACKER</span></div>
       <div className="page-sub">&ldquo;The Lord is my strength and my praise: and he is become my salvation.&rdquo; &mdash; Psalms 117:14</div>
+
+      {isNewUser && (
+        <div className="card" style={{ borderColor:"rgba(255,136,0,0.3)", marginBottom:16 }}>
+          <div style={{ fontFamily:"'Orbitron',sans-serif", fontSize:12, letterSpacing:1, color:"#ff8800", fontWeight:700, marginBottom:4 }}>
+            ACCOUNT PENDING APPROVAL
+          </div>
+          <div style={{ fontSize:12, color:"var(--muted)", lineHeight:1.6 }}>
+            An admin needs to approve your account before you can access Top Charts, Chat, Meet, or the Rule page.
+            You can still log your workouts here in the meantime.
+          </div>
+        </div>
+      )}
 
       {/* Stat tiles */}
       <div className="stat-grid">
@@ -8205,6 +8218,7 @@ function ProfilePage({ user, onDeleted, onLogout, onAvatarUpdate, onAliasUpdate 
   const isMobile = useIsMobile();
   const isArchAdmin = user.role === "arch_admin";
   const isAdmin = user.role === "arch_admin" || user.role === "admin";
+  const isNewUser = user.role === "new_user";
 
   // Account section state
   const [deleteStep, setDeleteStep] = useState(false);
@@ -8411,7 +8425,7 @@ function ProfilePage({ user, onDeleted, onLogout, onAvatarUpdate, onAliasUpdate 
           ["First Name",   user.firstName],
           ["Last Name",    user.lastName],
           ["Email",        user.email],
-          ["Role",         isArchAdmin ? "Arch-Admin" : user.role === "admin" ? "Admin" : "Member"],
+          ["Role",         isArchAdmin ? "Arch-Admin" : user.role === "admin" ? "Admin" : user.role === "new_user" ? "New Member (Pending Approval)" : "Member"],
           ["Member Since", new Date().toLocaleDateString("en-US",{month:"long",year:"numeric"})],
         ].map(([l,v]) => infoRow(l,v))}
         <div style={{display:"flex",gap:8,marginTop:20,flexWrap:"wrap"}}>
@@ -8467,6 +8481,10 @@ function ProfilePage({ user, onDeleted, onLogout, onAvatarUpdate, onAliasUpdate 
 
         {membership === undefined ? (
           <div style={{color:"var(--muted)",fontSize:13}}>Loading…</div>
+        ) : isNewUser ? (
+          <div style={{color:"var(--muted)",fontSize:13}}>
+            Your account is awaiting admin approval. You'll be able to request a chapter once you're approved.
+          </div>
         ) : membership === null ? (
           /* No membership — show chapter directory */
           <div>
@@ -8741,9 +8759,17 @@ function AdminSection({ currentUser, cardStyle, sectionTitle }) {
     } catch (err) { setError(err.message); }
   };
 
+  const handleApprove = async (userId) => {
+    try {
+      const { user: updated } = await api.adminApproveUser(userId);
+      setUsers(prev => prev.map(u => u.id === updated.id ? updated : u));
+    } catch (err) { setError(err.message); }
+  };
+
   const roleBadge = (role) => {
     if (role === "arch_admin") return { label: "ARCH-ADMIN", color: "#ffcc00" };
     if (role === "admin")      return { label: "ADMIN",      color: "#88ff00" };
+    if (role === "new_user")   return { label: "NEW USER",   color: "#ff8800" };
     return                            { label: "MEMBER",     color: "#556655" };
   };
 
@@ -8763,11 +8789,16 @@ function AdminSection({ currentUser, cardStyle, sectionTitle }) {
       {error && <div style={{color:"#ff4455",fontSize:12,marginBottom:12,fontWeight:600}}>{error}</div>}
       <div style={{color:"var(--muted)",fontSize:11,marginBottom:14,fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>
         {users.length} {users.length === 1 ? "MEMBER" : "MEMBERS"}
+        {users.some(u => u.role === "new_user") && (
+          <span style={{color:"#ff8800"}}> · {users.filter(u => u.role === "new_user").length} PENDING APPROVAL</span>
+        )}
       </div>
       {loading ? (
         <div style={{color:"var(--muted)",fontSize:12,textAlign:"center",padding:20,
           fontFamily:"'Orbitron',sans-serif",letterSpacing:2}}>LOADING…</div>
       ) : [...users].sort((a,b)=>{
+        if (a.role === "new_user" && b.role !== "new_user") return -1;
+        if (b.role === "new_user" && a.role !== "new_user") return 1;
         const la=(a.lastName||a.displayName||"").toLowerCase();
         const lb=(b.lastName||b.displayName||"").toLowerCase();
         return la<lb?-1:la>lb?1:0;
@@ -8799,7 +8830,15 @@ function AdminSection({ currentUser, cardStyle, sectionTitle }) {
               <div style={{fontSize:9,fontWeight:700,letterSpacing:1.5,padding:"3px 8px",
                 border:`1px solid ${badge.color}44`,borderRadius:2,
                 color:badge.color,fontFamily:"'Orbitron',sans-serif"}}>{badge.label}</div>
-              {isArchAdmin && u.role !== "arch_admin" && !isMe && (
+              {u.role === "new_user" && (
+                <button onClick={() => handleApprove(u.id)}
+                  style={{fontSize:9,padding:"3px 8px",cursor:"pointer",borderRadius:2,
+                    background:"rgba(255,136,0,0.1)",border:"1px solid rgba(255,136,0,0.4)",
+                    color:"#ff8800",fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>
+                  APPROVE
+                </button>
+              )}
+              {isArchAdmin && u.role !== "arch_admin" && u.role !== "new_user" && !isMe && (
                 <button onClick={() => handleSetRole(u.id, u.role === "admin" ? "user" : "admin")}
                   style={{fontSize:9,padding:"3px 8px",cursor:"pointer",borderRadius:2,
                     background:"rgba(136,255,0,0.06)",border:"1px solid rgba(136,255,0,0.2)",
@@ -10107,7 +10146,8 @@ export default function App() {
     </>
   );
 
-  const username = user.displayName;
+  const username  = user.displayName;
+  const isNewUser = user.role === "new_user";
 
   // Y2K chrome SVG nav icons
   const NavIcon = ({ id, active }) => {
@@ -10147,6 +10187,9 @@ export default function App() {
     return null;
   };
 
+  // Pending "new user" accounts don't get the community-facing pages until an
+  // admin/arch-admin approves them (see isNewUser above).
+  const GATED_NAV_IDS = ["topcharts", "boards", "meet", "rule"];
   const navItems = [
     { id: "workout",   label: "Workout" },
     { id: "topcharts", label: "Top Charts" },
@@ -10154,7 +10197,7 @@ export default function App() {
     { id: "meet",      label: "Meet" },
     { id: "audio",     label: "Bible" },
     { id: "rule",      label: "Rule" },
-  ];
+  ].filter(n => !isNewUser || !GATED_NAV_IDS.includes(n.id));
 
   return (
     <>
@@ -10265,10 +10308,10 @@ export default function App() {
           </div>
         </div>
         <div ref={mainRef} className={`main${isMobile ? (navExpanded ? " nav-open" : " nav-closed") : ""}${isMobile && page === "boards" ? " chat-active" : ""}${inCall ? " in-call" : ""}`} style={{display:"flex", flexDirection:"column"}}>
-          {page === "workout" && <div><WorkoutPage username={username} /></div>}
-          {page === "topcharts" && <div><TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
-          {page === "boards" && <div><BoardPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
-          {(page === "meet" || inCall) && (
+          {page === "workout" && <div><WorkoutPage username={username} isNewUser={isNewUser} /></div>}
+          {page === "topcharts" && !isNewUser && <div><TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
+          {page === "boards" && !isNewUser && <div><BoardPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
+          {(page === "meet" || inCall) && !isNewUser && (
             <div style={{
               visibility: page === "meet" ? "visible" : "hidden",
               pointerEvents: page === "meet" ? "auto" : "none",
@@ -10279,7 +10322,7 @@ export default function App() {
             </div>
           )}
           {page === "audio" && <AudioPage currentTrack={currentTrack} setCurrentTrack={setCurrentTrack} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />}
-          {page === "rule" && <RulePage user={user} />}
+          {page === "rule" && !isNewUser && <RulePage user={user} />}
           {page === "profile" && <ProfilePage user={user} onDeleted={() => { api.clearToken(); setUser(null); }} onLogout={() => { handleLogout(); setPage("workout"); }} onAvatarUpdate={(url) => setUser(u => ({ ...u, avatarUrl: url }))} onAliasUpdate={(alias) => setUser(u => ({ ...u, ...alias }))} />}
         </div>
         <FigureBackdrop variant="boards"    visible={page === "boards"}    isMobile={isMobile} />
