@@ -2199,6 +2199,9 @@ const EXERCISES = [
   { name:"Bulgarian Split Squat", group:"Legs",  type:"weighted"   },
   // Core
   { name:"Plank",             group:"Core",      type:"duration"   },
+  { name:"Reverse Hyper-extension",  group:"Core", type:"bodyweight" },
+  { name:"Back Extension",           group:"Core", type:"bodyweight" },
+  { name:"Weighted Back Extension",  group:"Core", type:"weighted"   },
 ];
 const EXERCISE_GROUPS = ["Chest","Back","Shoulders","Arms","Legs","Core"];
 const EXERCISE_MAP    = Object.fromEntries(EXERCISES.map(e => [e.name, e]));
