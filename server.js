@@ -11,7 +11,7 @@
 //   GET    /api/logs                  — caller's own lift logs
 //   POST   /api/logs                  — add a lift log entry
 //   DELETE /api/logs/:id              — delete one lift log entry
-//   GET    /api/board/messages        — all board messages
+//   GET    /api/board/messages        — newest page (50); ?since=ts for new, ?before=ts for older pages
 //   POST   /api/board/messages        — post a new message
 //   POST   /api/board/reactions       — toggle a reaction on a message
 //   GET    /api/push/vapid-public-key   — get VAPID public key
@@ -1587,10 +1587,22 @@ app.get("/api/board/messages", requireAuth, async (req, res) => {
     const { rows: meRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
     if (meRows[0]?.role === 'new_user')
       return res.status(403).json({ error: "Forbidden." });
-    const since = req.query.since ? Number(req.query.since) : null;
-    const { rows } = since
-      ? await db.query(`SELECT m.*, u.avatar_url, u.chat_alias_avatar_url, u.chat_alias_name FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL AND m.ts > $1 AND (u.role IS NULL OR u.role != 'new_user') ORDER BY m.ts ASC`, [since])
-      : await db.query(`SELECT m.*, u.avatar_url, u.chat_alias_avatar_url, u.chat_alias_name FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL AND (u.role IS NULL OR u.role != 'new_user') ORDER BY m.ts ASC`);
+    const since  = req.query.since  ? Number(req.query.since)  : null;
+    const before = req.query.before ? Number(req.query.before) : null;
+    const limit  = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
+    let rows;
+    if (since) {
+      // Polling: everything newer than the client's latest message (oldest first)
+      ({ rows } = await db.query(`SELECT m.*, u.avatar_url, u.chat_alias_avatar_url, u.chat_alias_name FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL AND m.ts > $1 AND (u.role IS NULL OR u.role != 'new_user') ORDER BY m.ts ASC`, [since]));
+    } else if (before) {
+      // Scrolling up: the page of messages immediately older than the cursor
+      ({ rows } = await db.query(`SELECT m.*, u.avatar_url, u.chat_alias_avatar_url, u.chat_alias_name FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL AND m.ts < $1 AND (u.role IS NULL OR u.role != 'new_user') ORDER BY m.ts DESC LIMIT $2`, [before, limit]));
+      rows.reverse(); // return oldest-first, same as every other response
+    } else {
+      // Initial load: only the newest page
+      ({ rows } = await db.query(`SELECT m.*, u.avatar_url, u.chat_alias_avatar_url, u.chat_alias_name FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id IS NULL AND (u.role IS NULL OR u.role != 'new_user') ORDER BY m.ts DESC LIMIT $1`, [limit]));
+      rows.reverse();
+    }
     const ids = rows.map(r => Number(r.id));
     const reactionsMap = ids.length > 0 ? await loadReactions(ids) : {};
     const isArchAdmin = req.userRole === "arch_admin";
@@ -2312,10 +2324,20 @@ app.get("/api/chapters/:id/messages", requireAuth, async (req, res) => {
       );
       if (!cmRows[0]) return res.status(403).json({ error: "Forbidden." });
     }
-    const since = req.query.since ? Number(req.query.since) : null;
-    const { rows } = since
-      ? await db.query(`SELECT m.*, u.avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id = $1 AND m.ts > $2 AND (u.role IS NULL OR u.role != 'new_user') ORDER BY m.ts DESC`, [chapterId, since])
-      : await db.query(`SELECT m.*, u.avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id = $1 AND (u.role IS NULL OR u.role != 'new_user') ORDER BY m.ts DESC LIMIT 200`, [chapterId]);
+    const since  = req.query.since  ? Number(req.query.since)  : null;
+    const before = req.query.before ? Number(req.query.before) : null;
+    const limit  = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
+    let rows;
+    if (since) {
+      // Polling: everything newer than the client's latest message (newest first)
+      ({ rows } = await db.query(`SELECT m.*, u.avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id = $1 AND m.ts > $2 AND (u.role IS NULL OR u.role != 'new_user') ORDER BY m.ts DESC`, [chapterId, since]));
+    } else if (before) {
+      // Scrolling up: the page of messages immediately older than the cursor (newest first)
+      ({ rows } = await db.query(`SELECT m.*, u.avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id = $1 AND m.ts < $2 AND (u.role IS NULL OR u.role != 'new_user') ORDER BY m.ts DESC LIMIT $3`, [chapterId, before, limit]));
+    } else {
+      // Initial load: only the newest page
+      ({ rows } = await db.query(`SELECT m.*, u.avatar_url FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.chapter_id = $1 AND (u.role IS NULL OR u.role != 'new_user') ORDER BY m.ts DESC LIMIT $2`, [chapterId, limit]));
+    }
     const reactionsMap = await loadReactions(rows.map(r => r.id));
     res.json(rows.map(r => shapeMessage(r, reactionsMap)));
   } catch (err) {

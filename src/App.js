@@ -209,7 +209,10 @@ const api = {
   getMeetingToken:    (id)            => api.post(`/api/meetings/${id}/token`, {}),
   leaveMeeting:       (id)            => api.post(`/api/meetings/${id}/leave`, {}),
 
-  getMessages:   (since) => api.get(since ? `/api/board/messages?since=${since}` : "/api/board/messages"),
+  getMessages:   (since, before) => api.get(
+    since  ? `/api/board/messages?since=${since}` :
+    before ? `/api/board/messages?before=${before}&limit=${CHAT_PAGE_SIZE}` :
+             `/api/board/messages?limit=${CHAT_PAGE_SIZE}`),
   postMessage:   (body) => api.post("/api/board/messages", body),
   postReaction:  (body) => api.post("/api/board/reactions", body),
   deleteMessage: (id)   => api.delete(`/api/board/messages/${id}`),
@@ -234,7 +237,10 @@ const api = {
   leaveChapter:         (id)            => api.delete(`/api/chapters/${id}/leave`),
   getChapterStats:      (id)            => api.get(`/api/chapters/${id}/stats`),
   getChapterCommunityUsers: (id)        => api.get(`/api/chapters/${id}/community-users`),
-  getChapterMessages:   (id, since)     => api.get(since ? `/api/chapters/${id}/messages?since=${since}` : `/api/chapters/${id}/messages`),
+  getChapterMessages:   (id, since, before) => api.get(
+    since  ? `/api/chapters/${id}/messages?since=${since}` :
+    before ? `/api/chapters/${id}/messages?before=${before}&limit=${CHAT_PAGE_SIZE}` :
+             `/api/chapters/${id}/messages?limit=${CHAT_PAGE_SIZE}`),
   postChapterMessage:   (id, body)      => api.post(`/api/chapters/${id}/messages`, body),
 };
 
@@ -595,21 +601,78 @@ function useCommunityPrs(currentUsername) {
   return { communityPrs, myPrs, loading };
 }
 
+// Number of messages fetched per page (initial load and each "scroll to top" load).
+// The server clamps this to 100.
+const CHAT_PAGE_SIZE = 50;
+
+// Invisible marker rendered as the LAST child of a column-reverse message list
+// (i.e. visually at the very top). When it scrolls into view it asks for the
+// next page of older messages. `count` changes after each page loads, which
+// re-arms the observer so a still-visible marker keeps loading until the
+// viewport is filled or history runs out.
+function LoadOlderSentinel({ hasMore, loading, count, onLoad }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !hasMore || loading) return;
+    if (typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting)) onLoad();
+    }, { rootMargin: "300px 0px 300px 0px" });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasMore, loading, count, onLoad]);
+  if (!hasMore && !loading) return null;
+  return (
+    <div ref={ref} style={{ minHeight: 24, textAlign: "center", color: "var(--muted)", fontSize: 11, padding: 6, flexShrink: 0 }}>
+      {loading ? "Loading earlier messages…" : ""}
+    </div>
+  );
+}
+
 function useBoardMessages() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading]   = useState(false);
+  const [hasMore, setHasMore]   = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const latestTs = useRef(0);
+  const loadingOlderRef = useRef(false);
+  const messagesRef = useRef([]);
+  messagesRef.current = messages;
 
   const fetchMessages = () => {
     setLoading(true);
     api.getMessages()
       .then(data => {
         setMessages(data);
+        setHasMore(data.length >= CHAT_PAGE_SIZE);
         if (data.length > 0) latestTs.current = Math.max(...data.map(m => m.ts));
       })
       .catch(err => console.warn("useBoardMessages:", err))
       .finally(() => setLoading(false));
   };
+
+  // Loads the next page of older messages (messages state is oldest-first)
+  const loadOlder = useCallback(() => {
+    if (loadingOlderRef.current) return;
+    const oldest = messagesRef.current.length > 0 ? messagesRef.current[0].ts : 0;
+    if (!oldest) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    api.getMessages(null, oldest)
+      .then(older => {
+        setHasMore(older.length >= CHAT_PAGE_SIZE);
+        if (older.length === 0) return;
+        setMessages(prev => {
+          const ids = new Set(prev.map(m => m.id));
+          const fresh = older.filter(m => !ids.has(m.id));
+          return fresh.length > 0 ? [...fresh, ...prev] : prev;
+        });
+      })
+      .catch(err => console.warn("loadOlder failed:", err))
+      .finally(() => { loadingOlderRef.current = false; setLoadingOlder(false); });
+  }, []);
+
 
   // Poll for new messages every 8 seconds using the since param
   usePolling(() => {
@@ -665,7 +728,7 @@ function useBoardMessages() {
     }
   };
 
-  return { messages, loading, fetchMessages, saveMessage, saveReaction, deleteMessage };
+  return { messages, loading, fetchMessages, saveMessage, saveReaction, deleteMessage, hasMore, loadingOlder, loadOlder };
 }
 
 
@@ -1023,7 +1086,7 @@ function LinkPreview({ url, onLoad }) {
 // ─── BOARD PAGE ───────────────────────────────────────────────────────────────
 function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
   const isMobile = useIsMobile();
-  const { messages, fetchMessages, saveMessage, saveReaction, deleteMessage } = useBoardMessages();
+  const { messages, fetchMessages, saveMessage, saveReaction, deleteMessage, hasMore, loadingOlder, loadOlder } = useBoardMessages();
   // On mobile, chatTab is derived directly from mobileScreen to avoid render-cycle lag.
   // On desktop, it's driven by the internal tab buttons via chatTabInternal.
   const [chatTabInternal, setChatTabInternal] = useState("global");
@@ -1035,6 +1098,34 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
   const [chapterMessages, setChapterMessages]     = useState([]);
   const [chapterMsgLoading, setChapterMsgLoading] = useState(false);
   const chapterLatestTs = useRef(0);
+  const [chapterHasMore, setChapterHasMore]         = useState(false);
+  const [chapterLoadingOlder, setChapterLoadingOlder] = useState(false);
+  const chapterLoadingOlderRef = useRef(false);
+  const chapterMessagesRef = useRef([]);
+  chapterMessagesRef.current = chapterMessages;
+
+  // Loads the next page of older chapter messages (chapterMessages is newest-first,
+  // so the oldest loaded message is the LAST element and older pages append to the end)
+  const loadOlderChapter = useCallback(() => {
+    if (chapterLoadingOlderRef.current || !chapterMembership) return;
+    const list = chapterMessagesRef.current;
+    const oldest = list.length > 0 ? list[list.length - 1].ts : 0;
+    if (!oldest) return;
+    chapterLoadingOlderRef.current = true;
+    setChapterLoadingOlder(true);
+    api.getChapterMessages(chapterMembership.chapter_id, null, oldest)
+      .then(older => {
+        setChapterHasMore(older.length >= CHAT_PAGE_SIZE);
+        if (older.length === 0) return;
+        setChapterMessages(prev => {
+          const ids = new Set(prev.map(m => m.id));
+          const fresh = older.filter(m => !ids.has(m.id));
+          return fresh.length > 0 ? [...prev, ...fresh] : prev;
+        });
+      })
+      .catch(() => {})
+      .finally(() => { chapterLoadingOlderRef.current = false; setChapterLoadingOlder(false); });
+  }, [chapterMembership]);
 
   useEffect(() => {
     api.getMyMembership().then(m => {
@@ -1052,6 +1143,7 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
     api.getChapterMessages(chapterMembership.chapter_id)
       .then(msgs => {
         setChapterMessages(msgs);
+        setChapterHasMore(msgs.length >= CHAT_PAGE_SIZE);
         if (msgs.length > 0) chapterLatestTs.current = Math.max(...msgs.map(m => m.ts));
       })
       .catch(() => {})
@@ -1955,6 +2047,7 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
                   className="chat-mobile-messages"
                   style={{ padding: "60px 14px 20px", display: "flex", flexDirection: "column-reverse", willChange: "transform" }}>
                   {globalMessageList}
+                  <LoadOlderSentinel hasMore={hasMore} loading={loadingOlder} count={messages.length} onLoad={loadOlder} />
                 </div>
               </div>
               {/* Chapter panel — always renders chapter messages */}
@@ -1966,7 +2059,10 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
                     style={{ padding: "60px 14px 20px", display: "flex", flexDirection: "column-reverse", willChange: "transform" }}>
                     {chapterMsgLoading
                       ? <div style={{color:"var(--muted)",fontSize:13,textAlign:"center",padding:20}}>Loading…</div>
-                      : chapterMessageList}
+                      : <>
+                          {chapterMessageList}
+                          <LoadOlderSentinel hasMore={chapterHasMore} loading={chapterLoadingOlder} count={chapterMessages.length} onLoad={loadOlderChapter} />
+                        </>}
                   </div>
                 </div>
               )}
@@ -2003,7 +2099,14 @@ function BoardPage({ username, currentUser, mobileScreen, onHasChapter }) {
         <div ref={scrollContainerRef} style={{ flex:1, overflowY:"scroll", overscrollBehavior:"none", WebkitOverflowScrolling:"auto", padding:"120px 28px 130px", display:"flex", flexDirection:"column-reverse", gap:4, willChange:"transform" }}>
           {chapterMsgLoading ? (
             <div style={{color:"var(--muted)",fontSize:13,textAlign:"center",padding:20}}>Loading…</div>
-          ) : messageList}
+          ) : (
+            <>
+              {messageList}
+              {chatTab === "chapter" && chapterMembership
+                ? <LoadOlderSentinel hasMore={chapterHasMore} loading={chapterLoadingOlder} count={chapterMessages.length} onLoad={loadOlderChapter} />
+                : <LoadOlderSentinel hasMore={hasMore} loading={loadingOlder} count={messages.length} onLoad={loadOlder} />}
+            </>
+          )}
         </div>
 
         {/* Desktop attach warning */}
