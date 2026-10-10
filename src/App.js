@@ -2186,6 +2186,7 @@ const EXERCISES = [
   { name:"Cable Row",         group:"Back",      type:"weighted"   },
   // Shoulders
   { name:"Overhead Press",    group:"Shoulders", type:"weighted"   },
+  { name:"Lateral Raise",     group:"Shoulders", type:"weighted"   },
   // Arms
   { name:"Curl",              group:"Arms",      type:"weighted"   },
   { name:"Dips",              group:"Arms",      type:"bodyweight" },
