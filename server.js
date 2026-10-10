@@ -69,6 +69,22 @@ const CLOUDINARY_LIMIT_BYTES  = 25 * 1024 * 1024 * 1024; // 25 GB (Cloudinary fr
 const CLEANUP_THRESHOLD       = 0.90; // trigger at 90%
 const CLEANUP_TARGET          = 0.80; // clean down to 80%
 
+// ── Body-weight-adjusted exercises ────────────────────────────────────────────
+// For these weighted exercises part of the user's own body weight is moved along
+// with the added weight, so a plain Epley estimate on the added weight alone
+// badly understates strength. The value is the fraction of body weight that
+// counts as load (approximate): pull-ups and dips move essentially all of it.
+// A back extension moves only the head/arms/trunk above the hips (~60-68% of body
+// mass), but that mass sits closer to the hip than a plate held at the chest, so in
+// plate-equivalent terms (torque about the hip) it counts as ~0.45.
+// Keep in sync with BW_FRACTIONS in App.js.
+const BW_FRACTIONS = {
+  "Weighted Pull-up":        1.0,
+  "Weighted Dips":           1.0,
+  "Weighted Back Extension": 0.45,
+};
+const isBwExercise = (ex) => Object.prototype.hasOwnProperty.call(BW_FRACTIONS, ex);
+
 // ── Database ──────────────────────────────────────────────────────────────────
 // Railway injects DATABASE_URL automatically when you add a Postgres addon.
 const pool = new Pool({
@@ -320,6 +336,15 @@ async function initDb() {
       UNIQUE(user_id, exercise)
     );
 
+    CREATE TABLE IF NOT EXISTS body_weight_logs (
+      id         SERIAL PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      weight     NUMERIC(6,2) NOT NULL,
+      logged_at  BIGINT NOT NULL,  -- start of the day the weigh-in applies to (client local midnight, ms)
+      created_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT,
+      UNIQUE(user_id, logged_at)
+    );
+
     CREATE TABLE IF NOT EXISTS messages (
       id               SERIAL PRIMARY KEY,
       user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -431,6 +456,9 @@ async function initDb() {
       const w    = Number(log.weight);
       prValue = reps === 1 ? w : Math.round(w * (1 + reps / 30));
     }
+    // Body-weight-adjusted exercises get their PRs from recomputeBodyweightPrs()
+    // (it needs the user's body weight); never seed them with the plain formula.
+    if (!isBwExercise(log.exercise)) {
     await db.query(`
       INSERT INTO personal_records (user_id, exercise, value, updated_at)
       VALUES ($1, $2, $3, $4)
@@ -438,6 +466,7 @@ async function initDb() {
         SET value = GREATEST(personal_records.value, $3),
             updated_at = CASE WHEN $3 > personal_records.value THEN $4 ELSE personal_records.updated_at END
     `, [log.user_id, log.exercise, prValue, Number(log.ts)]);
+    }
     const { rows: sessRows } = await db.query(`
       INSERT INTO workout_sessions (user_id, date, created_at)
       VALUES ($1, $2, $3)
@@ -462,6 +491,20 @@ async function initDb() {
       isBodyweight ? Number(log.weight) : Number(log.rep_cat),
       Number(log.ts),
     ]);
+  }
+  // Body-weight-adjusted exercises have no PR until the user logs a body weight.
+  // Clears PRs left over from the old (added-weight-only) formula; idempotent.
+  await db.query(
+    "DELETE FROM personal_records WHERE exercise = ANY($1) AND user_id NOT IN (SELECT DISTINCT user_id FROM body_weight_logs)",
+    [Object.keys(BW_FRACTIONS)]
+  );
+  // Re-derive the stored PRs of every user who has a body weight on file, so a change to
+  // BW_FRACTIONS (or the formula) takes effect on the next boot. Idempotent.
+  try {
+    const { rows: bwUsers } = await db.query("SELECT DISTINCT user_id FROM body_weight_logs");
+    for (const u of bwUsers) await recomputeBodyweightPrs(Number(u.user_id));
+  } catch (err) {
+    console.error("recompute body-weight PRs on boot:", err.message);
   }
   await db.query(`
     ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_extra TEXT;
@@ -1009,12 +1052,73 @@ app.delete("/api/logs/:id", requireAuth, async (req, res) => {
 const BODYWEIGHT_EXERCISES_SET = new Set(["Pull-up", "Push-up", "Dips"]);
 const DURATION_EXERCISES_SET   = new Set(["Plank"]);
 
-function computePrValue(exercise, setType, weight, reps, durationSeconds) {
+// Returns the PR value for one set, or null when it can't be computed
+// (a body-weight-adjusted exercise for a user with no body weight on file).
+function computePrValue(exercise, setType, weight, reps, durationSeconds, bodyWeight = null) {
   if (setType === "duration")   return durationSeconds;
   if (setType === "bodyweight") return reps;
   // weighted: Epley estimated 1RM
   const r = reps || 1;
+  if (isBwExercise(exercise)) {
+    if (bodyWeight == null) return null;
+    // Run Epley on the TOTAL load (the body weight share + added weight), then
+    // subtract the body weight share so the result stays "added weight 1RM".
+    const bwLoad = BW_FRACTIONS[exercise] * bodyWeight;
+    const total  = bwLoad + (Number(weight) || 0);
+    const est    = r === 1 ? total : total * (1 + r / 30);
+    return Math.round(est - bwLoad);
+  }
   return r === 1 ? weight : Math.round(weight * (1 + r / 30));
+}
+
+// All of a user's weigh-ins, oldest first
+async function getBodyWeightLogs(userId) {
+  const { rows } = await db.query(
+    "SELECT id, weight, logged_at FROM body_weight_logs WHERE user_id = $1 ORDER BY logged_at ASC, id ASC",
+    [userId]
+  );
+  return rows.map(r => ({ id: Number(r.id), weight: Number(r.weight), loggedAt: Number(r.logged_at) }));
+}
+
+// The body weight that applies at timestamp `ts`: the most recent weigh-in on or
+// before it. Sets that predate the user's first weigh-in use that first weigh-in.
+function bodyWeightAt(logs, ts) {
+  if (!logs.length) return null;
+  let bw = logs[0].weight;
+  for (const e of logs) {
+    if (e.loggedAt <= ts) bw = e.weight; else break;
+  }
+  return bw;
+}
+
+// Rebuild the stored PRs of the body-weight-adjusted exercises from every set the
+// user has ever logged (including imported legacy sets). Called whenever a weigh-in
+// is added/removed or a set of one of these exercises is deleted.
+async function recomputeBodyweightPrs(userId, onlyExercise = null) {
+  const logs = await getBodyWeightLogs(userId);
+  const exercises = onlyExercise ? [onlyExercise] : Object.keys(BW_FRACTIONS);
+  for (const ex of exercises) {
+    if (!isBwExercise(ex)) continue;
+    const { rows } = await db.query(
+      "SELECT set_type, weight, reps, created_at FROM session_sets WHERE user_id = $1 AND exercise = $2",
+      [userId, ex]
+    );
+    let best = null;
+    for (const s of rows) {
+      const bw = bodyWeightAt(logs, Number(s.created_at));
+      const v = computePrValue(ex, s.set_type, Number(s.weight) || 0, Number(s.reps), null, bw);
+      if (v != null && (best === null || v > best)) best = v;
+    }
+    if (best === null) {
+      await db.query("DELETE FROM personal_records WHERE user_id = $1 AND exercise = $2", [userId, ex]);
+    } else {
+      await db.query(`
+        INSERT INTO personal_records (user_id, exercise, value, updated_at)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (user_id, exercise) DO UPDATE SET value = $3, updated_at = $4
+      `, [userId, ex, best, Date.now()]);
+    }
+  }
 }
 
 async function updatePrIfBetter(userId, exercise, prValue) {
@@ -1069,9 +1173,10 @@ app.post("/api/workout/session/:sessionId/sets", requireAuth, async (req, res) =
       weight ?? null, reps ?? null, durationSeconds ?? null, Date.now(),
     ]);
     const set = shapeSet(rows[0]);
-    // Check if this is a new PR
-    const prValue = computePrValue(exercise, setType, weight, reps, durationSeconds);
-    const isNewPr = await updatePrIfBetter(req.userId, exercise, prValue);
+    // Check if this is a new PR (body-weight-adjusted exercises need a body weight on file)
+    const bw = isBwExercise(exercise) ? bodyWeightAt(await getBodyWeightLogs(req.userId), Date.now()) : null;
+    const prValue = computePrValue(exercise, setType, weight, reps, durationSeconds, bw);
+    const isNewPr = prValue != null ? await updatePrIfBetter(req.userId, exercise, prValue) : false;
     res.json({ set, isNewPr, prValue });
   } catch (err) {
     console.error("POST /api/workout/session/:id/sets:", err);
@@ -1094,6 +1199,12 @@ app.delete("/api/workout/sets/:setId", requireAuth, async (req, res) => {
       "DELETE FROM session_sets WHERE id = $1 AND user_id = $2",
       [req.params.setId, req.userId]
     );
+
+    // Body-weight-adjusted exercises have their own recompute (needs the weigh-in timeline)
+    if (isBwExercise(deletedSet.exercise)) {
+      await recomputeBodyweightPrs(req.userId, deletedSet.exercise);
+      return res.json({ ok: true, exercise: deletedSet.exercise });
+    }
 
     // Recompute PR for this exercise from all remaining non-migrated sets
     const { rows: remaining } = await db.query(
@@ -1161,6 +1272,53 @@ app.get("/api/workout/prs", requireAuth, async (req, res) => {
     res.json(rows.map(r => ({ exercise: r.exercise, value: Number(r.value), updatedAt: Number(r.updated_at) })));
   } catch (err) {
     console.error("GET /api/workout/prs:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ── Body weight tracking ──────────────────────────────────────────────────────
+// Private to the user. Used to estimate 1RMs for body-weight-adjusted exercises.
+
+// GET /api/bodyweight — the current user's weigh-ins, oldest first
+app.get("/api/bodyweight", requireAuth, async (req, res) => {
+  try {
+    res.json({ entries: await getBodyWeightLogs(req.userId) });
+  } catch (err) {
+    console.error("GET /api/bodyweight:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// POST /api/bodyweight — log a weigh-in (one per day; logging the same day replaces it)
+app.post("/api/bodyweight", requireAuth, async (req, res) => {
+  try {
+    const weight   = Number(req.body.weight);
+    const loggedAt = Number(req.body.loggedAt);
+    if (!Number.isFinite(weight) || weight < 50 || weight > 700)
+      return res.status(400).json({ error: "Enter a body weight between 50 and 700 lbs." });
+    if (!Number.isFinite(loggedAt) || loggedAt <= 0 || loggedAt > Date.now() + 36 * 60 * 60 * 1000)
+      return res.status(400).json({ error: "Invalid date." });
+    await db.query(`
+      INSERT INTO body_weight_logs (user_id, weight, logged_at, created_at)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (user_id, logged_at) DO UPDATE SET weight = EXCLUDED.weight
+    `, [req.userId, Math.round(weight * 10) / 10, Math.floor(loggedAt), Date.now()]);
+    await recomputeBodyweightPrs(req.userId);
+    res.json({ entries: await getBodyWeightLogs(req.userId) });
+  } catch (err) {
+    console.error("POST /api/bodyweight:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// DELETE /api/bodyweight/:id — remove a weigh-in and recompute affected PRs
+app.delete("/api/bodyweight/:id", requireAuth, async (req, res) => {
+  try {
+    await db.query("DELETE FROM body_weight_logs WHERE id = $1 AND user_id = $2", [req.params.id, req.userId]);
+    await recomputeBodyweightPrs(req.userId);
+    res.json({ entries: await getBodyWeightLogs(req.userId) });
+  } catch (err) {
+    console.error("DELETE /api/bodyweight/:id:", err);
     res.status(500).json({ error: "Server error" });
   }
 });

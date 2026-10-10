@@ -188,6 +188,9 @@ const api = {
   deleteSet:          (setId)         => api.delete(`/api/workout/sets/${setId}`),
   getWorkoutHistory:  ()              => api.get("/api/workout/history"),
   getMyPrs:           ()              => api.get("/api/workout/prs"),
+  getBodyWeights:     ()              => api.get("/api/bodyweight"),
+  addBodyWeight:      (weight, loggedAt) => api.post("/api/bodyweight", { weight, loggedAt }),
+  deleteBodyWeight:   (id)            => api.delete(`/api/bodyweight/${id}`),
   getCommunityPrs:    ()              => api.get("/api/community/prs"),
   uploadAvatar:       (file)          => {
     const fd = new FormData(); fd.append("file", file);
@@ -2206,6 +2209,43 @@ const EXERCISES = [
 const EXERCISE_GROUPS = ["Chest","Back","Shoulders","Arms","Legs","Core"];
 const EXERCISE_MAP    = Object.fromEntries(EXERCISES.map(e => [e.name, e]));
 const EXERCISE_LIST   = EXERCISES.map(e => e.name); // backward compat
+
+// ── Body-weight-adjusted exercises ────────────────────────────────────────────
+// For these weighted exercises part of the lifter's own body weight is moved along
+// with the added weight, so 1RM estimates must include it. The value is the
+// fraction of body weight that counts as load (approximate): pull-ups and dips
+// move essentially all of it. A back extension moves only the head/arms/trunk above
+// the hips (~60-68% of body mass), but that mass sits closer to the hip than a plate
+// held at the chest, so in plate-equivalent terms (torque about the hip) it counts
+// as ~0.45. Keep in sync with BW_FRACTIONS in server.js.
+const BW_FRACTIONS = {
+  "Weighted Pull-up":        1.0,
+  "Weighted Dips":           1.0,
+  "Weighted Back Extension": 0.45,
+};
+const isBwExercise = (name) => Object.prototype.hasOwnProperty.call(BW_FRACTIONS, name);
+
+// Estimated 1RM expressed as added weight (same formula as the server's computePrValue).
+// Epley is run on the total load, then the body weight share is subtracted back out.
+function estAddedWeight1RM(exercise, weight, reps, bodyWeight) {
+  const r = reps || 1;
+  const bwLoad = BW_FRACTIONS[exercise] * bodyWeight;
+  const total  = bwLoad + (Number(weight) || 0);
+  const est    = r === 1 ? total : total * (1 + r / 30);
+  return Math.round(est - bwLoad);
+}
+
+// Body weight that applies at timestamp `ts`: the most recent weigh-in on or before
+// it; sets that predate the first weigh-in use the first weigh-in.
+// `entries` is [{ weight, loggedAt }] sorted oldest first.
+function bodyWeightAt(entries, ts) {
+  if (!entries || entries.length === 0) return null;
+  let bw = entries[0].weight;
+  for (const e of entries) {
+    if (e.loggedAt <= ts) bw = e.weight; else break;
+  }
+  return bw;
+}
 
 // Normalize date strings — old system used "Mar 8", new uses "Mar 8, 2026"
 // normDate: normalises the session date string for use as a display/grouping key.
@@ -6219,7 +6259,7 @@ function AvatarInitials({ name, size = 45, bg = "var(--surface)", color = "var(-
 
 // ─── RANK CARD ─────────────────────────────────────────────────────────────────
 // Unified rank card using PR data. myPr and communityPrs are plain numbers.
-function RankCard({ username, exercise, myPr, communityPrs = [] }) {
+function RankCard({ username, exercise, myPr, communityPrs = [], needsBodyWeight = false, onGoToProfile }) {
   const exDef = EXERCISE_MAP[exercise] || { type: "weighted" };
 
   const leaderboard = useMemo(() => {
@@ -6274,7 +6314,21 @@ function RankCard({ username, exercise, myPr, communityPrs = [] }) {
           {exercise} · {subtitle}
         </div>
       </div>
-      {!myEntry ? (
+      {!myEntry && needsBodyWeight ? (
+        <div style={{ textAlign:"center", padding:"20px 8px" }}>
+          <div style={{ color:"var(--muted)", fontSize:12, fontFamily:"'Orbitron',sans-serif", letterSpacing:2, textTransform:"uppercase", marginBottom:10 }}>
+            Body weight needed to rank
+          </div>
+          <div style={{ color:"var(--muted)", fontSize:13, lineHeight:1.6, maxWidth:420, margin:"0 auto 14px" }}>
+            {exercise} includes your own body weight, so add yours on your Profile page to calculate your rank.
+          </div>
+          {onGoToProfile && (
+            <button className="btn btn-primary" onClick={onGoToProfile} style={{ padding:"9px 20px", fontSize:12, letterSpacing:1 }}>
+              GO TO PROFILE
+            </button>
+          )}
+        </div>
+      ) : !myEntry ? (
         <div style={{ textAlign:"center", padding:"28px 0", color:"var(--muted)", fontSize:12, fontFamily:"'Orbitron',sans-serif", letterSpacing:2, textTransform:"uppercase" }}>
           Log a {exercise} set to see your rank
         </div>
@@ -6316,13 +6370,14 @@ function RankCard({ username, exercise, myPr, communityPrs = [] }) {
 }
 
 // ─── WORKOUT PAGE ─────────────────────────────────────────────────────────────
-function WorkoutPage({ username, isNewUser }) {
+function WorkoutPage({ username, isNewUser, onGoToProfile }) {
   const isMobile = useIsMobile();
 
   // ── Session state ──────────────────────────────────────────────────────────
   const [session, setSession]     = useState(null);
   const [sets, setSets]           = useState([]);
   const [prs, setPrs]             = useState({});     // { exercise: value }
+  const [bodyWeights, setBodyWeights] = useState([]); // [{ id, weight, loggedAt }] oldest first
   const [newPrEx, setNewPrEx]     = useState(null);   // flash exercise name on new PR
   const [loading, setLoading]     = useState(true);
 
@@ -6342,6 +6397,9 @@ function WorkoutPage({ username, isNewUser }) {
 
   const exDef = EXERCISE_MAP[exercise] || EXERCISES[0];
   const chartExDef = EXERCISE_MAP[exercise] || EXERCISES[0]; // chart follows Today's Session exercise
+  // Body-weight-adjusted exercises can't show progress until a body weight is on file
+  const needsBw = isBwExercise(exercise);
+  const awaitingBw = needsBw && bodyWeights.length === 0;
 
   // ── Load on mount ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -6349,13 +6407,15 @@ function WorkoutPage({ username, isNewUser }) {
       api.getTodaySession(),
       api.getMyPrs(),
       api.getWorkoutHistory(),
-    ]).then(([todayData, prData, histData]) => {
+      api.getBodyWeights().catch(() => ({ entries: [] })),
+    ]).then(([todayData, prData, histData, bwData]) => {
       setSession(todayData.session);
       setSets(todayData.sets);
       const prMap = {};
       for (const p of prData) prMap[p.exercise] = p.value;
       setPrs(prMap);
       setHistory(histData);
+      setBodyWeights(bwData.entries || []);
     }).catch(err => console.warn("WorkoutPage load:", err))
       .finally(() => setLoading(false));
   }, [username]);
@@ -6369,7 +6429,7 @@ function WorkoutPage({ username, isNewUser }) {
   // ── Add a set ─────────────────────────────────────────────────────────────
   const addSet = async () => {
     if (!session) return;
-    if (exDef.type === "weighted"   && (!weight || !reps)) return;
+    if (exDef.type === "weighted"   && ((!weight && !needsBw) || !reps)) return;
     if (exDef.type === "bodyweight" && !reps) return;
     if (exDef.type === "duration"   && !duration) return;
     const n = Math.max(1, Math.min(50, parseInt(setCount) || 1));
@@ -6378,7 +6438,7 @@ function WorkoutPage({ username, isNewUser }) {
       const body = {
         exercise,
         setType: exDef.type,
-        weight:          exDef.type === "weighted"   ? Number(weight)   : null,
+        weight:          exDef.type === "weighted"   ? (Number(weight) || 0) : null,
         reps:            exDef.type !== "duration"   ? Number(reps)     : null,
         durationSeconds: exDef.type === "duration"   ? Number(duration) : null,
       };
@@ -6479,11 +6539,19 @@ function WorkoutPage({ username, isNewUser }) {
       if (entry.sets.length === 0) return null;
       let dayBest = null;
       for (const s of entry.sets) {
-        const v = def.type === "weighted"
-          ? (s.reps === 1 ? s.weight : Math.round(s.weight * (1 + s.reps / 30)))
-          : def.type === "duration" ? s.durationSeconds : s.reps;
+        let v;
+        if (def.type === "weighted" && isBwExercise(ex)) {
+          const bw = bodyWeightAt(bodyWeights, s.createdAt);
+          if (bw == null) continue;
+          v = estAddedWeight1RM(ex, s.weight, s.reps, bw);
+        } else {
+          v = def.type === "weighted"
+            ? (s.reps === 1 ? s.weight : Math.round(s.weight * (1 + s.reps / 30)))
+            : def.type === "duration" ? s.durationSeconds : s.reps;
+        }
         if (dayBest === null || v > dayBest) dayBest = v;
       }
+      if (dayBest === null) return null;
       // Plot this session's best directly — allows chart to show regression,
       // not just the running all-time max. All-time PR is unchanged elsewhere.
       return { date, rawTs: entry.rawTs, value: dayBest };
@@ -6501,7 +6569,7 @@ function WorkoutPage({ username, isNewUser }) {
     return raw
       .filter(d => d.rawTs >= cutoffTs)
       .map(d => ({ ...d, ts: d.rawTs }));
-  }, [chartView, exercise, chartPeriod, history]);
+  }, [chartView, exercise, chartPeriod, history, bodyWeights]);
 
   // ── Stat tiles ────────────────────────────────────────────────────────────
   // Count unique days that have at least one set logged
@@ -6621,9 +6689,9 @@ function WorkoutPage({ username, isNewUser }) {
         }}>
           {exDef.type === "weighted" && (
             <div>
-              <div className="form-label" style={{marginBottom:4}}>Weight (lbs)</div>
+              <div className="form-label" style={{marginBottom:4}}>{needsBw ? "Added Weight (lbs)" : "Weight (lbs)"}</div>
               <input type="number" value={weight} onChange={e => setWeight(e.target.value)}
-                placeholder="225" style={{width:"100%",boxSizing:"border-box"}}
+                placeholder={needsBw ? "0" : "225"} style={{width:"100%",boxSizing:"border-box"}}
                 onKeyDown={e => e.key==="Enter" && addSet()} />
             </div>
           )}
@@ -6717,6 +6785,25 @@ function WorkoutPage({ username, isNewUser }) {
           </div>
         )}
 
+        {awaitingBw ? (
+          <div style={{textAlign:"center",padding:"28px 12px"}}>
+            <div style={{fontFamily:"'Orbitron',sans-serif",fontSize:11,letterSpacing:2,color:"var(--accent)",marginBottom:10}}>
+              BODY WEIGHT NEEDED
+            </div>
+            <div style={{fontSize:13,color:"var(--muted)",lineHeight:1.6,maxWidth:420,margin:"0 auto 16px"}}>
+              {exercise} moves part of your own body weight, so we need it to estimate your strength and track progress.
+              Add your body weight on your Profile page to see your progress here.
+              Your sets are still being saved.
+            </div>
+            {onGoToProfile && (
+              <button className="btn btn-primary" onClick={onGoToProfile}
+                style={{padding:"10px 22px",fontSize:12,letterSpacing:1}}>
+                GO TO PROFILE
+              </button>
+            )}
+          </div>
+        ) : (
+          <>
         {/* Chart type toggle */}
         <div style={{display:"flex",gap:8,marginBottom:14}}>
           {[["volume","Volume"],["pr","PR Trend"]].map(([v,l]) => (
@@ -6778,6 +6865,8 @@ function WorkoutPage({ username, isNewUser }) {
           <div style={{textAlign:"center",padding:"32px 0",color:"var(--muted)",fontSize:13}}>
             {chartData.length === 1 ? "Log one more session to see your trend." : `Log some ${exercise} sets to see your progress.`}
           </div>
+        )}
+          </>
         )}
       </div>
     </div>
@@ -7215,7 +7304,7 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack, navExpand
 }
 
 // ─── TOP CHARTS PAGE ──────────────────────────────────────────────────────────
-function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
+function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter, onGoToProfile }) {
   const [chartEx, setChartEx]           = useState("Bench Press");
   const [chartGroup, setChartGroup]     = useState("Chest");
   const [chartsTabInternal, setChartsTabInternal] = useState("global");
@@ -7229,6 +7318,12 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
   const [chapterUsersLoading, setChapterUsersLoading] = useState(false);
 
   const { communityPrs, myPrs }         = useCommunityPrs(username);
+  // Body-weight-adjusted exercises (e.g. Weighted Pull-up) can't be ranked until the user logs a body weight
+  const [hasBodyWeight, setHasBodyWeight] = useState(true); // assume yes until loaded, avoids a flash of the prompt
+  useEffect(() => {
+    api.getBodyWeights().then(d => setHasBodyWeight((d.entries || []).length > 0)).catch(() => {});
+  }, [username]);
+  const needsBodyWeight = isBwExercise(chartEx) && !hasBodyWeight;
   const chartExDef = EXERCISE_MAP[chartEx] || EXERCISES[0];
   const isBodyweightChart = chartExDef.type === "bodyweight";
   const isDurationChart   = chartExDef.type === "duration";
@@ -7352,7 +7447,7 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
           </div>
         </div>
 
-      <RankCard username={username} exercise={chartEx} myPr={myPrs[chartEx]} communityPrs={communityPrs} />
+      <RankCard username={username} exercise={chartEx} myPr={myPrs[chartEx]} communityPrs={communityPrs} needsBodyWeight={needsBodyWeight} onGoToProfile={onGoToProfile} />
 
       <div className="card">
         <div className="card-title">
@@ -7472,7 +7567,7 @@ function TopChartsPage({ username, currentUser, mobileScreen, onHasChapter }) {
           </div>
         </div>
 
-        <RankCard username={username} exercise={chartEx} myPr={myPrs[chartEx]} communityPrs={chapterCommunityPrs} />
+        <RankCard username={username} exercise={chartEx} myPr={myPrs[chartEx]} communityPrs={chapterCommunityPrs} needsBodyWeight={needsBodyWeight} onGoToProfile={onGoToProfile} />
 
         <div className="card">
           <div className="card-title">
@@ -8320,6 +8415,185 @@ function ChatAliasSection({ user, onUpdate }) {
   );
 }
 
+// ─── BODY WEIGHT (Profile page card) ──────────────────────────────────────────
+// Private weigh-in log + progress chart. Weigh-ins are also used to estimate 1RMs
+// for Weighted Pull-up / Weighted Dips / Weighted Back Extension (see BW_FRACTIONS).
+function BodyWeightSection({ cardStyle, sectionTitle }) {
+  const pad = (n) => String(n).padStart(2, "0");
+  const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+
+  const [entries, setEntries] = useState(null); // null = loading; [{ id, weight, loggedAt }] oldest first
+  const [weight, setWeight]   = useState("");
+  const [date, setDate]       = useState(todayStr());
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState("");
+  const [period, setPeriod]   = useState("all"); // "1m" | "3m" | "1y" | "all"
+
+  useEffect(() => {
+    api.getBodyWeights().then(d => setEntries(d.entries || [])).catch(() => setEntries([]));
+  }, []);
+
+  const save = async () => {
+    setError("");
+    const w = parseFloat(weight);
+    if (!isFinite(w) || w < 50 || w > 700) { setError("Enter a body weight between 50 and 700 lbs."); return; }
+    const [y, m, d] = (date || "").split("-").map(Number);
+    const loggedAt = new Date(y, (m || 1) - 1, d || 1).getTime();
+    if (!date || isNaN(loggedAt)) { setError("Pick a valid date."); return; }
+    if (loggedAt > Date.now()) { setError("The date can't be in the future."); return; }
+    setSaving(true);
+    try {
+      const data = await api.addBodyWeight(w, loggedAt);
+      setEntries(data.entries || []);
+      setWeight("");
+      setDate(todayStr());
+    } catch (err) {
+      setError(err?.message || "Couldn't save. Try again.");
+    } finally { setSaving(false); }
+  };
+
+  const remove = async (id) => {
+    try {
+      const data = await api.deleteBodyWeight(id);
+      setEntries(data.entries || []);
+    } catch { setError("Couldn't delete that entry."); }
+  };
+
+  const fmtDate = (ts) => new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const fmtLbs  = (v) => (Math.round(v * 10) / 10).toFixed(1);
+
+  const list    = entries || [];
+  const latest  = list.length ? list[list.length - 1] : null;
+  // Change vs. ~30 days before the latest weigh-in; falls back to the first weigh-in
+  let deltaText = null;
+  if (latest && list.length > 1) {
+    const DAY = 24 * 60 * 60 * 1000;
+    const older = list.filter(e => e.loggedAt <= latest.loggedAt - 30 * DAY);
+    const ref = older.length ? older[older.length - 1] : list[0];
+    const diff = latest.weight - ref.weight;
+    const label = older.length ? "in the last 30 days" : `since ${fmtDate(ref.loggedAt)}`;
+    deltaText = Math.abs(diff) < 0.05 ? `No change ${label}` : `${diff > 0 ? "▲" : "▼"} ${fmtLbs(Math.abs(diff))} lbs ${label}`;
+  }
+
+  const cutoffDays = { "1m": 30, "3m": 91, "1y": 365 }[period];
+  const cutoffTs   = cutoffDays ? Date.now() - cutoffDays * 24 * 60 * 60 * 1000 : 0;
+  const chartData  = list.filter(e => e.loggedAt >= cutoffTs).map(e => ({ ts: e.loggedAt, value: e.weight }));
+
+  const label = { fontSize: 10, fontFamily: "'Orbitron',sans-serif", letterSpacing: 1, color: "var(--muted)", marginBottom: 6 };
+  const inputStyle = { width: "100%", boxSizing: "border-box", background: "var(--surface2)", border: "1px solid var(--border)",
+    borderRadius: 4, padding: "8px 12px", color: "var(--text)", fontSize: 14, outline: "none" };
+
+  return (
+    <div style={cardStyle}>
+      <div style={{position:"absolute",top:0,left:0,right:0,height:1,
+        background:"linear-gradient(90deg,#88ff00,#00ffcc)",backgroundSize:"300% 100%",
+        opacity:0.5,animation:"sheen 2.5s ease-in-out infinite"}} />
+      {sectionTitle("Body Weight")}
+
+      {/* Current weight */}
+      <div style={{marginBottom: 18}}>
+        <div style={label}>CURRENT</div>
+        {entries === null ? (
+          <div style={{color:"var(--muted)",fontSize:13}}>Loading…</div>
+        ) : latest ? (
+          <>
+            <div style={{fontFamily:"'Orbitron',sans-serif",fontWeight:900,fontSize:30,color:"var(--accent)",lineHeight:1.1}}>
+              {fmtLbs(latest.weight)} <span style={{fontSize:13,fontWeight:700,color:"var(--muted)"}}>lbs</span>
+            </div>
+            <div style={{fontSize:12,color:"var(--muted)",marginTop:4}}>
+              {deltaText ? `${deltaText} · ` : ""}logged {fmtDate(latest.loggedAt)}
+            </div>
+          </>
+        ) : (
+          <div style={{fontSize:13,color:"var(--muted)",lineHeight:1.6}}>
+            No weigh-ins yet. Add one below to unlock progress tracking and rankings for Weighted Pull-up, Weighted Dips, and Weighted Back Extension.
+          </div>
+        )}
+      </div>
+
+      {/* Log a weigh-in */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end",marginBottom: error ? 8 : 18}}>
+        <div style={{flex:"1 1 110px",minWidth:110}}>
+          <div style={label}>WEIGHT (LBS)</div>
+          <input type="number" inputMode="decimal" step="0.1" value={weight} placeholder="180.0"
+            onChange={e => { setWeight(e.target.value); setError(""); }}
+            onKeyDown={e => e.key === "Enter" && save()} style={inputStyle} />
+        </div>
+        <div style={{flex:"1 1 140px",minWidth:140}}>
+          <div style={label}>DATE</div>
+          <input type="date" value={date} max={todayStr()}
+            onChange={e => { setDate(e.target.value); setError(""); }} style={inputStyle} />
+        </div>
+        <button className="btn btn-primary" onClick={save} disabled={saving || !weight}
+          style={{height:38,padding:"0 20px",fontSize:12,letterSpacing:1,whiteSpace:"nowrap"}}>
+          {saving ? "…" : "LOG"}
+        </button>
+      </div>
+      {error && <div style={{color:"#ff4455",fontSize:12,marginBottom:14}}>{error}</div>}
+
+      {/* Progress chart */}
+      {list.length > 0 && (
+        <>
+          <div style={{display:"flex",gap:6,marginBottom:12}}>
+            {[["1m","1M"],["3m","3M"],["1y","1Y"],["all","All"]].map(([v, l]) => (
+              <button key={v} onClick={() => setPeriod(v)}
+                style={{padding:"5px 12px",border:`1px solid ${period===v?"var(--accent)":"var(--border)"}`,
+                  background: period===v ? "rgba(136,255,0,0.08)" : "var(--surface2)",
+                  color: period===v ? "var(--accent)" : "var(--muted)",
+                  borderRadius:4,cursor:"pointer",fontSize:11,fontFamily:"'Orbitron',sans-serif",letterSpacing:1}}>
+                {l}
+              </button>
+            ))}
+          </div>
+          {chartData.length > 1 ? (
+            <div style={{height:200,marginBottom:14}}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{top:4,right:8,bottom:30,left:0}}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2a2a32" />
+                  <XAxis dataKey="ts" type="number" scale="time" domain={["dataMin","dataMax"]}
+                    stroke="#7a7a8a" tick={{fontSize:9}} angle={-30} textAnchor="end" height={36}
+                    tickCount={Math.min(chartData.length, 7)}
+                    tickFormatter={ts => { const d = new Date(ts); return `${d.getMonth()+1}/${d.getDate()}`; }} />
+                  <YAxis stroke="#7a7a8a" tick={{fontSize:10}} width={42}
+                    domain={[dataMin => Math.floor(dataMin - 2), dataMax => Math.ceil(dataMax + 2)]} />
+                  <Tooltip contentStyle={{background:"#141417",border:"1px solid #2a2a32",borderRadius:8,fontSize:11}}
+                    labelFormatter={ts => fmtDate(ts)} formatter={v => [`${fmtLbs(v)} lbs`, "Body weight"]} />
+                  <Line type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2.5}
+                    dot={{fill:"var(--accent)",r:3}} activeDot={{r:5}} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div style={{textAlign:"center",padding:"20px 0",color:"var(--muted)",fontSize:12}}>
+              {list.length === 1 ? "Log another weigh-in to see your trend." : "No weigh-ins in this period."}
+            </div>
+          )}
+
+          {/* Recent entries */}
+          <div style={label}>RECENT WEIGH-INS</div>
+          {[...list].reverse().slice(0, 6).map(e => (
+            <div key={e.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+              padding:"6px 0",borderBottom:"1px solid rgba(136,255,0,0.06)",fontSize:13}}>
+              <span style={{color:"var(--muted)"}}>{fmtDate(e.loggedAt)}</span>
+              <span style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontWeight:600}}>{fmtLbs(e.weight)} lbs</span>
+                <button onClick={() => remove(e.id)} title="Delete this weigh-in"
+                  style={{background:"none",border:"none",color:"rgba(255,68,85,0.6)",cursor:"pointer",
+                    fontSize:15,padding:"4px 8px",minWidth:32,minHeight:32}}>✕</button>
+              </span>
+            </div>
+          ))}
+        </>
+      )}
+
+      <div style={{fontSize:11,color:"var(--muted)",marginTop:16,lineHeight:1.6}}>
+        Only you can see your body weight. It is used to estimate your max on Weighted Pull-ups, Weighted Dips,
+        and Weighted Back Extensions, including your older logged sets.
+      </div>
+    </div>
+  );
+}
+
 function ProfilePage({ user, onDeleted, onLogout, onAvatarUpdate, onAliasUpdate }) {
   const isMobile = useIsMobile();
   const isArchAdmin = user.role === "arch_admin";
@@ -8573,6 +8847,9 @@ function ProfilePage({ user, onDeleted, onLogout, onAvatarUpdate, onAliasUpdate 
           )}
         </div>
       </div>
+
+      {/* ── Body Weight (private; feeds weighted pull-up / dip / back extension 1RMs) ── */}
+      <BodyWeightSection cardStyle={cardStyle} sectionTitle={sectionTitle} />
 
       {/* ── Section 2: Chapter ── */}
       <div style={cardStyle}>
@@ -10440,8 +10717,8 @@ export default function App() {
           </div>
         </div>
         <div ref={mainRef} className={`main${isMobile ? (navExpanded ? " nav-open" : " nav-closed") : ""}${isMobile && page === "boards" ? " chat-active" : ""}${inCall ? " in-call" : ""}`} style={{display:"flex", flexDirection:"column"}}>
-          {page === "workout" && <div><WorkoutPage username={username} isNewUser={isNewUser} /></div>}
-          {page === "topcharts" && !isNewUser && <div><TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
+          {page === "workout" && <div><WorkoutPage username={username} isNewUser={isNewUser} onGoToProfile={() => handleSetPage("profile")} /></div>}
+          {page === "topcharts" && !isNewUser && <div><TopChartsPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} onGoToProfile={() => handleSetPage("profile")} /></div>}
           {page === "boards" && !isNewUser && <div><BoardPage username={username} currentUser={user} mobileScreen={isMobile ? mobileScreen : null} onHasChapter={setHasMobileChapter} /></div>}
           {(page === "meet" || inCall) && !isNewUser && (
             <div style={{
