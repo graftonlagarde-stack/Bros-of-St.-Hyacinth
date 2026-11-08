@@ -183,7 +183,12 @@ const api = {
 
   // Lift logs
   // Workout (new session-based)
-  getTodaySession:    ()              => api.get("/api/workout/session/today"),
+  getTodaySession:    ()              => {
+    // Send the device's time zone so the server's "today" matches the user's local calendar day
+    let tz = "";
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch {}
+    return api.get(`/api/workout/session/today${tz ? `?tz=${encodeURIComponent(tz)}` : ""}`);
+  },
   addSet:             (sessionId, body) => api.post(`/api/workout/session/${sessionId}/sets`, body),
   deleteSet:          (setId)         => api.delete(`/api/workout/sets/${setId}`),
   getWorkoutHistory:  ()              => api.get("/api/workout/history"),
@@ -7172,6 +7177,109 @@ function PlayerBar({ track, isPlaying, setIsPlaying, tracks, setTrack, navExpand
   // Playback speed
   useEffect(() => { if (audioRef.current) audioRef.current.playbackRate = speed; }, [speed]);
 
+  // ── Lock screen / Control Centre (Media Session API) ──────────────────────
+  const hasMediaSession = typeof navigator !== "undefined" && "mediaSession" in navigator;
+
+  // Report current position so the lock-screen progress bar is accurate
+  const updatePositionState = () => {
+    const audio = audioRef.current;
+    if (!hasMediaSession || !audio || !navigator.mediaSession.setPositionState) return;
+    const dur = audio.duration;
+    if (!isFinite(dur) || dur <= 0) return;
+    try {
+      navigator.mediaSession.setPositionState({
+        duration:     dur,
+        playbackRate: audio.playbackRate || 1,
+        position:     Math.min(Math.max(0, audio.currentTime), dur),
+      });
+    } catch {}
+  };
+
+  // Track details: title, artist, album, artwork
+  useEffect(() => {
+    if (!hasMediaSession) return;
+    if (!track?.src) { navigator.mediaSession.metadata = null; return; }
+    try {
+      const logo = new URL("/logo512.png", window.location.origin).href;
+      navigator.mediaSession.metadata = new window.MediaMetadata({
+        title:   track.title || "",
+        artist:  track.artist || "Holy Bible",
+        album:   "Bros of St. Hyacinth",
+        artwork: [{ src: logo, sizes: "512x512", type: "image/png" }],
+      });
+    } catch {}
+  }, [track]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Playing / paused state + position
+  useEffect(() => {
+    if (!hasMediaSession) return;
+    navigator.mediaSession.playbackState = track?.src ? (isPlaying ? "playing" : "paused") : "none";
+    updatePositionState();
+  }, [isPlaying, track, duration, speed]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep the lock-screen progress bar correct after in-app seeks / speed changes
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!hasMediaSession || !audio) return;
+    audio.addEventListener("seeked",     updatePositionState);
+    audio.addEventListener("ratechange", updatePositionState);
+    return () => {
+      audio.removeEventListener("seeked",     updatePositionState);
+      audio.removeEventListener("ratechange", updatePositionState);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Lock-screen buttons. These drive the app's own player state so the
+  // in-app controls stay in sync. Lock-screen skips are 10s (iOS always
+  // shows a "10" icon); the in-app ±15s buttons are unaffected.
+  useEffect(() => {
+    if (!hasMediaSession) return;
+    const ms = navigator.mediaSession;
+    const LOCK_SKIP = 10;
+    const seekBy = (secs) => {
+      const audio = audioRef.current;
+      if (!audio || !isFinite(audio.duration)) return;
+      audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + secs));
+      setElapsed(audio.currentTime);
+      updatePositionState();
+    };
+    const handlers = {
+      play: () => {
+        const audio = audioRef.current;
+        if (audio && track?.src) audio.play().catch(() => {});
+        setIsPlaying(true);
+      },
+      pause: () => {
+        const audio = audioRef.current;
+        if (audio) {
+          audio.pause();
+          if (track?.id && audio.currentTime > 0) store.set(`progress:${track.id}`, String(audio.currentTime));
+        }
+        setIsPlaying(false);
+      },
+      seekbackward: () => seekBy(-LOCK_SKIP),
+      seekforward:  () => seekBy(LOCK_SKIP),
+      seekto: (details) => {
+        const audio = audioRef.current;
+        if (!audio || details?.seekTime == null) return;
+        if (details.fastSeek && typeof audio.fastSeek === "function") audio.fastSeek(details.seekTime);
+        else audio.currentTime = details.seekTime;
+        setElapsed(audio.currentTime);
+        updatePositionState();
+      },
+      previoustrack: null,
+      nexttrack:     null,
+    };
+    for (const [action, fn] of Object.entries(handlers)) {
+      try { ms.setActionHandler(action, fn); } catch {}
+    }
+    return () => {
+      for (const action of Object.keys(handlers)) {
+        try { ms.setActionHandler(action, null); } catch {}
+      }
+    };
+  }, [track]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Skip to track prev/next
   const skipTrack = (dir) => {
     if (!tracks.length) return;
@@ -8603,7 +8711,7 @@ function BodyWeightPanel({ entries, onLog, onDelete }) {
                     tickCount={Math.min(chartData.length, 7)}
                     tickFormatter={ts => { const d = new Date(ts); return `${d.getMonth()+1}/${d.getDate()}`; }} />
                   <YAxis stroke="#7a7a8a" tick={{fontSize:10}} width={42}
-                    domain={[dataMin => Math.floor(dataMin - 2), dataMax => Math.ceil(dataMax + 2)]} />
+                    domain={[0, dataMax => Math.ceil(dataMax + 2)]} />
                   <Tooltip contentStyle={{background:"#141417",border:"1px solid #2a2a32",borderRadius:8,fontSize:11}}
                     labelFormatter={ts => bwFmtDate(ts)} formatter={v => [`${bwFmtLbs(v)} lbs`, "Body weight"]} />
                   <Line type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2.5}

@@ -1141,7 +1141,16 @@ async function updatePrIfBetter(userId, exercise, prValue) {
 // GET /api/workout/session/today — get or create today's session with all sets
 app.get("/api/workout/session/today", requireAuth, async (req, res) => {
   try {
-    const today = new Date().toLocaleDateString("en-US", { month:"short", day:"numeric" });
+    // "Today" is computed in the caller's own time zone (sent as ?tz=America/New_York),
+    // so the day turns over at his local midnight rather than at UTC midnight.
+    // A missing or invalid tz falls back to the server clock.
+    const tz = typeof req.query.tz === "string" && req.query.tz ? req.query.tz : undefined;
+    let today;
+    try {
+      today = new Date().toLocaleDateString("en-US", { month:"short", day:"numeric", timeZone: tz });
+    } catch {
+      today = new Date().toLocaleDateString("en-US", { month:"short", day:"numeric" });
+    }
     const { rows: sessRows } = await db.query(`
       INSERT INTO workout_sessions (user_id, date, created_at)
       VALUES ($1, $2, $3)
