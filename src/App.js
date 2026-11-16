@@ -6233,9 +6233,13 @@ function WorkoutFigureBackdrop(props) {
 // Single source of truth for the glossy sphere avatar effect.
 // Use everywhere a user photo appears.
 function AvatarPhoto({ src, alt = "", size = 45, className = "sm" }) {
+  // If the image fails to load (e.g. file deleted), show initials instead of a broken icon
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [src]);
+  if (failed || !src) return <AvatarInitials name={alt} size={size} />;
   return (
     <div className={`avatar-photo ${className}`} style={{width:size,height:size,flexShrink:0,position:"relative"}}>
-      <img src={src} alt={alt} crossOrigin="anonymous" />
+      <img src={src} alt={alt} crossOrigin="anonymous" onError={() => setFailed(true)} />
       <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(circle at 50% 50%,transparent 50%,rgba(0,0,0,0.4) 68%,rgba(0,0,0,0.85) 100%)",pointerEvents:"none"}} />
       <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"linear-gradient(155deg,rgba(255,255,255,0.28) 0%,rgba(255,255,255,0.06) 25%,transparent 42%)",pointerEvents:"none"}} />
       <div style={{position:"absolute",inset:0,borderRadius:"50%",boxShadow:"inset 0 1px 0 rgba(255,255,255,0.35),inset 1px 0 0 rgba(255,255,255,0.1)",pointerEvents:"none"}} />
@@ -8473,7 +8477,8 @@ function ChatAliasSection({ user, onUpdate }) {
 
   // Preview: what the user will look like in global chat
   const previewName   = aliasName.trim() || user.displayName;
-  const previewAvatar = aliasAvatarUrl || user.avatarUrl;
+  // Matches the global chat: with an alias name, never the real photo
+  const previewAvatar = aliasAvatarUrl || (aliasName.trim() ? null : user.avatarUrl);
   const previewInitials = aliasName.trim()
     ? aliasName.trim().slice(0, 2).toUpperCase()
     : (user.displayName || "").slice(0, 2).toUpperCase();
@@ -8505,7 +8510,7 @@ function ChatAliasSection({ user, onUpdate }) {
       <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",
         background:"var(--surface2)",borderRadius:8,marginBottom:18,border:"1px solid var(--border)"}}>
         {previewAvatar
-          ? <AvatarPhoto src={previewAvatar} size={36} />
+          ? <AvatarPhoto src={previewAvatar} alt={previewName} size={36} />
           : <div className="avatar sm" style={{width:36,height:36,fontSize:12,flexShrink:0}}>
               {previewInitials}
             </div>

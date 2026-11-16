@@ -156,9 +156,25 @@ async function purgeOrphanCloudinaryAssets() {
         }
       }
     }
-    // Also protect avatar public IDs
-    const { rows: avatarRows } = await db.query("SELECT avatar_public_id FROM users WHERE avatar_public_id IS NOT NULL");
-    for (const row of avatarRows) knownIds.add(row.avatar_public_id);
+    // Also protect profile photos AND chat-alias photos. Each is protected by its stored
+    // public ID and, as a safeguard, by the ID read from its URL (older rows may lack one).
+    const { rows: avatarRows } = await db.query(`
+      SELECT id, avatar_url, avatar_public_id, chat_alias_avatar_url, chat_alias_avatar_public_id
+      FROM users
+      WHERE avatar_url IS NOT NULL OR avatar_public_id IS NOT NULL
+         OR chat_alias_avatar_url IS NOT NULL OR chat_alias_avatar_public_id IS NOT NULL
+    `);
+    const aliasPhotos = []; // [{ userId, publicId }] — checked for existence after listing
+    for (const row of avatarRows) {
+      const avatarId = row.avatar_public_id || cloudinaryIdFromUrl(row.avatar_url);
+      if (avatarId) knownIds.add(avatarId);
+      const aliasId = row.chat_alias_avatar_public_id || cloudinaryIdFromUrl(row.chat_alias_avatar_url);
+      if (aliasId) {
+        knownIds.add(aliasId);
+        aliasPhotos.push({ userId: row.id, publicId: aliasId });
+      }
+    }
+    const existingImageIds = new Set(); // every image currently in Cloudinary
     let orphanCount = 0;
     // Cloudinary requires separate calls per resource_type — "auto" is not valid for listing
     for (const resourceType of ["image", "video", "raw"]) {
@@ -168,6 +184,7 @@ async function purgeOrphanCloudinaryAssets() {
         if (nextCursor) params.next_cursor = nextCursor;
         const result = await cloudinary.api.resources(params);
         for (const asset of result.resources) {
+          if (resourceType === "image") existingImageIds.add(asset.public_id);
           if (asset.public_id.startsWith("bible-audio/")) continue;
           if (!knownIds.has(asset.public_id)) {
             try {
@@ -182,9 +199,30 @@ async function purgeOrphanCloudinaryAssets() {
       } while (nextCursor);
     }
     if (orphanCount > 0) console.log(`🧹 Purged ${orphanCount} orphan Cloudinary assets.`);
+
+    // Clear alias-photo records whose file no longer exists in Cloudinary, so the chat
+    // stops pointing at a dead image. Runs only after the full listing succeeded.
+    let clearedAliases = 0;
+    for (const { userId, publicId } of aliasPhotos) {
+      if (existingImageIds.has(publicId)) continue;
+      await db.query(
+        "UPDATE users SET chat_alias_avatar_url = NULL, chat_alias_avatar_public_id = NULL WHERE id = $1",
+        [userId]
+      );
+      clearedAliases++;
+    }
+    if (clearedAliases > 0) console.log(`🧹 Cleared ${clearedAliases} missing chat-alias photo record(s).`);
   } catch (err) {
     console.error("purgeOrphanCloudinaryAssets error:", err.message);
   }
+}
+
+// Extracts a Cloudinary public ID from a delivery URL, e.g.
+// https://res.cloudinary.com/x/image/upload/v123/chat-aliases/abc.png → "chat-aliases/abc"
+function cloudinaryIdFromUrl(url) {
+  if (!url || typeof url !== "string") return null;
+  const m = url.match(/\/upload\/(?:[^/]+\/)*?v\d+\/(.+?)(?:\.[a-z0-9]+)?$/i);
+  return m ? m[1] : null;
 }
 
 async function getStorageUsage() {
@@ -657,7 +695,12 @@ const shapeMessage = (row, reactionsMap, includeUserId = false) => ({
   id:        Number(row.id),
   ...(includeUserId ? { userId: Number(row.user_id) } : {}),
   author:    row.chapter_id ? row.author : (row.chat_alias_name || row.author),
-  avatarUrl: row.chapter_id ? (row.avatar_url || null) : (row.chat_alias_avatar_url || row.avatar_url || null),
+  // Global chat: a member with an alias name never shows his real photo — alias photo or initials only
+  avatarUrl: row.chapter_id
+    ? (row.avatar_url || null)
+    : (row.chat_alias_name
+        ? (row.chat_alias_avatar_url || null)
+        : (row.chat_alias_avatar_url || row.avatar_url || null)),
   text:      row.text,
   chapterId: row.chapter_id ? Number(row.chapter_id) : null,
   media:     row.media_url ? {
