@@ -6404,7 +6404,7 @@ function WorkoutPage({ username, isNewUser }) {
 
   // ── History + chart state ──────────────────────────────────────────────────
   const [history, setHistory]     = useState([]);
-  const [chartView, setChartView] = useState("volume"); // "volume" | "pr"
+  const [chartView, setChartView] = useState("pr"); // "pr" | "volume"
   const [chartPeriod, setChartPeriod] = useState("all"); // "1m" | "3m" | "1y" | "all"
 
   const exDef = EXERCISE_MAP[exercise] || EXERCISES[0];
@@ -6837,7 +6837,7 @@ function WorkoutPage({ username, isNewUser }) {
           <>
         {/* Chart type toggle */}
         <div style={{display:"flex",gap:8,marginBottom:14}}>
-          {[["volume","Volume"],["pr","PR Trend"]].map(([v,l]) => (
+          {[["pr","PR Trend"],["volume","Volume"]].map(([v,l]) => (
             <button key={v} onClick={() => setChartView(v)}
               style={{padding:"6px 14px",border:`1px solid ${chartView===v?"var(--accent)":"var(--border)"}`,
                 background: chartView===v ? "rgba(136,255,0,0.08)" : "var(--surface2)",
