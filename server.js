@@ -286,6 +286,26 @@ async function runStorageCleanup() {
   }
 }
 
+// Adds the year to a legacy year-less session date: "Nov 8" → "Nov 8, 2026".
+// The year comes from the session's creation time (ms), read in Eastern time; a
+// Dec/Jan mismatch across New Year is corrected. Dates that already have a year,
+// or are in any other format, are returned unchanged.
+function withSessionYear(dateText, tsMs) {
+  if (typeof dateText !== "string") return dateText;
+  const text = dateText.trim();
+  const m = text.match(/^([A-Za-z]{3}) +(\d{1,2})$/);
+  if (!m) return dateText;
+  const MONTHS = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+  const textMonth = MONTHS.indexOf(m[1].toLowerCase());
+  const created = new Date(Number(tsMs) || Date.now());
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "numeric" }).formatToParts(created);
+  let year = Number(parts.find(p => p.type === "year").value);
+  const createdMonth = Number(parts.find(p => p.type === "month").value) - 1;
+  if (textMonth === 11 && createdMonth === 0) year -= 1;      // "Dec 31" created just after New Year
+  else if (textMonth === 0 && createdMonth === 11) year += 1; // "Jan 1" created just before New Year
+  return `${text}, ${year}`;
+}
+
 // ── Create tables on first boot ───────────────────────────────────────────────
 async function initDb() {
   await db.query(`
@@ -479,6 +499,21 @@ async function initDb() {
   // True duplicates (same exercise, same rep_cat, same date) are handled by the
   // migration guard in Step 3 which only runs once.
 
+  // Step 2b: Give legacy year-less session dates ("Nov 8") their year ("Nov 8, 2026"),
+  // taken from when each session was created. Runs before Step 3 (which uses the same
+  // dating) and only touches rows that still lack a year, so it is a no-op after the first boot.
+  const { rows: yearlessSessions } = await db.query(
+    "SELECT id, date, created_at FROM workout_sessions WHERE date ~ '^[A-Za-z]{3} +[0-9]{1,2}$'"
+  );
+  for (const s of yearlessSessions) {
+    try {
+      await db.query("UPDATE workout_sessions SET date = $1 WHERE id = $2", [withSessionYear(s.date, s.created_at), s.id]);
+    } catch (e) {
+      console.warn(`⚠ Could not add year to session ${s.id} (${s.date}):`, e.message);
+    }
+  }
+  if (yearlessSessions.length > 0) console.log(`📅 Added years to ${yearlessSessions.length} workout session date(s).`);
+
   // Step 3: Seed personal_records and session_sets from lift_logs.
   // Re-seeds session_sets every startup but uses INSERT ... ON CONFLICT DO NOTHING
   // to avoid creating duplicates. personal_records uses GREATEST to keep best value.
@@ -510,7 +545,7 @@ async function initDb() {
       VALUES ($1, $2, $3)
       ON CONFLICT (user_id, date) DO UPDATE SET date = EXCLUDED.date
       RETURNING id
-    `, [log.user_id, log.date, Number(log.ts)]);
+    `, [log.user_id, withSessionYear(log.date, log.ts), Number(log.ts)]);
     const sessionId = sessRows[0].id;
     // Only insert if this exact rep_cat entry doesn't already exist
     await db.query(`
@@ -1188,11 +1223,12 @@ app.get("/api/workout/session/today", requireAuth, async (req, res) => {
     // so the day turns over at his local midnight rather than at UTC midnight.
     // A missing or invalid tz falls back to the server clock.
     const tz = typeof req.query.tz === "string" && req.query.tz ? req.query.tz : undefined;
+    // Dates include the year ("Nov 17, 2026") so sessions from different years never collide.
     let today;
     try {
-      today = new Date().toLocaleDateString("en-US", { month:"short", day:"numeric", timeZone: tz });
+      today = new Date().toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric", timeZone: tz });
     } catch {
-      today = new Date().toLocaleDateString("en-US", { month:"short", day:"numeric" });
+      today = new Date().toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" });
     }
     const { rows: sessRows } = await db.query(`
       INSERT INTO workout_sessions (user_id, date, created_at)

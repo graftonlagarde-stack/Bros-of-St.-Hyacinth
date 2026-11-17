@@ -6618,7 +6618,7 @@ function WorkoutPage({ username, isNewUser }) {
         const d = s.date;
         if (!d) return null;
         if (/^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0, 10);
-        const parsed = new Date(`${d}, ${new Date().getFullYear()}`);
+        const parsed = new Date(/\d{4}$/.test(d.trim()) ? d : `${d}, ${new Date().getFullYear()}`);
         return isNaN(parsed) ? d : parsed.toISOString().slice(0, 10);
       })
       .filter(Boolean)
@@ -6780,7 +6780,7 @@ function WorkoutPage({ username, isNewUser }) {
                   alignItems:"center",padding:"6px 0",
                   borderBottom:"1px solid rgba(136,255,0,0.05)"}}>
                   <span style={{fontSize:12,color:"var(--muted)",flex:1}}>{s.exercise}</span>
-                  <span style={{fontSize:12,color:"var(--muted)",marginRight:12}}>{s.sessionDate}</span>
+                  <span style={{fontSize:12,color:"var(--muted)",marginRight:12}}>{(s.sessionDate || "").replace(/,\s*\d{4}$/, "")}</span>
                   <span style={{fontSize:13,fontWeight:600,marginRight:8}}>
                     {s.setType === "weighted"   && `${s.weight} lbs × ${s.reps}`}
                     {s.setType === "bodyweight" && `${s.reps} reps`}
