@@ -741,6 +741,7 @@ const shapeMessage = (row, reactionsMap, includeUserId = false) => ({
     : (row.chat_alias_name
         ? (row.chat_alias_avatar_url || null)
         : (row.chat_alias_avatar_url || row.avatar_url || null)),
+  ts:        Number(row.ts),
   text:      row.text,
   chapterId: row.chapter_id ? Number(row.chapter_id) : null,
   media:     row.media_url ? {
