@@ -138,12 +138,33 @@ async function purgeStaleUploads() {
   }
 }
 
-async function deleteCloudinaryAsset(publicId) {
-  if (!publicId) return;
-  try {
-    await cloudinary.uploader.destroy(publicId, { resource_type: "auto" });
-  } catch (err) {
-    console.warn(`⚠ Cloudinary delete failed for ${publicId}:`, err.message);
+// Deletes a Cloudinary file. Cloudinary's destroy needs the real resource type
+// ("image", "video" or "raw" — "auto" is not accepted). Uploads store video and
+// audio as "video" and everything else as "image" (see /api/upload), so that type
+// is tried first; if Cloudinary reports "not found", the other types are tried.
+async function deleteCloudinaryAsset(publicId, mimeType) {
+  if (!publicId) return false;
+  const t = String(mimeType || "").toLowerCase();
+  const first = (t.startsWith("video/") || t.startsWith("audio/")) ? "video" : "image";
+  const order = [first, ...["image", "video", "raw"].filter(x => x !== first)];
+  for (const resource_type of order) {
+    try {
+      const r = await cloudinary.uploader.destroy(publicId, { resource_type });
+      if (r && r.result === "ok") return true;
+    } catch (err) {
+      console.warn(`⚠ Cloudinary delete failed for ${publicId} (${resource_type}):`, err.message);
+    }
+  }
+  return false;
+}
+
+// Deletes every Cloudinary file attached to a message row (main + extra attachments).
+async function deleteMessageMedia(row) {
+  if (row.media_public_id) await deleteCloudinaryAsset(row.media_public_id, row.media_type);
+  if (row.media_extra) {
+    let extras = [];
+    try { extras = JSON.parse(row.media_extra) || []; } catch (_) {}
+    for (const m of extras) if (m && m.publicId) await deleteCloudinaryAsset(m.publicId, m.type);
   }
 }
 
@@ -251,41 +272,122 @@ async function getStorageUsage() {
   };
 }
 
+// ── Storage cleanup ───────────────────────────────────────────────────────────
+// When Postgres or Cloudinary passes CLEANUP_THRESHOLD (90%), deletes the oldest chat
+// messages (global and chapter alike) to bring usage back to CLEANUP_TARGET (80%).
+// It measures ONCE, works out how many bytes must go, picks just enough of the oldest
+// messages using their stored sizes, then deletes them in one pass. (It never loops on
+// re-measuring: Postgres doesn't shrink after DELETE and Cloudinary's usage figures
+// aren't live, so a measure-and-repeat loop would delete everything.)
+// Safety: one run never deletes more than CLEANUP_MAX_SHARE of all messages.
+// Set CLEANUP_DRY_RUN=true in Railway to only log what would be deleted.
+const CLEANUP_MAX_SHARE = 0.20;
+
 async function runStorageCleanup() {
   try {
+    const dryRun = process.env.CLEANUP_DRY_RUN === "true";
     const usage = await getStorageUsage();
     console.log(`📊 Storage — Postgres: ${(usage.pg.pct*100).toFixed(1)}% | Cloudinary: ${(usage.cloudinary.pct*100).toFixed(1)}%`);
-    if (usage.pg.pct < CLEANUP_THRESHOLD && usage.cloudinary.pct < CLEANUP_THRESHOLD) return;
-    console.log("⚠ Storage threshold exceeded — beginning cleanup…");
-    let freed = 0;
-    // First: delete oldest media messages (frees both Cloudinary and Postgres)
-    while (true) {
-      const u = await getStorageUsage();
-      if (u.pg.pct < CLEANUP_TARGET && u.cloudinary.pct < CLEANUP_TARGET) break;
-      const { rows } = await db.query(
-        "SELECT id, media_public_id FROM messages WHERE media_public_id IS NOT NULL ORDER BY ts ASC LIMIT 10"
-      );
-      if (rows.length === 0) break;
-      for (const row of rows) {
-        await deleteCloudinaryAsset(row.media_public_id);
-        await db.query("DELETE FROM messages WHERE id = $1", [row.id]);
-        freed++;
+    const pgOver  = usage.pg.pct >= CLEANUP_THRESHOLD;
+    const cldOver = usage.cloudinary.pct >= CLEANUP_THRESHOLD;
+    if (!pgOver && !cldOver) return;
+    console.log(`⚠ Storage threshold exceeded — planning cleanup${dryRun ? " (DRY RUN — nothing will be deleted)" : ""}…`);
+
+    // Cloudinary's usage figure lags behind deletions, so subtract what recent runs already freed
+    await db.query("CREATE TABLE IF NOT EXISTS storage_cleanup_runs (ran_at BIGINT NOT NULL, cloudinary_freed BIGINT NOT NULL DEFAULT 0)");
+    const { rows: [recent] } = await db.query(
+      "SELECT COALESCE(SUM(cloudinary_freed), 0) AS freed FROM storage_cleanup_runs WHERE ran_at > $1",
+      [Date.now() - 48 * 60 * 60 * 1000]
+    );
+    const cldEffective = Math.max(0, usage.cloudinary.bytes - Number(recent.freed));
+    const cldNeed = cldOver ? cldEffective - CLEANUP_TARGET * usage.cloudinary.limit : 0;
+    let   pgNeed  = pgOver  ? usage.pg.bytes        - CLEANUP_TARGET * usage.pg.limit        : 0;
+
+    // All messages, oldest first, with the sizes needed to plan
+    const { rows: msgs } = await db.query(`
+      SELECT id, ts, media_bytes, media_type, media_public_id, media_extra, pg_column_size(m.*) AS row_bytes
+      FROM messages m ORDER BY ts ASC, id ASC
+    `);
+    if (msgs.length === 0) { console.warn("⚠ Cleanup: no messages to delete — storage is used by something else."); return; }
+    const maxCount = Math.max(1, Math.floor(msgs.length * CLEANUP_MAX_SHARE));
+
+    // Cloudinary bytes a message frees (main file + extra attachments)
+    const mediaBytesOf = (m) => {
+      let b = m.media_public_id ? Number(m.media_bytes) || 0 : 0;
+      if (m.media_extra) {
+        try { for (const x of JSON.parse(m.media_extra) || []) if (x && x.publicId) b += Number(x.bytes) || 0; } catch (_) {}
+      }
+      return b;
+    };
+
+    // Postgres: scale row sizes up to real on-disk size (indexes, overhead)
+    const { rows: [tbl] } = await db.query("SELECT pg_total_relation_size('messages') AS bytes");
+    const tableBytes = Number(tbl.bytes) || 0;
+    const rowTotal   = msgs.reduce((n, m) => n + (Number(m.row_bytes) || 0), 0) || 1;
+    const diskFactor = tableBytes / rowTotal;
+    const pgBytesOf  = (m) => (Number(m.row_bytes) || 0) * diskFactor;
+    if (pgNeed > 0 && tableBytes < pgNeed) {
+      console.warn(`⚠ Cleanup: Postgres needs ${(pgNeed/1e6).toFixed(1)} MB freed but all chat messages total only ${(tableBytes/1e6).toFixed(1)} MB — something else is filling the database. Skipping Postgres cleanup.`);
+      pgNeed = 0;
+    }
+
+    // If deleting ALL chat media still couldn't reach the target, Cloudinary is filled by
+    // something else (e.g. permanent files) — don't wipe chat media for nothing.
+    let cldNeedAdj = cldNeed;
+    if (cldNeedAdj > 0) {
+      const allMedia = msgs.reduce((n, m) => n + mediaBytesOf(m), 0);
+      if (allMedia < cldNeedAdj) {
+        console.warn(`⚠ Cleanup: Cloudinary needs ${(cldNeedAdj/1e6).toFixed(1)} MB freed but all chat media totals only ${(allMedia/1e6).toFixed(1)} MB — something else is filling Cloudinary. Skipping Cloudinary cleanup.`);
+        cldNeedAdj = 0;
       }
     }
-    // Second: delete oldest text-only messages if Postgres still too full
-    while (true) {
-      const u = await getStorageUsage();
-      if (u.pg.pct < CLEANUP_TARGET) break;
-      const { rows } = await db.query(
-        "SELECT id FROM messages WHERE media_public_id IS NULL ORDER BY ts ASC LIMIT 20"
-      );
-      if (rows.length === 0) break;
-      for (const row of rows) {
-        await db.query("DELETE FROM messages WHERE id = $1", [row.id]);
-        freed++;
+
+    // Pick: oldest media messages until Cloudinary is covered, then oldest of any kind for Postgres
+    const picked = new Map();
+    let cldFreed = 0, pgFreed = 0, capped = false;
+    if (cldNeedAdj > 0) {
+      for (const m of msgs) {
+        if (cldFreed >= cldNeedAdj) break;
+        const mb = mediaBytesOf(m);
+        if (mb === 0) continue;
+        if (picked.size >= maxCount) { capped = true; break; }
+        picked.set(m.id, m); cldFreed += mb; pgFreed += pgBytesOf(m);
       }
     }
-    if (freed > 0) console.log(`✅ Cleanup complete — deleted ${freed} messages.`);
+    if (pgNeed > 0) {
+      for (const m of msgs) {
+        if (pgFreed >= pgNeed) break;
+        if (picked.has(m.id)) continue;
+        if (picked.size >= maxCount) { capped = true; break; }
+        picked.set(m.id, m); pgFreed += pgBytesOf(m); cldFreed += mediaBytesOf(m);
+      }
+    }
+    if (picked.size === 0) { console.log("Cleanup: nothing needs deleting (recent cleanups already cover it, or nothing suitable)."); return; }
+
+    const list = [...picked.values()];
+    const span = `${new Date(Number(list[0].ts)).toISOString().slice(0,10)} → ${new Date(Number(list[list.length-1].ts)).toISOString().slice(0,10)}`;
+    console.log(`🧾 Cleanup plan: ${list.length} of ${msgs.length} messages (${span}); frees ~${(cldFreed/1e6).toFixed(1)} MB Cloudinary, ~${(pgFreed/1e6).toFixed(1)} MB Postgres.`);
+    if (capped) console.warn(`⚠ Cleanup capped at ${Math.round(CLEANUP_MAX_SHARE*100)}% of messages — this run will NOT reach the ${Math.round(CLEANUP_TARGET*100)}% target. Check what is using storage.`);
+    else if ((cldNeedAdj > 0 && cldFreed < cldNeedAdj) || (pgNeed > 0 && pgFreed < pgNeed))
+      console.warn(`⚠ Cleanup: not enough deletable chat data to reach the ${Math.round(CLEANUP_TARGET*100)}% target. Check what is using storage.`);
+    if (dryRun) { console.log("🧪 Dry run — nothing deleted."); return; }
+
+    // Delete files, then rows
+    for (const m of list) await deleteMessageMedia(m);
+    const ids = list.map(m => m.id);
+    for (let i = 0; i < ids.length; i += 500) {
+      await db.query("DELETE FROM messages WHERE id = ANY($1::int[])", [ids.slice(i, i + 500)]);
+    }
+    // Hand the freed space back so the size reading actually drops (brief lock on these tables only)
+    try {
+      await db.query("VACUUM FULL messages");
+      await db.query("VACUUM FULL reactions");
+    } catch (e) {
+      console.warn("⚠ Cleanup: VACUUM FULL failed:", e.message);
+    }
+    await db.query("INSERT INTO storage_cleanup_runs (ran_at, cloudinary_freed) VALUES ($1, $2)", [Date.now(), Math.round(cldFreed)]);
+    const after = await getStorageUsage();
+    console.log(`✅ Cleanup complete — deleted ${list.length} messages. Postgres now ${(after.pg.pct*100).toFixed(1)}% (Cloudinary figures update with a delay).`);
   } catch (err) {
     console.error("runStorageCleanup error:", err.message);
   }
@@ -2039,7 +2141,7 @@ app.delete("/api/board/messages/:id", requireAuth, async (req, res) => {
     const role = userRows[0]?.role;
     if (!role) return res.status(403).json({ error: "Forbidden" });
     const { id } = req.params;
-    const { rows } = await db.query("SELECT media_public_id, media_extra, chapter_id FROM messages WHERE id = $1", [id]);
+    const { rows } = await db.query("SELECT media_public_id, media_type, media_extra, chapter_id FROM messages WHERE id = $1", [id]);
     if (!rows[0]) return res.status(404).json({ error: "Not found" });
     const msg = rows[0];
     // Arch-admin can delete anything
@@ -2052,17 +2154,7 @@ app.delete("/api/board/messages/:id", requireAuth, async (req, res) => {
       );
       if (!cmRows[0]) return res.status(403).json({ error: "Forbidden" });
     }
-    if (msg.media_public_id) {
-      try { await cloudinary.uploader.destroy(msg.media_public_id, { resource_type: "auto" }); } catch (_) {}
-    }
-    if (msg.media_extra) {
-      const extras = JSON.parse(msg.media_extra);
-      for (const m of extras) {
-        if (m.publicId) {
-          try { await cloudinary.uploader.destroy(m.publicId, { resource_type: "auto" }); } catch (_) {}
-        }
-      }
-    }
+    await deleteMessageMedia(msg);
     await db.query("DELETE FROM messages WHERE id = $1", [id]);
     return res.json({ ok: true });
   } catch (err) {
