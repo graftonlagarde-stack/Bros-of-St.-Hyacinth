@@ -36,6 +36,11 @@ const cloudinary  = require("cloudinary").v2;
 const multer      = require("multer");
 const streamifier = require("streamifier");
 const webpush     = require("web-push");
+const http        = require("http");
+const https       = require("https");
+const dns         = require("dns");
+const net         = require("net");
+const zlib        = require("zlib");
 
 const app        = express();
 const PORT       = process.env.PORT || 4000;
@@ -1417,18 +1422,21 @@ app.get("/api/community/prs", requireAuth, async (req, res) => {
     const { rows: meRows } = await db.query("SELECT role FROM users WHERE id = $1", [req.userId]);
     if (meRows[0]?.role === 'new_user')
       return res.status(403).json({ error: "Forbidden." });
-    const { rows: users } = await db.query(
-      "SELECT * FROM users WHERE id != $1 AND role != 'new_user'", [req.userId]
-    );
-    const result = await Promise.all(users.map(async (u) => {
-      const { rows: prs } = await db.query(
-        "SELECT exercise, value FROM personal_records WHERE user_id = $1",
-        [u.id]
-      );
+    // One query for all members and their PRs (previously one query per member)
+    const { rows: users } = await db.query(`
+      SELECT u.id, u.first_name, u.last_name, u.avatar_url,
+             COALESCE(json_object_agg(pr.exercise, pr.value) FILTER (WHERE pr.exercise IS NOT NULL), '{}'::json) AS prs
+      FROM users u
+      LEFT JOIN personal_records pr ON pr.user_id = u.id
+      WHERE u.id != $1 AND u.role != 'new_user'
+      GROUP BY u.id
+      ORDER BY u.id
+    `, [req.userId]);
+    const result = users.map(u => {
       const prMap = {};
-      for (const pr of prs) prMap[pr.exercise] = Number(pr.value);
+      for (const [exercise, value] of Object.entries(u.prs || {})) prMap[exercise] = Number(value);
       return { name: displayName(u), avatarUrl: u.avatar_url || null, prs: prMap };
-    }));
+    });
     res.json(result);
   } catch (err) {
     console.error("GET /api/community/prs:", err);
@@ -1650,6 +1658,109 @@ async function sendPushToUser(userId, payload) {
 // LINK PREVIEW ROUTE
 // ═════════════════════════════════════════════════════════════════════════════
 
+// ── Safe page fetching for link previews ─────────────────────────────────────
+// Refuses private, loopback, link-local and other non-public addresses (checked at
+// the moment of connecting, so DNS tricks can't slip past), follows at most 3
+// redirects (each checked the same way), reads only HTML, and stops after maxBytes.
+
+// True for any address that is not a normal public internet address.
+function isBlockedAddress(ip) {
+  if (net.isIPv4(ip)) {
+    const [a, b, c] = ip.split(".").map(Number);
+    return a === 0 || a === 10 || a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||   // carrier-grade NAT
+      (a === 169 && b === 254) ||             // link-local / cloud metadata
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 192 && b === 0 && c === 0) ||
+      (a === 198 && (b === 18 || b === 19)) ||
+      a >= 224;                               // multicast & reserved
+  }
+  if (net.isIPv6(ip)) {
+    const x = ip.toLowerCase();
+    const dotted = x.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);            // IPv4-mapped, dotted
+    if (dotted) return isBlockedAddress(dotted[1]);
+    const hex = x.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);    // IPv4-mapped, hex
+    if (hex) {
+      const hi = parseInt(hex[1], 16), lo = parseInt(hex[2], 16);
+      return isBlockedAddress(`${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`);
+    }
+    return x.startsWith("::") ||          // unspecified, loopback, IPv4-compatible
+      /^f[cd]/.test(x) ||                 // unique local (fc00::/7)
+      /^fe[89ab]/.test(x) ||              // link-local (fe80::/10)
+      x.startsWith("ff") ||               // multicast
+      x.startsWith("64:ff9b:");           // NAT64 (could map to private IPv4)
+  }
+  return true; // not an IP at all
+}
+
+// DNS lookup used for every connection: fails if any resolved address is blocked.
+function safeLookup(hostname, options, callback) {
+  if (typeof options === "function") { callback = options; options = {}; }
+  dns.lookup(hostname, options, (err, address, family) => {
+    if (err) return callback(err);
+    const list = Array.isArray(address) ? address : [{ address, family }];
+    if (list.length === 0 || list.some(a => isBlockedAddress(a.address))) {
+      return callback(Object.assign(new Error("Address not allowed"), { code: "EBLOCKED" }));
+    }
+    callback(null, address, family);
+  });
+}
+
+// Fetches a page's HTML (first maxBytes only). Resolves "" for non-HTML responses.
+function fetchPreviewHtml(startUrl, headers, { maxBytes = 262144, maxRedirects = 3, timeoutMs = 7000, blocked = isBlockedAddress, lookup = safeLookup } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  const attempt = (urlStr, redirectsLeft) => new Promise((resolve, reject) => {
+    let u;
+    try { u = new URL(urlStr); } catch { return reject(new Error("Invalid URL")); }
+    if (u.protocol !== "http:" && u.protocol !== "https:") return reject(new Error("Unsupported protocol"));
+    const host = u.hostname.replace(/^\[|\]$/g, "");
+    if (net.isIP(host) && blocked(host)) return reject(new Error("Address not allowed"));
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return reject(new Error("Timed out"));
+
+    let settled = false;
+    const done = (fn, val) => { if (settled) return; settled = true; clearTimeout(timer); fn(val); };
+    const chunks = []; let size = 0;
+    const finish = () => done(resolve, Buffer.concat(chunks).subarray(0, maxBytes).toString("utf8"));
+    const lib = u.protocol === "https:" ? https : http;
+    const req = lib.get(u, {
+      headers: { ...headers, "Accept-Encoding": "gzip, deflate, br" },
+      lookup,
+    }, (resp) => {
+      const status = resp.statusCode || 0;
+      if (status >= 300 && status < 400 && resp.headers.location) {
+        resp.resume();
+        if (redirectsLeft <= 0) return done(reject, new Error("Too many redirects"));
+        let next;
+        try { next = new URL(resp.headers.location, u).toString(); } catch { return done(reject, new Error("Bad redirect")); }
+        settled = true; clearTimeout(timer);
+        return attempt(next, redirectsLeft - 1).then(resolve, reject);
+      }
+      const type = String(resp.headers["content-type"] || "").toLowerCase();
+      if (type && !/text\/html|application\/xhtml\+xml/.test(type)) { resp.destroy(); return done(resolve, ""); }
+
+      const enc = String(resp.headers["content-encoding"] || "").toLowerCase();
+      let body = resp;
+      if (enc.includes("gzip"))         body = resp.pipe(zlib.createGunzip());
+      else if (enc.includes("deflate")) body = resp.pipe(zlib.createInflate());
+      else if (enc.includes("br"))      body = resp.pipe(zlib.createBrotliDecompress());
+
+      body.on("data", (chunk) => {
+        chunks.push(chunk); size += chunk.length;
+        if (size >= maxBytes) { finish(); resp.destroy(); if (body !== resp) body.destroy(); }
+      });
+      body.on("end", finish);
+      body.on("error", (e) => (size > 0 ? finish() : done(reject, e)));
+      resp.on("error", (e) => (size > 0 ? finish() : done(reject, e)));
+    });
+    // On timeout, keep whatever HTML already arrived (the <head> usually comes first)
+    const timer = setTimeout(() => { if (size > 0) finish(); req.destroy(new Error("Timed out")); }, remaining);
+    req.on("error", (e) => done(reject, e));
+  });
+  return attempt(startUrl, maxRedirects);
+}
+
 // GET /api/link-preview?url=... — fetches rich preview data for any URL.
 // Strategy:
 //   1. Try oEmbed (YouTube, Vimeo, Twitter/X support it natively — returns title+thumbnail)
@@ -1707,17 +1818,11 @@ app.get("/api/link-preview", requireAuth, async (req, res) => {
   // Extract every <meta> tag as a raw string so multi-line tags work (YouTube,
   // Instagram etc. put property= and content= on separate lines).
   try {
-    const r = await fetch(url, {
-      headers: {
-        "User-Agent": browserUA,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-      },
-      signal,
-      redirect: "follow",
+    const html = await fetchPreviewHtml(url, {
+      "User-Agent": browserUA,
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.5",
     });
-    const buf  = await r.arrayBuffer();
-    const html = new TextDecoder().decode(buf.slice(0, 262144));
 
     const metaTags = [];
     const metaRe   = /<meta[\s\S]*?>/gi;
@@ -2495,20 +2600,22 @@ app.get("/api/chapters/:id/community-users", requireAuth, async (req, res) => {
       );
       if (!cmRows[0]) return res.status(403).json({ error: "Forbidden." });
     }
+    // One query for all chapter members and their PRs (previously one query per member)
     const { rows: users } = await db.query(`
-      SELECT u.* FROM users u
+      SELECT u.id, u.first_name, u.last_name, u.avatar_url,
+             COALESCE(json_object_agg(pr.exercise, pr.value) FILTER (WHERE pr.exercise IS NOT NULL), '{}'::json) AS prs
+      FROM users u
       JOIN chapter_memberships cm ON cm.user_id = u.id
+      LEFT JOIN personal_records pr ON pr.user_id = u.id
       WHERE cm.chapter_id = $1 AND cm.status = 'approved' AND u.id != $2 AND u.role != 'new_user'
+      GROUP BY u.id
+      ORDER BY u.id
     `, [chapterId, req.userId]);
-    const result = await Promise.all(users.map(async (u) => {
-      const { rows: prs } = await db.query(
-        "SELECT exercise, value FROM personal_records WHERE user_id = $1",
-        [u.id]
-      );
+    const result = users.map(u => {
       const prMap = {};
-      for (const pr of prs) prMap[pr.exercise] = Number(pr.value);
+      for (const [exercise, value] of Object.entries(u.prs || {})) prMap[exercise] = Number(value);
       return { name: displayName(u), avatarUrl: u.avatar_url || null, prs: prMap };
-    }));
+    });
     return res.json(result);
   } catch (err) {
     console.error("GET /api/chapters/:id/community-users:", err);
